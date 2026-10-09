@@ -1517,10 +1517,7 @@
     "activityUnavailable": "Les statistiques nécessitent le mode base de données.",
     "details": "Détails",
     "target": "Cible",
-    "model": "Modèle",
-    "benchmark": "Benchmark",
     "taskId": "ID tâche",
-    "runId": "ID exécution",
     "requestId": "ID requête"
   },
   "keyPool": {
@@ -1566,21 +1563,15 @@
     "headersHint": "Un En-tête=Valeur par ligne, par exemple Authorization=Bearer your-key. Les identifiants concernent uniquement cette cible et ne sont jamais hérités."
   },
   "statistics": {
-    "description": "Appels terminés comptés une fois sur la période UTC complète. Les tentatives HTTP sont exclues. Les étiquettes de modèle et benchmark proviennent des appelants.",
+    "description": "Appels d’outils terminés par MCP pour le mois ou la période sélectionnée (UTC). Chaque appel compte une fois ; les tentatives HTTP internes sont exclues.",
     "month": "Mois",
     "start": "Début (UTC)",
     "end": "Fin (UTC)",
     "server": "MCP",
-    "target": "Cible",
-    "model": "Modèle",
-    "benchmark": "Benchmark",
     "total": "Appels",
     "success": "Réussites",
     "errors": "Erreurs",
-    "unmarked": "Non renseigné",
-    "unavailable": "Activez l’audit persistant pour collecter les statistiques.",
-    "groupBy": "Regrouper par",
-    "allDimensions": "Toutes les dimensions"
+    "unavailable": "Activez l’audit persistant pour collecter les statistiques."
   },
   "runtime": {
     "title": "Connexions actives",

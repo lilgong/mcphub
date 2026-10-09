@@ -9,9 +9,6 @@ export function invocationLabels(
   };
   return {
     target: read('x-mcphub-target'),
-    model: read('x-mcphub-model'),
-    benchmark: read('x-mcphub-benchmark'),
-    runId: read('x-mcphub-run-id'),
     taskId: read('x-mcphub-task-id'),
   };
 }

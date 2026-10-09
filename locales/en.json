@@ -1519,10 +1519,7 @@
     "activityUnavailable": "Activity statistics require database mode.",
     "details": "Details",
     "target": "Target",
-    "model": "Model",
-    "benchmark": "Benchmark",
     "taskId": "Task ID",
-    "runId": "Run ID",
     "requestId": "Request ID"
   },
   "keyPool": {
@@ -1568,21 +1565,15 @@
     "headersHint": "One Header=Value per line, e.g. Authorization=Bearer your-key. Credentials apply only to this target and are never inherited from another target."
   },
   "statistics": {
-    "description": "Completed tool calls counted once, across the full selected period (UTC). HTTP attempts are excluded. Model and benchmark labels are supplied by callers; historical unlabeled calls remain unmarked.",
+    "description": "Completed tool calls per MCP for the selected month or date range (UTC). Each call counts once; internal HTTP attempts such as key retries are excluded.",
     "month": "Month",
     "start": "From (UTC)",
     "end": "To (UTC)",
     "server": "MCP",
-    "target": "Target",
-    "model": "Model",
-    "benchmark": "Benchmark",
     "total": "Calls",
     "success": "Successful",
     "errors": "Errors",
-    "unmarked": "Unmarked",
-    "unavailable": "Enable durable tool auditing to collect statistics.",
-    "groupBy": "Group by",
-    "allDimensions": "All dimensions"
+    "unavailable": "Enable durable tool auditing to collect statistics."
   },
   "runtime": {
     "title": "Runtime connections",

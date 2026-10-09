@@ -112,9 +112,6 @@ or dashboard administrator identity registers the callback:
 ```http
 POST /api/task-connections
 Authorization: Bearer OPERATOR_KEY
-X-MCPHub-Model: model-name
-X-MCPHub-Benchmark: benchmark-name
-X-MCPHub-Run-ID: run-id
 Content-Type: application/json
 
 {"server":"filesystem","target":"project/official","taskId":"unique-task-id","url":"http://adapter/internal/opaque-task-route","token":"CALLBACK_SECRET"}
@@ -146,9 +143,10 @@ Statistics stream complete durable audit files for the selected month or UTC dat
 An invocation still in progress is not yet counted. No quota usage or provider request count
 is inferred from tool counts.
 
-`X-MCPHub-Model`, `X-MCPHub-Benchmark`, `X-MCPHub-Run-ID` and `X-MCPHub-Task-ID`
-are optional caller-provided reporting labels, not authorization claims. The statistics API
-defaults to one row per MCP; `groupBy=target`, `model`, `benchmark` or `all` selects
-an optional breakdown. It is `GET /api/logs/statistics?start=...&end=...&server=...&target=...&model=...&benchmark=...`.
-Unlabeled historical calls stay unlabeled. Enable `MCPHUB_AUDIT_LOG_DIR` to persist the tool
-records used for these statistics. Arguments, results and full keys are not written to audit logs.
+The statistics API returns one row per MCP, aggregating calls across its targets and
+clients: `GET /api/logs/statistics?start=...&end=...&server=...`. Select a month or a UTC
+date range in the dashboard; the server filter is optional. Model, benchmark and run
+labels are not collected or used. Existing audit files remain usable for these totals.
+Target paths and task IDs still identify connections in logs and runtime inventory.
+Enable `MCPHUB_AUDIT_LOG_DIR` to persist the tool records used for these statistics.
+Arguments, results and full keys are not written to audit logs.

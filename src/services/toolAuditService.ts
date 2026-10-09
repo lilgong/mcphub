@@ -11,9 +11,6 @@ type AuditMetadata = {
   group?: string;
   username?: string;
   target?: string;
-  model?: string;
-  benchmark?: string;
-  runId?: string;
   taskId?: string;
 };
 

@@ -2,21 +2,13 @@ import { createReadStream } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
-export type StatsGrouping = 'server' | 'target' | 'model' | 'benchmark' | 'all';
 export interface StatsQuery {
-  groupBy?: StatsGrouping;
   start: string;
   end: string;
   server?: string;
-  target?: string;
-  model?: string;
-  benchmark?: string;
 }
 export interface ServerCallStats {
   server: string;
-  target: string;
-  model: string;
-  benchmark: string;
   calls: number;
   success: number;
   errors: number;
@@ -69,32 +61,11 @@ export async function getCallStats(query: StatsQuery): Promise<{
         const server = text('server') || calls.get(id) || text('group') || 'unknown';
         calls.delete(id);
         const ts = text('ts');
-        const target = text('target'),
-          model = text('model'),
-          benchmark = text('benchmark');
-        if (
-          ts < query.start ||
-          ts > query.end ||
-          (query.server && server !== query.server) ||
-          (query.target && target !== query.target) ||
-          (query.model && model !== query.model) ||
-          (query.benchmark && benchmark !== query.benchmark)
-        )
+        if (ts < query.start || ts > query.end || (query.server && server !== query.server))
           continue;
-        const dimensions = { target: '', model: '', benchmark: '' };
-        for (const field of ['target', 'model', 'benchmark'] as const) {
-          if (query.groupBy === 'all' || query.groupBy === field)
-            dimensions[field] = { target, model, benchmark }[field];
-        }
-        const key = JSON.stringify([
-          server,
-          dimensions.target,
-          dimensions.model,
-          dimensions.benchmark,
-        ]);
+        const key = server;
         const row = groups.get(key) || {
           server,
-          ...dimensions,
           calls: 0,
           success: 0,
           errors: 0,

@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { RequestContextService } from '../../src/services/requestContextService.js';
 import { captureToolDiagnostic, withToolAudit } from '../../src/services/toolAuditService.js';
 
 jest.mock('../../src/utils/logger.js', () => ({ logger: { log: jest.fn() } }));
@@ -70,6 +71,25 @@ describe('durable tool audit', () => {
     expect(events[1]).toMatchObject({ server: 'api', event: 'dispatched', wait_ms: 12 });
     expect(events[2]).toMatchObject({ status: 'error', category: 'rate_limit', http_status: 429 });
     expect(JSON.stringify(events)).not.toContain('never-log');
+  });
+
+  it('keeps routing identifiers but ignores retired reporting headers', async () => {
+    await RequestContextService.getInstance().runWithCustomRequestContext(
+      {
+        headers: {
+          'x-mcphub-target': 'suite/official',
+          'x-mcphub-task-id': 'isolated-task',
+          'x-mcphub-model': 'legacy-model',
+          'x-mcphub-benchmark': 'legacy-benchmark',
+          'x-mcphub-run-id': 'legacy-run',
+        },
+      },
+      () => withToolAudit({ tool: 'search' }, async () => ({ isError: false })),
+    );
+    for (const event of records(directory)) {
+      expect(event).toMatchObject({ target: 'suite/official', taskId: 'isolated-task' });
+      for (const field of ['model', 'benchmark', 'runId']) expect(event).not.toHaveProperty(field);
+    }
   });
 
   it('preserves existing behavior when the optional audit is disabled', async () => {

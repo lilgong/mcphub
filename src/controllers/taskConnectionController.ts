@@ -6,7 +6,6 @@ import { assertSafeUrl } from '../utils/ssrf.js';
 import { requireAdmin } from '../utils/requireAdmin.js';
 import { withToolAudit } from '../services/toolAuditService.js';
 import { toolCallScheduler } from '../services/toolCallSchedulerService.js';
-import { invocationLabels } from '../services/invocationLabelsService.js';
 import { RequestContextService } from '../services/requestContextService.js';
 const owner = (req: Request): string => {
   const principal = req as Request & { user?: { username: string }; bearerKey?: { id: string } };
@@ -44,7 +43,6 @@ export async function registerTaskConnection(req: Request, res: Response): Promi
     const parsed = new URL(url);
     if (parsed.username || parsed.password || parsed.search || parsed.hash)
       throw new Error('Invalid callback URL');
-    const labels = invocationLabels(req.headers);
     const entry = taskConnections.register({
       server,
       target,
@@ -56,9 +54,6 @@ export async function registerTaskConnection(req: Request, res: Response): Promi
       keyId: identity.bearerKey?.id,
       implementation: connection.implementation,
       configuredVersion: connection.version,
-      model: labels.model,
-      benchmark: labels.benchmark,
-      runId: labels.runId,
     });
     res.setHeader('Cache-Control', 'no-store');
     res.json({
@@ -206,9 +201,6 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
                 tool: req.body.tool_name,
                 target: entry.target,
                 taskId: entry.taskId,
-                model: entry.model,
-                benchmark: entry.benchmark,
-                runId: entry.runId,
               },
               () =>
                 toolCallScheduler.run(

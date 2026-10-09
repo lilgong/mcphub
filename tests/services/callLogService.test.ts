@@ -47,6 +47,11 @@ describe('call log reader', () => {
           request_id: 'a',
           ts: `${query.date}T10:00:00Z`,
           tool: 'search',
+          target: 'suite/official',
+          taskId: 'isolated-task',
+          model: 'legacy-model',
+          benchmark: 'legacy-benchmark',
+          runId: 'legacy-run',
           status: 'error',
         },
         { event: 'queue_rejected', request_id: 'b', server: 'exa', category: 'queue_timeout' },
@@ -71,6 +76,9 @@ describe('call log reader', () => {
     expect(result.rows[0]).toMatchObject({ server: 'exa', category: 'queue_timeout' });
     expect(result.rows[1]).toMatchObject({ httpStatus: 429, waitMs: 100 });
     expect(JSON.stringify(result)).not.toContain('private-key');
+    expect(result.rows[1]).toMatchObject({ target: 'suite/official', taskId: 'isolated-task' });
+    for (const field of ['model', 'benchmark', 'runId'])
+      expect(result.rows[1]).not.toHaveProperty(field);
     expect((await getCallLogs({ ...query, status: '429' })).total).toBe(1);
     expect((await getCallLogs({ ...query, status: 'none' })).total).toBe(1);
     expect((await getCallLogs({ ...query, errorsOnly: false })).total).toBe(3);

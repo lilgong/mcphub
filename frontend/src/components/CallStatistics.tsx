@@ -3,9 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { apiGet } from '../utils/fetchInterceptor';
 interface Row {
   server: string;
-  target: string;
-  model: string;
-  benchmark: string;
   calls: number;
   success: number;
   errors: number;
@@ -23,18 +20,14 @@ export default function CallStatistics() {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [start, setStart] = useState(month + '-01');
   const [end, setEnd] = useState(new Date().toISOString().slice(0, 10));
-  const [filters, setFilters] = useState({ server: '', target: '', model: '', benchmark: '' });
-  const [groupBy, setGroupBy] = useState('server');
-  const dimensions =
-    groupBy === 'all' ? ['target', 'model', 'benchmark'] : groupBy === 'server' ? [] : [groupBy];
+  const [server, setServer] = useState('');
   const [data, setData] = useState<Result>();
   const [error, setError] = useState(false);
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
     let active = true;
     const query = new URLSearchParams({
-      ...filters,
-      groupBy,
+      server,
       start: start + 'T00:00:00Z',
       end: end + 'T23:59:59.999Z',
     });
@@ -51,7 +44,7 @@ export default function CallStatistics() {
     return () => {
       active = false;
     };
-  }, [filters, start, end, refresh, groupBy]);
+  }, [server, start, end, refresh]);
   const input = 'hub-input rounded border p-2';
   return (
     <section className="space-y-5">
@@ -94,31 +87,14 @@ export default function CallStatistics() {
             onChange={(e) => setEnd(e.target.value)}
           />
         </label>
-        {(['server', 'target', 'model', 'benchmark'] as const).map((field) => (
-          <label key={field}>
-            {t(`statistics.${field}`)}
-            <input
-              aria-label={t(`statistics.${field}`)}
-              className={`${input} block w-40`}
-              value={filters[field]}
-              onChange={(e) => setFilters({ ...filters, [field]: e.target.value })}
-            />
-          </label>
-        ))}
         <label>
-          {t('statistics.groupBy')}
-          <select
-            aria-label={t('statistics.groupBy')}
-            className={`${input} block`}
-            value={groupBy}
-            onChange={(e) => setGroupBy(e.target.value)}
-          >
-            {['server', 'target', 'model', 'benchmark', 'all'].map((field) => (
-              <option key={field} value={field}>
-                {field === 'all' ? t('statistics.allDimensions') : t(`statistics.${field}`)}
-              </option>
-            ))}
-          </select>
+          {t('statistics.server')}
+          <input
+            aria-label={t('statistics.server')}
+            className={`${input} block w-40`}
+            value={server}
+            onChange={(e) => setServer(e.target.value)}
+          />
         </label>
         <button className="hub-btn" onClick={() => setRefresh((n) => n + 1)}>
           {t('callLogs.refresh')}
@@ -138,7 +114,7 @@ export default function CallStatistics() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr>
-              {['server', ...dimensions, 'total', 'success', 'errors'].map((field) => (
+              {['server', 'total', 'success', 'errors'].map((field) => (
                 <th className="p-4" key={field}>
                   {t(`statistics.${field}`)}
                 </th>
@@ -149,11 +125,6 @@ export default function CallStatistics() {
             {data?.rows.map((row, i) => (
               <tr className="border-t border-[var(--hub-line)]" key={i}>
                 <td className="p-4 font-medium">{row.server}</td>
-                {dimensions.map((field) => (
-                  <td key={field} className="p-4">
-                    {row[field as 'target' | 'model' | 'benchmark'] || t('statistics.unmarked')}
-                  </td>
-                ))}
                 <td className="p-4 hub-num">{row.calls}</td>
                 <td className="p-4 hub-num">{row.success}</td>
                 <td className="p-4 hub-num">{row.errors}</td>

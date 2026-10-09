@@ -32,8 +32,5 @@ export interface TargetConnection {
 }
 export interface InvocationLabels {
   target?: string;
-  model?: string;
-  benchmark?: string;
-  runId?: string;
   taskId?: string;
 }

@@ -1516,10 +1516,7 @@
     "activityUnavailable": "Etkinlik istatistikleri veritabanı modunu gerektirir.",
     "details": "Ayrıntılar",
     "target": "Hedef",
-    "model": "Model",
-    "benchmark": "Benchmark",
     "taskId": "Görev kimliği",
-    "runId": "Çalıştırma kimliği",
     "requestId": "İstek kimliği"
   },
   "keyPool": {
@@ -1565,21 +1562,15 @@
     "headersHint": "Her satıra bir Başlık=Değer girin, örneğin Authorization=Bearer your-key. Kimlik bilgileri yalnızca bu hedefe aittir ve başka hedeflerden alınmaz."
   },
   "statistics": {
-    "description": "Tam UTC döneminde tamamlanan araç çağrıları bir kez sayılır. HTTP denemeleri hariçtir. Model ve benchmark etiketleri çağıran tarafından sağlanır.",
+    "description": "Seçilen ay veya tarih aralığında (UTC) MCP başına tamamlanan araç çağrıları. Her çağrı bir kez sayılır; dahili HTTP denemeleri hariçtir.",
     "month": "Ay",
     "start": "Başlangıç (UTC)",
     "end": "Bitiş (UTC)",
     "server": "MCP",
-    "target": "Hedef",
-    "model": "Model",
-    "benchmark": "Benchmark",
     "total": "Çağrılar",
     "success": "Başarılı",
     "errors": "Hatalar",
-    "unmarked": "Etiketsiz",
-    "unavailable": "İstatistik toplamak için kalıcı denetimi etkinleştirin.",
-    "groupBy": "Gruplandırma",
-    "allDimensions": "Tüm boyutlar"
+    "unavailable": "İstatistik toplamak için kalıcı denetimi etkinleştirin."
   },
   "runtime": {
     "title": "Çalışan bağlantılar",

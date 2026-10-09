@@ -15,10 +15,7 @@ interface Row {
   keyLabel?: string;
   retryAt?: string;
   target?: string;
-  model?: string;
-  benchmark?: string;
   taskId?: string;
-  runId?: string;
 }
 interface Result {
   rows: Row[];
@@ -237,10 +234,7 @@ export default function CallLogViewer() {
                           ['category', row.category],
                           ['keyLabel', row.keyLabel],
                           ['target', row.target],
-                          ['model', row.model],
-                          ['benchmark', row.benchmark],
                           ['taskId', row.taskId],
-                          ['runId', row.runId],
                           [
                             'wait',
                             row.waitMs === undefined ? undefined : `${Math.round(row.waitMs)} ms`,

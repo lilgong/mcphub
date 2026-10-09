@@ -1521,10 +1521,7 @@
     "activityUnavailable": "活动统计需要数据库模式。",
     "details": "详情",
     "target": "目标",
-    "model": "模型",
-    "benchmark": "测评集",
     "taskId": "任务 ID",
-    "runId": "运行 ID",
     "requestId": "请求 ID"
   },
   "keyPool": {
@@ -1570,21 +1567,15 @@
     "headersHint": "每行一个 请求头名称=值，例如 Authorization=Bearer your-key。凭证仅用于此目标，不会继承其他目标。"
   },
   "statistics": {
-    "description": "统计所选时间段内完成的工具调用（UTC），每次调用只计一次，不计换 key 等内部 HTTP 尝试。模型和测评集标签由调用方提供；历史无标签记录显示为未标记。",
+    "description": "统计所选月份或时间段内各 MCP 完成的工具调用（UTC），每次调用只计一次，不计换 key 等内部 HTTP 尝试。",
     "month": "月份",
     "start": "开始日期（UTC）",
     "end": "结束日期（UTC）",
     "server": "MCP",
-    "target": "目标",
-    "model": "模型",
-    "benchmark": "测评集",
     "total": "调用次数",
     "success": "成功次数",
     "errors": "错误次数",
-    "unmarked": "未标记",
-    "unavailable": "请启用持久化工具审计以收集统计。",
-    "groupBy": "统计维度",
-    "allDimensions": "全部维度"
+    "unavailable": "请启用持久化工具审计以收集统计。"
   },
   "runtime": {
     "title": "运行实例",
