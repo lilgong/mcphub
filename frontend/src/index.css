@@ -72,6 +72,87 @@
 }
 .hub-card-title { font-size: 13px; font-weight: 500; margin: 0; color: var(--hub-ink); }
 
+/* Optional server settings share the dashboard's surfaces and control density. */
+.hub-config-section {
+  margin-bottom: 16px;
+  border: 1px solid var(--hub-line);
+  border-radius: 10px;
+  background: var(--hub-surface);
+  color: var(--hub-ink);
+}
+.hub-config-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 14px 16px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  list-style: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.hub-config-summary::-webkit-details-marker { display: none; }
+.hub-config-summary:hover { background: var(--hub-surface-hover); }
+.hub-config-summary:focus-visible { outline: 2px solid var(--hub-accent); outline-offset: 2px; }
+.hub-config-icon, .hub-config-chevron { flex-shrink: 0; color: var(--hub-ink-3); }
+.hub-config-chevron { transition: transform 0.15s ease; }
+.hub-config-section[open] > .hub-config-summary .hub-config-chevron { transform: rotate(90deg); }
+.hub-config-body {
+  border-top: 1px solid var(--hub-line-2);
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.hub-config-description, .hub-config-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--hub-ink-2);
+}
+.hub-config-note { color: var(--hub-ink-3); }
+.hub-config-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  font-size: 13px;
+  color: var(--hub-ink-2);
+  cursor: pointer;
+}
+.hub-config-checkbox { width: 16px; height: 16px; accent-color: var(--hub-accent); }
+.hub-config-fields > label:not(.hub-config-toggle) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--hub-ink-2);
+}
+.hub-config-body textarea.hub-input { height: auto; min-height: 80px; padding: 8px 10px; }
+.hub-key-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.hub-key-suffix { width: 84px; flex-shrink: 0; font-size: 12px; color: var(--hub-ink-3); }
+.hub-target-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--hub-line);
+  border-radius: 8px;
+  background: var(--hub-bg-2);
+}
+.hub-config-advanced { border-top: 1px solid var(--hub-line-2); padding-top: 12px; }
+.hub-config-advanced > summary { cursor: pointer; color: var(--hub-ink-2); font-size: 12px; }
+.hub-config-advanced[open] > summary { margin-bottom: 16px; }
+@media (max-width: 480px) {
+  .hub-config-summary { padding: 12px; }
+  .hub-config-body, .hub-target-card { padding: 12px; }
+  .hub-key-row { gap: 6px; }
+  .hub-key-suffix { width: 64px; font-size: 11px; }
+}
+
 /* Status dot + text (replaces pills) */
 .hub-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--hub-ink-2); }
 .hub-status { white-space: nowrap; }

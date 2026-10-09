@@ -1,3 +1,5 @@
+import { Layers, Plus } from 'lucide-react';
+import ConfigurationSection from './ConfigurationSection';
 import { getKeyPoolProvider, isPooledCredential } from '../../../src/utils/keyPoolCompatibility';
 import { useTranslation } from 'react-i18next';
 import type { TargetConnection, TargetConnectionConfig } from '../../../src/types/targetConnection';
@@ -30,31 +32,27 @@ export default function TargetConnectionEditor({
   const targets = value || [];
   const patch = (index: number, changes: Partial<TargetConnection>) =>
     onChange(targets.map((target, i) => (i === index ? { ...target, ...changes } : target)));
-  const input = 'hub-input w-full rounded border p-2';
+  const input = 'hub-input';
   return (
-    <details
+    <ConfigurationSection
+      title={t(targets.length ? 'targets.title' : 'targets.optionalTitle')}
+      icon={Layers}
       open={targets.length > 0 ? true : undefined}
-      className="mb-4 rounded border border-[var(--hub-line)] p-4"
     >
-      <summary className="cursor-pointer font-medium">
-        {t(targets.length ? 'targets.title' : 'targets.optionalTitle')}
-      </summary>
-      <p className="my-3 hub-sub">
+      <p className="hub-config-description">
         {t(targets.length ? 'targets.description' : 'targets.singleDescription')}
       </p>
       {targets.map((target, index) => (
-        <fieldset
-          key={index}
-          className="mb-4 space-y-3 rounded border border-[var(--hub-line)] p-4"
-        >
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex items-center gap-2 md:col-span-2">
+        <fieldset key={index} className="hub-target-card space-y-4">
+          <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
+            <label className="hub-config-toggle sm:col-span-2">
+              <span>{t('targets.enabled')}</span>
               <input
+                className="hub-config-checkbox"
                 type="checkbox"
                 checked={target.enabled !== false}
                 onChange={(e) => patch(index, { enabled: e.target.checked })}
               />
-              {t('targets.enabled')}
             </label>
             <label>
               {t('targets.path')}
@@ -140,10 +138,10 @@ export default function TargetConnectionEditor({
           </div>
           {target.kind === 'static' && (
             <>
-              <label className="block">
+              <label className="block text-xs text-[var(--hub-ink-2)]">
                 {t('targets.transport')}
                 <select
-                  className={input}
+                  className={`${input} mt-1.5`}
                   value={target.config?.type || 'streamable-http'}
                   onChange={(e) =>
                     patch(index, {
@@ -160,7 +158,7 @@ export default function TargetConnectionEditor({
                 </select>
               </label>
               {target.config?.type === 'stdio' ? (
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
                   <label>
                     {t('targets.command')}
                     <input
@@ -185,7 +183,7 @@ export default function TargetConnectionEditor({
                   </label>
                 </div>
               ) : (
-                <label className="block">
+                <label className="block text-xs text-[var(--hub-ink-2)]">
                   URL
                   <input
                     className={input}
@@ -203,12 +201,12 @@ export default function TargetConnectionEditor({
                   onChange={(keyPool) => patch(index, { config: { ...target.config, keyPool } })}
                 />
               )}
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
                 {(target.config?.type === 'stdio'
                   ? (['env'] as const)
                   : (['headers'] as const)
                 ).map((field) => (
-                  <label key={field}>
+                  <label key={field} className="sm:col-span-2">
                     {t(`targets.${field}`)}
                     <p className="hub-sub text-xs">
                       {t(field === 'env' ? 'server.connectionEnvHint' : 'targets.headersHint')}
@@ -269,10 +267,10 @@ export default function TargetConnectionEditor({
               onChange={(changes) => patch(index, { config: { relay: changes.relay } })}
             />
           )}
-          <p className="text-xs hub-sub">{t('targets.versionHint')}</p>
+          <p className="hub-config-note">{t('targets.versionHint')}</p>
           <button
             type="button"
-            className="hub-btn mr-2"
+            className="hub-btn mr-2 mb-2"
             onClick={() => {
               let suffix = 1;
               let path: string;
@@ -286,40 +284,46 @@ export default function TargetConnectionEditor({
           </button>
           <button
             type="button"
-            className="hub-btn danger"
+            className="hub-btn danger mb-2"
             onClick={() => onChange(targets.filter((_, i) => i !== index))}
           >
             {t('targets.remove')}
           </button>
         </fieldset>
       ))}
-      <button
-        type="button"
-        className="hub-btn"
-        onClick={() =>
-          onChange([...targets, { path: '', kind: 'static', config: { type: 'streamable-http' } }])
-        }
-      >
-        {t('targets.add')}
-      </button>
-      {currentConnection && !targets.length && (
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          className="hub-btn ml-2"
+          className="hub-btn"
           onClick={() =>
             onChange([
-              {
-                path: '',
-                kind: 'static',
-                enabled: true,
-                config: structuredClone(currentConnection),
-              },
+              ...targets,
+              { path: '', kind: 'static', config: { type: 'streamable-http' } },
             ])
           }
         >
-          {t('targets.fromCurrent')}
+          <Plus size={14} aria-hidden />
+          {t('targets.add')}
         </button>
-      )}
-    </details>
+        {currentConnection && !targets.length && (
+          <button
+            type="button"
+            className="hub-btn"
+            onClick={() =>
+              onChange([
+                {
+                  path: '',
+                  kind: 'static',
+                  enabled: true,
+                  config: structuredClone(currentConnection),
+                },
+              ])
+            }
+          >
+            {t('targets.fromCurrent')}
+          </button>
+        )}
+      </div>
+    </ConfigurationSection>
   );
 }

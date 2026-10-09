@@ -1,3 +1,5 @@
+import { Gauge, Network } from 'lucide-react';
+import ConfigurationSection from './ConfigurationSection';
 import { useTranslation } from 'react-i18next';
 import type { ServiceRateLimit, FetchRelayConfig } from '../../../src/types/serviceControls';
 
@@ -27,13 +29,13 @@ export default function ServiceControls({
   const { t } = useTranslation();
   const policy = rateLimit ?? { enabled: false };
   const renderFields = (names: readonly (typeof fields)[number][]) => (
-    <div className="mt-3 grid grid-cols-2 gap-3">
+    <div className="hub-config-fields grid grid-cols-1 gap-4 sm:grid-cols-3">
       {names.map((field) => (
         <label key={field} className="text-sm">
           {t(`serviceControls.${field}`)}
           <input
             aria-label={t(`serviceControls.${field}`)}
-            className="hub-input mt-1 w-full rounded border p-2"
+            className="hub-input"
             type="number"
             min="1"
             step="1"
@@ -55,65 +57,68 @@ export default function ServiceControls({
   return (
     <>
       {!hideRateLimit && (
-        <details className="mb-4 rounded border border-[var(--hub-line)] p-4">
-          <summary className="cursor-pointer font-medium">{t('serviceControls.rateTitle')}</summary>
-          <p className="my-3 text-sm text-[var(--hub-ink-2)]">{t('serviceControls.description')}</p>
-          {!hideRateLimit && (
-            <label className="flex gap-2">
-              <input
-                type="checkbox"
-                checked={policy.enabled}
-                onChange={(e) => onChange({ rateLimit: { ...policy, enabled: e.target.checked } })}
-              />
-              {t('serviceControls.enabled')}
-            </label>
-          )}
-          {!hideRateLimit && policy.enabled && (
+        <ConfigurationSection title={t('serviceControls.rateTitle')} icon={Gauge}>
+          <p className="hub-config-description">{t('serviceControls.description')}</p>
+          <label className="hub-config-toggle">
+            <span>{t('serviceControls.enabled')}</span>
+            <input
+              className="hub-config-checkbox"
+              type="checkbox"
+              checked={policy.enabled}
+              onChange={(e) => onChange({ rateLimit: { ...policy, enabled: e.target.checked } })}
+            />
+          </label>
+          {policy.enabled && (
             <>
               {renderFields(fields.slice(0, 3))}
-              <details className="mt-3">
-                <summary className="cursor-pointer text-sm">
-                  {t('serviceControls.advanced')}
-                </summary>
+              <details className="hub-config-advanced">
+                <summary>{t('serviceControls.advanced')}</summary>
                 {renderFields(fields.slice(3))}
               </details>
             </>
           )}
-        </details>
+        </ConfigurationSection>
       )}
 
       {stdio && (
-        <details className="mb-4 rounded border border-[var(--hub-line)] p-4 space-y-2">
-          <summary className="cursor-pointer font-medium">Relay</summary>
-          <p className="text-sm text-[var(--hub-ink-2)]">{t('serviceControls.relayDescription')}</p>
-          <select
-            aria-label={t('serviceControls.relay')}
-            className="hub-input rounded border p-2"
-            value={relay == null ? 'inherit' : relay.enabled ? 'on' : 'off'}
-            onChange={(e) =>
-              onChange({
-                relay:
-                  e.target.value === 'inherit'
-                    ? undefined
-                    : { enabled: e.target.value === 'on', envPrefix: relay?.envPrefix ?? 'PUBMED' },
-              })
-            }
-          >
-            <option value="inherit">{t('serviceControls.inherit')}</option>
-            <option value="on">{t('serviceControls.relayOn')}</option>
-            <option value="off">{t('serviceControls.relayOff')}</option>
-          </select>
-          {relay && (
-            <label className="block text-sm">
-              {t('serviceControls.envPrefix')}
-              <input
-                className="hub-input ml-2 rounded border p-2"
-                value={relay.envPrefix}
-                onChange={(e) => onChange({ relay: { ...relay, envPrefix: e.target.value } })}
-              />
+        <ConfigurationSection title="Relay" icon={Network}>
+          <p className="hub-config-description">{t('serviceControls.relayDescription')}</p>
+          <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
+            <label>
+              <span>{t('serviceControls.relay')}</span>
+              <select
+                aria-label={t('serviceControls.relay')}
+                className="hub-input"
+                value={relay == null ? 'inherit' : relay.enabled ? 'on' : 'off'}
+                onChange={(e) =>
+                  onChange({
+                    relay:
+                      e.target.value === 'inherit'
+                        ? undefined
+                        : {
+                            enabled: e.target.value === 'on',
+                            envPrefix: relay?.envPrefix ?? 'PUBMED',
+                          },
+                  })
+                }
+              >
+                <option value="inherit">{t('serviceControls.inherit')}</option>
+                <option value="on">{t('serviceControls.relayOn')}</option>
+                <option value="off">{t('serviceControls.relayOff')}</option>
+              </select>
             </label>
-          )}
-        </details>
+            {relay && (
+              <label className="block text-sm">
+                {t('serviceControls.envPrefix')}
+                <input
+                  className="hub-input"
+                  value={relay.envPrefix}
+                  onChange={(e) => onChange({ relay: { ...relay, envPrefix: e.target.value } })}
+                />
+              </label>
+            )}
+          </div>
+        </ConfigurationSection>
       )}
     </>
   );

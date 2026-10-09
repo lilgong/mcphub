@@ -840,6 +840,13 @@ const ServerForm = ({
         />
         {!formData.targets?.length && (
           <>
+            {serverType === 'stdio' && (
+              <KeyPoolEditor
+                provider={keyPoolProvider}
+                value={formData.keyPool}
+                onChange={(keyPool) => setFormData((previous) => ({ ...previous, keyPool }))}
+              />
+            )}
             {/* ─── Section 2: Connection ─── */}
             <div className="mb-5">
               <h3 className="text-sm font-semibold text-[var(--hub-ink)] mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
@@ -1891,15 +1898,6 @@ const ServerForm = ({
                       ))}
                     </div>
 
-                    {serverType === 'stdio' && !formData.targets?.length && (
-                      <KeyPoolEditor
-                        provider={keyPoolProvider}
-                        value={formData.keyPool}
-                        onChange={(keyPool) =>
-                          setFormData((previous) => ({ ...previous, keyPool }))
-                        }
-                      />
-                    )}
                     <div className="mb-4">
                       <div className="flex justify-between items-center mb-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
