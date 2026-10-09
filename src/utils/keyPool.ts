@@ -1,3 +1,4 @@
+import { keySuffix } from './keySuffix.js';
 import type { KeyPoolConfig } from '../types/keyPool.js';
 import { ServerConfigValidationError } from './serverConfigValidation.js';
 export function normalizeKeyPool(value: unknown): KeyPoolConfig | undefined {
@@ -19,19 +20,17 @@ export function normalizeKeyPool(value: unknown): KeyPoolConfig | undefined {
       typeof key.id !== 'string' ||
       !/^[a-zA-Z0-9_-]{1,64}$/.test(key.id) ||
       ids.has(key.id) ||
-      typeof key.label !== 'string' ||
-      key.label.length > 80 ||
       typeof key.value !== 'string' ||
       !key.value.trim() ||
       key.value.length > 4096 ||
       secrets.has(key.value.trim())
     )
       throw new ServerConfigValidationError(
-        'Key pool entries require unique IDs, unique non-empty keys and labels of at most 80 characters',
+        'Key pool entries require unique IDs, unique non-empty keys',
       );
     ids.add(key.id);
     secrets.add(key.value.trim());
-    return { id: key.id, label: key.label.trim() || key.id, value: key.value.trim() };
+    return { id: key.id, label: keySuffix(key.value), value: key.value.trim() };
   });
   return { enabled: input.enabled, provider: input.provider, keys };
 }

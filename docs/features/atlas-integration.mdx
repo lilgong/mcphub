@@ -192,7 +192,7 @@ logs.
 ## Context7 and TwelveData key rotation
 
 Edit the original registered stdio MCP and open **Multi-key rotation**. Select
-Context7 or TwelveData, add named keys, enable rotation, and save. Leave rotation
+Context7 or TwelveData, add keys, enable rotation, and save. Leave rotation
 disabled to keep the original single-key path. This implementation targets the
 Atlas-packaged Context7 (Node fetch) and TwelveData (Python httpx) MCPs; it does
 not change their tools or require importing separate MCPs for each key. The
@@ -214,7 +214,7 @@ All keys with quota/authentication failures return a safe error prefixed with
 `Error: KEY_POOL_EXHAUSTED`, compatible with Atlas's existing account guard.
 If any key is only temporarily rate-limited, the final error is a recoverable
 HTTP 429 instead. Intermediate failures are hidden from the model but remain
-visible in **Logs → Call logs → Key pool HTTP**, including key name, HTTP status,
+visible in **Logs → Call logs → Key pool HTTP**, including the last six key characters, HTTP status,
 error category and recovery time. HTTP 200 can still be an error if TwelveData
 returns an error code inside JSON. No key values, query strings, response bodies
 or raw exception text are written to these audit files. Every actual upstream
@@ -229,3 +229,17 @@ single key. This feature applies to Hub mode; Atlas direct mode is unchanged.
 The Hub-only TwelveData preload also omits the pinned package's two non-object
 optional output schemas, which the current Hub SDK rejects. Tool names,
 input schemas and results remain unchanged; valid object output schemas remain.
+
+
+**Activity & logs** is the single dashboard entry for diagnostics. Call logs
+open with error/status filtering; **Statistics & details** preserves the former
+Activity page's tool-call statistics and detailed records when database mode is
+available. **Runtime logs** remains the process diagnostic stream. The legacy
+`/activity` URL redirects to `/logs?view=activity`. These views are not combined
+into an additive invocation count because tool records and HTTP attempts have
+different meanings. Runtime streaming is subscribed only while that view is open.
+
+Key pool entries no longer require names: the editor and new HTTP audit records
+automatically show a masked suffix, normally the last six characters. Short keys
+always retain at least one hidden character. Existing key IDs and values are
+preserved, and legacy labels are ignored for new attempts.

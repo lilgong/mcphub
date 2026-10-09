@@ -1,3 +1,4 @@
+import { keySuffix } from '../../../src/utils/keySuffix';
 import { useTranslation } from 'react-i18next';
 import type { KeyPoolConfig } from '../../../src/types/keyPool';
 export default function KeyPoolEditor({
@@ -43,19 +44,12 @@ export default function KeyPoolEditor({
         </label>
         {pool.keys.map((entry, index) => (
           <div key={entry.id} className="flex flex-wrap gap-2">
-            <input
-              className="hub-input rounded border p-2"
+            <span
+              className="min-w-24 self-center font-mono"
               aria-label={`${t('keyPool.label')} ${index + 1}`}
-              value={entry.label}
-              onChange={(e) =>
-                update({
-                  keys: pool.keys.map((key) =>
-                    key.id === entry.id ? { ...key, label: e.target.value } : key,
-                  ),
-                })
-              }
-              maxLength={80}
-            />
+            >
+              {keySuffix(entry.value)}
+            </span>
             <input
               type="password"
               autoComplete="new-password"
@@ -89,7 +83,6 @@ export default function KeyPoolEditor({
                 ...pool.keys,
                 {
                   id: `key-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-                  label: `key-${pool.keys.length + 1}`,
                   value: '',
                 },
               ],

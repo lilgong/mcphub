@@ -181,7 +181,10 @@ describe('key pool scheduling', () => {
     expect(authenticateKeyPool('alpha', 'é'.repeat(token.length))).toBe(false);
   });
   test('validates unique keys and IDs without including secret values in errors', () => {
-    expect(normalizeKeyPool(pool)).toEqual(pool);
+    expect(normalizeKeyPool(pool)).toEqual({
+      ...pool,
+      keys: pool.keys.map((key) => ({ ...key, label: `…${key.value.slice(-6)}` })),
+    });
     expect(() =>
       normalizeKeyPool({ ...pool, keys: [keys[0], { ...keys[1], value: keys[0].value }] }),
     ).toThrow('unique');

@@ -21,7 +21,6 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const MarketPage = lazy(() => import('./pages/MarketPage'));
 const LogsPage = lazy(() => import('./pages/LogsPage'));
 const RelayPage = lazy(() => import('./pages/RelayPage'));
-const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 const PromptsPage = lazy(() => import('./pages/PromptsPage'));
 const ResourcesPage = lazy(() => import('./pages/ResourcesPage'));
 
@@ -87,7 +86,7 @@ function App() {
                       <Route path="/logs" element={<LogsPage />} />
                       <Route path="/relay" element={<RelayPage />} />
                       <Route path="/atlas" element={<Navigate to="/relay" replace />} />
-                      <Route path="/activity" element={<ActivityPage />} />
+                      <Route path="/activity" element={<Navigate to="/logs?view=activity" replace />} />
                       <Route path="/settings" element={<SettingsPage />} />
                     </Route>
                   </Route>

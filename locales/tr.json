@@ -1502,15 +1502,18 @@
     "unavailable": "Kullanılamayan kaynaklar",
     "empty": "Eşleşen kayıt yok",
     "key_pool": "Anahtar havuzu HTTP",
-    "keyLabel": "Anahtar adı",
-    "retryAt": "Yeniden deneme zamanı"
+    "keyLabel": "Anahtar sonu",
+    "retryAt": "Yeniden deneme zamanı",
+    "title": "Etkinlik ve günlükler",
+    "activity": "İstatistikler ve ayrıntılar",
+    "activityUnavailable": "Etkinlik istatistikleri veritabanı modunu gerektirir."
   },
   "keyPool": {
     "title": "Çoklu anahtar dönüşümü",
-    "description": "Yönetici tarafından yönetilen stdio Context7 ve TwelveData desteklenir. İstekler kullanılabilir anahtarları sırayla kullanır. Kota veya kimlik doğrulama hatasında sonraki anahtar denenir. Her HTTP denemesi anahtar adıyla kaydedilir.",
+    "description": "Yönetici tarafından yönetilen stdio Context7 ve TwelveData desteklenir. İstekler kullanılabilir anahtarları sırayla kullanır. Kota veya kimlik doğrulama hatasında sonraki anahtar denenir. Her HTTP denemesi anahtar sonuyla kaydedilir.",
     "enabled": "Anahtar dönüşümünü etkinleştir",
     "provider": "Sağlayıcı",
-    "label": "Anahtar adı",
+    "label": "Anahtar sonu",
     "remove": "Kaldır",
     "add": "Anahtar ekle",
     "recovery": "Anahtarlar korunur. Retry-After uygulanır; günlük/aylık kota hataları sonraki UTC gününü/ayını bekler, diğerleri 60 saniye bekler. Hub yeniden başladığında bekleme durumu sıfırlanır."

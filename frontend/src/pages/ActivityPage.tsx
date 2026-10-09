@@ -31,7 +31,7 @@ const STATUS_OPTIONS: ActivityStatus[] = ['success', 'error'];
 const isValidStatus = (value: string): value is ActivityStatus =>
   STATUS_OPTIONS.includes(value as ActivityStatus);
 
-const ActivityPage: React.FC = () => {
+const ActivityPage: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const { t } = useTranslation();
 
   // State
@@ -597,28 +597,20 @@ const ActivityPage: React.FC = () => {
                     {formatDuration(activity.duration)}
                   </td>
                   <td style={{ padding: '10px 14px' }} className="whitespace-nowrap">
-                    <span
-                      className={`hub-status ${activity.status === 'success' ? 'ok' : 'err'}`}
-                    >
+                    <span className={`hub-status ${activity.status === 'success' ? 'ok' : 'err'}`}>
                       <span className="hub-dot" />
                       {activity.status === 'success'
                         ? t('activity.statusSuccess')
                         : t('activity.statusError')}
                     </span>
                   </td>
-                  <td
-                    style={{ padding: '10px 14px', fontSize: 12, color: 'var(--hub-ink-3)' }}
-                  >
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--hub-ink-3)' }}>
                     {activity.group || '—'}
                   </td>
-                  <td
-                    style={{ padding: '10px 14px', fontSize: 12, color: 'var(--hub-ink-3)' }}
-                  >
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--hub-ink-3)' }}>
                     {activity.username || '—'}
                   </td>
-                  <td
-                    style={{ padding: '10px 14px', fontSize: 12, color: 'var(--hub-ink-3)' }}
-                  >
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--hub-ink-3)' }}>
                     {activity.keyName || '—'}
                   </td>
                   <td
@@ -798,7 +790,7 @@ const ActivityPage: React.FC = () => {
     <div>
       <div className="flex items-end justify-between gap-4 mb-6">
         <div>
-          <h1 className="hub-h1">{t('activity.title')}</h1>
+          {!embedded && <h1 className="hub-h1">{t('activity.title')}</h1>}
           <p className="hub-sub">
             <span className="hub-num">{pagination?.total ?? activities.length}</span> entries
           </p>

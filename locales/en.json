@@ -1505,15 +1505,18 @@
     "unavailable": "Log sources unavailable",
     "empty": "No matching records",
     "key_pool": "Key pool HTTP",
-    "keyLabel": "Key label",
-    "retryAt": "Retry after"
+    "keyLabel": "Key suffix",
+    "retryAt": "Retry after",
+    "title": "Activity & logs",
+    "activity": "Statistics & details",
+    "activityUnavailable": "Activity statistics require database mode."
   },
   "keyPool": {
     "title": "Multi-key rotation",
-    "description": "Supports operator-managed stdio Context7 and TwelveData. Requests rotate through available keys; authentication or quota failures switch to the next key internally. Every HTTP attempt is audited by key label.",
+    "description": "Supports operator-managed stdio Context7 and TwelveData. Requests rotate through available keys; authentication or quota failures switch to the next key internally. Every HTTP attempt is audited by key suffix.",
     "enabled": "Enable key rotation",
     "provider": "Provider",
-    "label": "Key label",
+    "label": "Key suffix",
     "remove": "Remove",
     "add": "Add key",
     "recovery": "Failed keys remain configured. Retry-After is respected; explicit daily/monthly quota errors wait until the next UTC day/month, and other failures cool down for 60 seconds. Runtime cooldowns reset when Hub restarts."

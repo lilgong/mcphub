@@ -1,3 +1,4 @@
+import { keySuffix } from '../utils/keySuffix.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, openSync, writeSync, fsyncSync, closeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -189,7 +190,7 @@ export class KeyPoolService {
         request_id: randomUUID(),
         server,
         key_id: key.id,
-        key_label: key.label,
+        key_label: keySuffix(key.value),
         path: url.pathname,
       };
       // Durable admission is mandatory before the credential reaches an upstream request.

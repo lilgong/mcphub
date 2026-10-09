@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink } from 'react-router-dom';
 import {
@@ -10,7 +10,6 @@ import {
   Settings as SettingsIcon,
   FileText,
   MessageSquare,
-  Activity,
   ScrollText,
   KeyRound,
 } from 'lucide-react';
@@ -20,7 +19,6 @@ import { useGroupData } from '@/hooks/useGroupData';
 import { canViewSystemLogs } from '@/utils/navigationPermissions';
 import { usePermissionCheck } from '../PermissionChecker';
 import UserProfileMenu from '@/components/ui/UserProfileMenu';
-import { checkActivityAvailable } from '@/services/activityService';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -39,15 +37,8 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
   const { auth } = useAuth();
   const { allServers } = useServerContext();
   const { groups } = useGroupData();
-  const [activityAvailable, setActivityAvailable] = useState(false);
 
   const appVersion = import.meta.env.PACKAGE_VERSION as string;
-
-  useEffect(() => {
-    checkActivityAvailable()
-      .then(setActivityAvailable)
-      .catch(() => setActivityAvailable(false));
-  }, []);
 
   const userCanManageUsers = auth.user?.isAdmin && usePermissionCheck('x');
 
@@ -77,11 +68,8 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
     ...(userCanManageUsers
       ? [{ path: '/users', label: t('nav.users'), icon: <UsersIcon className="h-4 w-4" /> }]
       : []),
-    ...(activityAvailable && auth.user?.isAdmin
-      ? [{ path: '/activity', label: t('nav.activity'), icon: <Activity className="h-4 w-4" /> }]
-      : []),
     ...(canViewSystemLogs(auth.user)
-      ? [{ path: '/logs', label: t('nav.logs'), icon: <ScrollText className="h-4 w-4" /> }]
+      ? [{ path: '/logs', label: t('callLogs.title'), icon: <ScrollText className="h-4 w-4" /> }]
       : []),
     { path: '/credentials', label: t('credentials.title'), icon: <KeyRound className="h-4 w-4" /> },
     { path: '/settings', label: t('nav.settings'), icon: <SettingsIcon className="h-4 w-4" /> },

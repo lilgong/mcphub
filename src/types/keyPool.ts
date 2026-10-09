@@ -2,7 +2,7 @@
 export interface KeyPoolConfig {
   enabled: boolean;
   provider: 'context7' | 'twelvedata';
-  keys: { id: string; label: string; value: string }[];
+  keys: { id: string; label?: string; value: string }[];
 }
 export interface KeyPoolResponse {
   status: number;
