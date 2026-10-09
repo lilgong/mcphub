@@ -26,48 +26,65 @@ export default function ServiceControls({
 }) {
   const { t } = useTranslation();
   const policy = rateLimit ?? { enabled: false };
-  return (
-    <details className="mb-4 rounded border border-[var(--hub-line)] p-4">
-      <summary className="cursor-pointer font-medium">{t('serviceControls.title')}</summary>
-      <p className="my-3 text-sm text-[var(--hub-ink-2)]">{t('serviceControls.description')}</p>
-      {!hideRateLimit && (
-        <label className="flex gap-2">
+  const renderFields = (names: readonly (typeof fields)[number][]) => (
+    <div className="mt-3 grid grid-cols-2 gap-3">
+      {names.map((field) => (
+        <label key={field} className="text-sm">
+          {t(`serviceControls.${field}`)}
           <input
-            type="checkbox"
-            checked={policy.enabled}
-            onChange={(e) => onChange({ rateLimit: { ...policy, enabled: e.target.checked } })}
+            aria-label={t(`serviceControls.${field}`)}
+            className="hub-input mt-1 w-full rounded border p-2"
+            type="number"
+            min="1"
+            step="1"
+            placeholder={t('serviceControls.unset')}
+            value={policy[field] ?? ''}
+            onChange={(e) =>
+              onChange({
+                rateLimit: {
+                  ...policy,
+                  [field]: e.target.value === '' ? undefined : Number(e.target.value),
+                },
+              })
+            }
           />
-          {t('serviceControls.enabled')}
         </label>
-      )}
-      {!hideRateLimit && policy.enabled && (
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {fields.map((field) => (
-            <label key={field} className="text-sm">
-              {t(`serviceControls.${field}`)}
+      ))}
+    </div>
+  );
+  return (
+    <>
+      {!hideRateLimit && (
+        <details className="mb-4 rounded border border-[var(--hub-line)] p-4">
+          <summary className="cursor-pointer font-medium">{t('serviceControls.rateTitle')}</summary>
+          <p className="my-3 text-sm text-[var(--hub-ink-2)]">{t('serviceControls.description')}</p>
+          {!hideRateLimit && (
+            <label className="flex gap-2">
               <input
-                aria-label={t(`serviceControls.${field}`)}
-                className="hub-input mt-1 w-full rounded border p-2"
-                type="number"
-                min="1"
-                step="1"
-                placeholder={t('serviceControls.unset')}
-                value={policy[field] ?? ''}
-                onChange={(e) =>
-                  onChange({
-                    rateLimit: {
-                      ...policy,
-                      [field]: e.target.value === '' ? undefined : Number(e.target.value),
-                    },
-                  })
-                }
+                type="checkbox"
+                checked={policy.enabled}
+                onChange={(e) => onChange({ rateLimit: { ...policy, enabled: e.target.checked } })}
               />
+              {t('serviceControls.enabled')}
             </label>
-          ))}
-        </div>
+          )}
+          {!hideRateLimit && policy.enabled && (
+            <>
+              {renderFields(fields.slice(0, 3))}
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm">
+                  {t('serviceControls.advanced')}
+                </summary>
+                {renderFields(fields.slice(3))}
+              </details>
+            </>
+          )}
+        </details>
       )}
+
       {stdio && (
-        <div className="mt-4 space-y-2">
+        <details className="mb-4 rounded border border-[var(--hub-line)] p-4 space-y-2">
+          <summary className="cursor-pointer font-medium">Relay</summary>
           <p className="text-sm text-[var(--hub-ink-2)]">{t('serviceControls.relayDescription')}</p>
           <select
             aria-label={t('serviceControls.relay')}
@@ -96,8 +113,8 @@ export default function ServiceControls({
               />
             </label>
           )}
-        </div>
+        </details>
       )}
-    </details>
+    </>
   );
 }

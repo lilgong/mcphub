@@ -1,11 +1,9 @@
 services:
   mcphub:
-    image: mcphub:atlas
+    image: mcphub:standalone
     build:
       context: .
-      dockerfile: Dockerfile.atlas
-      args:
-        ATLAS_RUNTIME_IMAGE: mcp-atlas-runtime:mcphub
+      dockerfile: Dockerfile
     container_name: mcphub
     restart: unless-stopped
     extra_hosts:
@@ -21,6 +19,9 @@ services:
     environment:
       USE_DB: 'true'
       MCP_RATE_LIMIT_MAX: 'off'
+      MCPHUB_AUDIT_LOG_DIR: /app/data/tool-audit
+      MCP_USAGE_LOG_DIR: /app/data/mcp-usage
+      MCP_USAGE_LOG_STDERR: 'true'
       MCPHUB_RELAY_LOG_FILE: /app/data/relay/usage.jsonl
     volumes:
       - ./data/runtime:/app/data

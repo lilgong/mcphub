@@ -1,3 +1,4 @@
+import { getKeyPoolProvider, isPooledCredential } from '../../../src/utils/keyPoolCompatibility';
 import { useTranslation } from 'react-i18next';
 import type { TargetConnection, TargetConnectionConfig } from '../../../src/types/targetConnection';
 import ServiceControls from './ServiceControls';
@@ -31,9 +32,16 @@ export default function TargetConnectionEditor({
     onChange(targets.map((target, i) => (i === index ? { ...target, ...changes } : target)));
   const input = 'hub-input w-full rounded border p-2';
   return (
-    <details className="mb-4 rounded border border-[var(--hub-line)] p-4">
-      <summary className="cursor-pointer font-medium">{t('targets.title')}</summary>
-      <p className="my-3 hub-sub">{t('targets.description')}</p>
+    <details
+      open={targets.length > 0 ? true : undefined}
+      className="mb-4 rounded border border-[var(--hub-line)] p-4"
+    >
+      <summary className="cursor-pointer font-medium">
+        {t(targets.length ? 'targets.title' : 'targets.optionalTitle')}
+      </summary>
+      <p className="my-3 hub-sub">
+        {t(targets.length ? 'targets.description' : 'targets.singleDescription')}
+      </p>
       {targets.map((target, index) => (
         <fieldset
           key={index}
@@ -188,18 +196,54 @@ export default function TargetConnectionEditor({
                   />
                 </label>
               )}
+              {target.config?.type === 'stdio' && (
+                <KeyPoolEditor
+                  provider={getKeyPoolProvider(target.config ?? {})}
+                  value={target.config?.keyPool}
+                  onChange={(keyPool) => patch(index, { config: { ...target.config, keyPool } })}
+                />
+              )}
               <div className="grid gap-3 md:grid-cols-2">
-                {(['env', 'headers'] as const).map((field) => (
+                {(target.config?.type === 'stdio'
+                  ? (['env'] as const)
+                  : (['headers'] as const)
+                ).map((field) => (
                   <label key={field}>
                     {t(`targets.${field}`)}
+                    <p className="hub-sub text-xs">
+                      {t(field === 'env' ? 'server.connectionEnvHint' : 'targets.headersHint')}
+                    </p>
                     <textarea
                       key={`${field}-${target.path}`}
                       className={`${input} font-mono text-sm`}
                       rows={3}
-                      defaultValue={recordText(target.config?.[field])}
+                      defaultValue={recordText(
+                        Object.fromEntries(
+                          Object.entries(target.config?.[field] ?? {}).filter(
+                            ([key]) =>
+                              !target.config?.keyPool?.enabled ||
+                              !isPooledCredential(key, getKeyPoolProvider(target.config ?? {})),
+                          ),
+                        ),
+                      )}
                       onBlur={(e) =>
                         patch(index, {
-                          config: { ...target.config, [field]: parseRecord(e.target.value) },
+                          config: {
+                            ...target.config,
+                            [field]: {
+                              ...Object.fromEntries(
+                                Object.entries(target.config?.[field] ?? {}).filter(
+                                  ([key]) =>
+                                    target.config?.keyPool?.enabled &&
+                                    isPooledCredential(
+                                      key,
+                                      getKeyPoolProvider(target.config ?? {}),
+                                    ),
+                                ),
+                              ),
+                              ...parseRecord(e.target.value),
+                            },
+                          },
                         })
                       }
                       placeholder="NAME=value"
@@ -215,12 +259,6 @@ export default function TargetConnectionEditor({
                   patch(index, { config: { ...target.config, relay: changes.relay } })
                 }
               />
-              {target.config?.type === 'stdio' && (
-                <KeyPoolEditor
-                  value={target.config?.keyPool}
-                  onChange={(keyPool) => patch(index, { config: { ...target.config, keyPool } })}
-                />
-              )}
             </>
           )}
           {target.kind === 'task' && (

@@ -4,19 +4,20 @@ import type { KeyPoolConfig } from '../../../src/types/keyPool';
 export default function KeyPoolEditor({
   value,
   onChange,
-  serverName,
+  provider,
 }: {
-  serverName?: string;
+  provider?: KeyPoolConfig['provider'];
   value?: KeyPoolConfig;
   onChange: (value: KeyPoolConfig | undefined) => void;
 }) {
   const { t } = useTranslation();
+  if (!provider) return null;
   const pool = value ?? {
     enabled: false,
-    provider: serverName === 'twelvedata' ? 'twelvedata' : 'context7',
+    provider,
     keys: [],
   };
-  const update = (patch: Partial<KeyPoolConfig>) => onChange({ ...pool, ...patch });
+  const update = (patch: Partial<KeyPoolConfig>) => onChange({ ...pool, ...patch, provider });
   return (
     <details className="rounded border p-4">
       <summary className="cursor-pointer font-medium">{t('keyPool.title')}</summary>
@@ -30,18 +31,8 @@ export default function KeyPoolEditor({
           />{' '}
           {t('keyPool.enabled')}
         </label>
-        <label className="block">
-          {t('keyPool.provider')}
-          <select
-            aria-label={t('keyPool.provider')}
-            className="hub-input ml-3 rounded border p-2"
-            value={pool.provider}
-            onChange={(e) => update({ provider: e.target.value as KeyPoolConfig['provider'] })}
-          >
-            <option value="context7">Context7</option>
-            <option value="twelvedata">TwelveData</option>
-          </select>
-        </label>
+        <p className="text-sm font-medium">{provider === 'context7' ? 'Context7' : 'TwelveData'}</p>
+        {pool.enabled && <p className="hub-sub text-sm">{t('keyPool.singleIgnored')}</p>}
         {pool.keys.map((entry, index) => (
           <div key={entry.id} className="flex flex-wrap gap-2">
             <span

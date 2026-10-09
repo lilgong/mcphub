@@ -286,7 +286,8 @@
       "resource": "Kaynak / Hedef Kitle",
       "accessToken": "Erişim Tokeni",
       "refreshToken": "Yenileme Tokeni"
-    }
+    },
+    "connectionEnvHint": "Sol alan MCP değişken adı, sağ alan anahtar veya değerdir. ${AD} Hub ortam değişkenlerini okur, Atlas .env dosyasını okumaz. Yeni bağlantılar kaydedilen değişiklikleri kullanır."
   },
   "status": {
     "sleeping": "Uykuda",
@@ -1466,7 +1467,9 @@
     "relayOn": "Use managed relay",
     "relayOff": "Disable relay",
     "envPrefix": "Wrapper environment prefix",
-    "relayDescription": "For stdio wrappers supporting /v1/fetch only. Manage connection and credentials in Relay settings. Tool-call limits do not replace relay HTTP limits."
+    "relayDescription": "For stdio wrappers supporting /v1/fetch only. Manage connection and credentials in Relay settings. Tool-call limits do not replace relay HTTP limits.",
+    "rateTitle": "Araç çağrısı sınırı (bu MCP genelinde ortak)",
+    "advanced": "Kuyruk, eşzamanlılık ve hata beklemesi (gelişmiş, isteğe bağlı)"
   },
   "relayLimits": {
     "title": "Relay HTTP limits",
@@ -1523,11 +1526,12 @@
     "label": "Anahtar sonu",
     "remove": "Kaldır",
     "add": "Anahtar ekle",
-    "recovery": "Anahtarlar korunur. Retry-After uygulanır; günlük/aylık kota hataları sonraki UTC gününü/ayını bekler, diğerleri 60 saniye bekler. Hub yeniden başladığında bekleme durumu sıfırlanır."
+    "recovery": "Anahtarlar korunur. Retry-After uygulanır; günlük/aylık kota hataları sonraki UTC gününü/ayını bekler, diğerleri 60 saniye bekler. Hub yeniden başladığında bekleme durumu sıfırlanır.",
+    "singleIgnored": "Döndürme bu bağlantının API anahtarını sağlar; aşağıya ikinci bir anahtar girmeyin. Kapatıldığında kayıtlı tek anahtar geri kullanılır. Aynı hizmetin değiştirilebilir anahtarlarını kullanın; ayrı Notion / Slack alanlarını kullanmayın."
   },
   "targets": {
     "title": "Hedef bağlantıları",
-    "description": "Tam hedef zorunludur. Otomatik geri dönüş yoktur. Erişim listeleri anahtar kimliklerini veya kullanıcıları içerir; boş listeler yalnızca yöneticilere izin verir. MCP sınırları hedefler arasında paylaşılır.",
+    "description": "Her hedefin ayrı sürümü ve kimlik bilgileri vardır. İstemci atlas/official gibi tam yolu belirtmelidir. Otomatik seçim veya geri dönüş yoktur. Tüm hedefler aşağıdaki hız sınırını paylaşır. Erişim listeleri boşsa yalnızca yöneticiler erişebilir.",
     "path": "Hedef yolu",
     "kind": "Bağlantı türü",
     "static": "Kalıcı MCP bağlantısı",
@@ -1540,7 +1544,7 @@
     "env": "Ortam değişkenleri",
     "headers": "HTTP başlıkları",
     "remove": "Hedefi kaldır",
-    "add": "Hedef ekle",
+    "add": "Boş bağlantı ekle (başka sürüm / çalışma alanı)",
     "managed": "Hedef bağlantısı",
     "enabled": "Bu hedefi etkinleştir",
     "implementation": "Uygulama türü",
@@ -1551,7 +1555,10 @@
     "version": "Yapılandırılan sürüm / revizyon",
     "versionHint": "Sürüm bir etikettir. Gerçek sürümü komutta, paket yolunda veya konteyner imajında sabitleyin. Hedefler ilk istekte bağlanır ve beş dakika boşta kaldıktan sonra istemci kapanır. Hedef tanımlandığında açık hedef seçimi gerekir; üst bağlantı kullanılmaz.",
     "duplicate": "Hedefi kopyala",
-    "fromCurrent": "Mevcut bağlantıdan hedef oluştur"
+    "fromCurrent": "Bağlantıyı ilk hedefe dönüştür (kimlik bilgilerini koru)",
+    "optionalTitle": "Birden çok sürüm veya çalışma alanı (isteğe bağlı)",
+    "singleDescription": "Tek sürüm ve tek kimlik bilgisi için bu bölümü boş bırakın. Başka sürümler veya çalışma alanları eklemek için aşağıdaki bağlantıyı ilk hedefe dönüştürün. Ardından yalnızca hedef ayarları kullanılır. İstemci atlas/official gibi bir hedef yolu göndermelidir.",
+    "headersHint": "Her satıra bir Başlık=Değer girin, örneğin Authorization=Bearer your-key. Kimlik bilgileri yalnızca bu hedefe aittir ve başka hedeflerden alınmaz."
   },
   "statistics": {
     "description": "Tam UTC döneminde tamamlanan araç çağrıları bir kez sayılır. HTTP denemeleri hariçtir. Model ve benchmark etiketleri çağıran tarafından sağlanır.",

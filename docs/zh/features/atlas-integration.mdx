@@ -7,27 +7,39 @@ description: '用 MCPHub 托管 Atlas 的共享 MCP，复用原有凭证、鉴�
 不增加 HTTP 转发服务、专用凭证页面或新的访问 token 机制。每道题的文件、Git、
 Mongo、Memory、代码执行、Arxiv/PubMed 等工具仍在 Atlas 的独立任务容器中。
 
-## 打包和导入
+## 独立部署与 MCP 包导入
+
+Hub 使用自己的 `Dockerfile` 构建，运行时不挂载、不读取 Atlas 目录，也不继承 Atlas 镜像：
 
 ```bash
-cd ~/mcp-atlas
-make build-atlas-runtime ATLAS_RUNTIME_IMAGE=mcp-atlas-runtime:mcphub
 cd ~/mcphub
-docker build -f Dockerfile.atlas \
-  --build-arg ATLAS_RUNTIME_IMAGE=mcp-atlas-runtime:mcphub \
-  -t mcphub:atlas .
-python3 scripts/export_atlas_servers.py > /tmp/atlas-servers.json
+docker build -t mcphub:standalone .
+docker compose --env-file data/database.env -f compose.local.yaml up -d
 ```
 
-在原有自定义 MCP 导入界面导入 JSON。默认提供 Brave、Exa、Lara、WeatherAPI、
-Oxylabs 的固定版本和改造代码；`--servers` 可选择其他共享服务。
-导入内容不读取 Atlas 的 `.env`，不包含真实 key，服务默认停用。使用原有配置界面
-填写凭证后启用；需要加密的个人凭证时使用原有 Credentials 绑定功能。
-普通服务配置中的 key 是配置值，不属于个人凭证加密存储。
+改造 MCP 独立打包，交付的 `~/mcp-buddle` 目录仅包含可上传的 `.mcpb` 和 `安装说明.md`；使用者无需构建。每个 `.mcpb` 包包含固定版本、wrapper、
+Node 依赖或 Python 运行时，不含真实 key、任务数据或 Atlas HTTP 服务。
+目前导出产物支持 Linux x86_64，适用于项目的 Debian Docker 镜像；其他平台需要重新构建。
 
-一步凭证分别填写 `BRAVE_API_KEY`、`EXA_API_KEY`、`LARA_YIBU_API_KEY`、
-`WEATHER_YIBU_API_KEY` 和 `OXYLABS_USERNAME`/`OXYLABS_PASSWORD`。
-网页修改连接配置会重连该 MCP，期间可能中断正在执行的调用。
+在服务器列表点 **上传**，选择一个 `.mcpb`。安装页可修改逻辑 MCP 名称，
+例如 `brave-search`。填写凭证后启用。Hub 的 `/app/data` 必须持久化：
+上传的可执行包保存在其中。原生 MCP 仍可从市场安装或按官方命令注册。
+
+单版本只需填写普通连接。需要多个版本或工作区时，展开 **多个版本或工作区（可选）**，
+将当前连接转换为第一个目标（保留凭证），填写 `atlas/official` 等路径，再添加其他连接。
+一旦配置目标，只使用目标内的连接配置；客户端必须明确指定目标，没有自动回退。
+包名包含修订号，导入不同版本不会覆盖旧版本；版本标记本身不会安装依赖。
+
+**多 Key 轮询** 只在识别到适配器的 stdio Context7 / TwelveData 上显示。
+轮询启用后，普通单 key 输入隐藏，关闭后恢复原值。新 MCP 需要实现凭证注入及额度错误识别适配器，
+不能仅凭多个 key 就保证轮询。Notion / Slack 的不同工作区应使用独立目标，避免访问错资源。
+
+调用限速位于独立区域，所有目标和客户端共享；并发、排队等字段在高级设置中。
+Relay 位于连接内的独立区域，仅对支持 relay 的 wrapper 生效。一步 MCP 已在包内适配，
+分别填写 `BRAVE_API_KEY`、`EXA_API_KEY`、`LARA_YIBU_API_KEY`、
+`WEATHER_YIBU_API_KEY`、`OXYLABS_USERNAME` / `OXYLABS_PASSWORD`。
+网页保存凭证会重建相关连接，正在执行的调用可能受影响。普通配置值使用原配置存储；
+需要加密个人凭证时使用 Credentials 绑定。
 
 ## Atlas 配置
 
@@ -72,10 +84,10 @@ Atlas Hub 镜像还默认开启 `MCPHUB_AUDIT_LOG_DIR=/app/data/tool-audit`，�
 工具调用在执行前写入持久审计，写失败就拒绝执行；不依赖 Activity 数据库是否可用。
 该审计不保存参数、返回内容或 key，也在原有 Logs 页面显示。
 
-`compose.atlas.yaml` 提供 Hub（3002）和仅内部访问的 PostgreSQL，可复用原有
+`compose.local.yaml` 提供 Hub（3002）和仅内部访问的 PostgreSQL，可复用原有
 Activity 页面，不发布数据库宿主端口。需要私有的 `data/docker.env`（账号/JWT）
 和 `data/database.env`（`POSTGRES_PASSWORD`、`DB_URL`），使用
-`docker compose --env-file data/database.env -f compose.atlas.yaml up -d` 启动。
+`docker compose --env-file data/database.env -f compose.local.yaml up -d` 启动。
 数据库模式下配置以数据库为准，网页保存后不要用旧导入文件覆盖。
 
 ## 按 MCP 限速与 relay

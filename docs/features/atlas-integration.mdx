@@ -7,40 +7,49 @@ MCPHub hosts selected shared MCP processes. Atlas keeps its HTTP compatibility
 entrypoint, tool names and disposable task containers. Direct mode retains its existing rate gates. No Yibu HTTP
 proxy or separate key/token management is required.
 
-## Build and import
+## Independent deployment and package import
 
-First build the modified Atlas runtime from its `mcphub` branch:
+Build Hub from its own Dockerfile. It never mounts an Atlas checkout or inherits
+an Atlas runtime image:
 
 ```bash
-cd ~/mcp-atlas
-make build-atlas-runtime ATLAS_RUNTIME_IMAGE=mcp-atlas-runtime:mcphub
 cd ~/mcphub
-docker build -f Dockerfile.atlas \
-  --build-arg ATLAS_RUNTIME_IMAGE=mcp-atlas-runtime:mcphub \
-  -t mcphub:atlas .
-python3 scripts/export_atlas_servers.py > /tmp/atlas-servers.json
+docker build -t mcphub:standalone .
+docker compose --env-file data/database.env -f compose.local.yaml up -d
 ```
 
-The image contains Atlas's pinned Node/Python MCP packages and compatibility
-patches. Import the JSON using the existing custom-server import flow. Exported
-servers are disabled and contain no secrets: fill credentials using the existing
-server configuration or a personal credential template, then enable them.
-Server configuration values are ordinary stored settings; use personal credential
-bindings when encrypted per-user storage is needed. Do not export/import live
-settings containing keys into version control.
+Build modified shared MCPs separately separately from Hub. The delivered `mcp-buddle` folder contains only importable `.mcpb` files and an installation guide. Each versioned `.mcpb` contains its pinned
+MCP, wrappers and Node dependencies or Python runtime, without real keys,
+task data or the Atlas HTTP application. Current artifacts target Linux x86_64
+and the project's Debian Docker image; rebuild for other platforms.
 
-The default export includes `brave-search`, `exa`, `lara-translate`, `weather-data`
-and `oxylabs`. `--servers` can select other shared servers from Atlas's template.
-`--all-shared` exports all 26 shared services with reviewed service settings. Node entrypoints
-use Atlas’s installed packages, including the Slack/GitHub patches; the unpinned
-weather Git source is frozen and built separately in the Hub image.
-Task-isolated filesystem/Git/Memory/Mongo/code execution/Arxiv/PubMed servers are
-rejected. Runtime versions must match between Atlas and Hub.
+On **Servers**, choose **Upload**, select a package, and set its logical MCP name
+(e.g. `brave-search`). Fill credentials and enable it. Persist `/app/data`, which
+contains the installed packages. Native MCPs can still use the marketplace or
+the upstream launch command. Package names include the source revision, so
+importing a different version does not replace an older package.
 
+For one version, use the normal connection form. For multiple versions or
+workspaces, expand **Multiple versions or workspaces (optional)**, convert the
+existing connection into the first target (preserving credentials), assign a
+path such as `atlas/official`, and add further connections. Only target settings
+are used after conversion. Clients must supply the exact target; no fallback
+occurs. A version label does not install that version.
+
+**Key rotation** appears only for recognized stdio Context7 / TwelveData
+adapters. When enabled, it hides the overridden single-key field; disabling it
+restores the saved value. Supporting another MCP requires an adapter for its
+credential injection and quota errors. Distinct Notion / Slack workspaces
+belong in separate targets, never an interchangeable key pool.
+
+Tool rate limits have their own section and are shared across all targets and
+clients. Queue and concurrency settings are advanced options. Relay has a
+separate connection section and requires a relay-compatible wrapper.
 For Yibu, configure `BRAVE_API_KEY`, `EXA_API_KEY`, `LARA_YIBU_API_KEY`,
-`WEATHER_YIBU_API_KEY`, and `OXYLABS_USERNAME`/`OXYLABS_PASSWORD` on their respective
-servers. Existing patches send those credentials directly to Yibu. Saving a
-connection-related setting reconnects that server; it can interrupt active calls.
+`WEATHER_YIBU_API_KEY`, or `OXYLABS_USERNAME` / `OXYLABS_PASSWORD`.
+Saving credentials recreates the affected connection and may interrupt active
+calls. Ordinary configuration values use normal settings storage; use personal
+Credentials bindings when encrypted per-user storage is required.
 
 ## Connect Atlas
 
@@ -98,10 +107,10 @@ MCP tool invocation is durably audited before execution; failure to write preven
 execution, independently of Activity database availability. Tool arguments, results
 and keys are omitted. These events also appear on the existing Logs page.
 
-`compose.atlas.yaml` provides Hub on port 3002 and internal-only PostgreSQL to
+`compose.local.yaml` provides Hub on port 3002 and internal-only PostgreSQL to
 enable the existing Activity page. Supply private `data/docker.env` (admin/JWT)
 and `data/database.env` (`POSTGRES_PASSWORD` and `DB_URL`), then run
-`docker compose --env-file data/database.env -f compose.atlas.yaml up -d`.
+`docker compose --env-file data/database.env -f compose.local.yaml up -d`.
 In database mode, web edits are stored in the database; do not overwrite them by
 reimporting stale settings.
 
@@ -124,7 +133,7 @@ budget are not yet enforced. Other MCPs receive no invented concurrency or
 rate defaults. The Open Library wrapper paces each HTTP request at 1000 ms;
 change `OPEN_LIBRARY_MIN_INTERVAL_MS` in its environment to change this rate.
 
-`compose.atlas.yaml` sets `MCP_RATE_LIMIT_MAX=off`, disabling only the aggregate
+`compose.local.yaml` sets `MCP_RATE_LIMIT_MAX=off`, disabling only the aggregate
 MCP transport IP guard. Login, registration and dashboard API guards remain.
 
 Durable tool audit records now include queued/dispatched/completed events,
@@ -184,7 +193,7 @@ to tool rows as a single invocation count. Runtime logs remain in a separate tab
 The reader exposes selected metadata only and reads bounded recent file tails;
 a warning indicates when older records are outside the displayed window. Complete
 JSONL files remain on disk. Relay visibility uses `MCPHUB_RELAY_LOG_FILE`, mounted
-read-only from the local relay log directory in `compose.atlas.yaml`; remote
+read-only from the local relay log directory in `compose.local.yaml`; remote
 relay daemons need their log files made available separately. This does not add a
 new port. Call logs require admin access and are not removed by clearing runtime
 logs.

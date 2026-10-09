@@ -286,7 +286,8 @@
       "resource": "Resource / Audience",
       "accessToken": "Access Token",
       "refreshToken": "Refresh Token"
-    }
+    },
+    "connectionEnvHint": "The left field is the MCP variable name; enter the key or value on the right. ${NAME} reads Hub environment variables, never the Atlas .env. New connections use saved changes."
   },
   "status": {
     "sleeping": "Sleeping",
@@ -1469,7 +1470,9 @@
     "relayOn": "Use managed relay",
     "relayOff": "Disable relay",
     "envPrefix": "Wrapper environment prefix",
-    "relayDescription": "For stdio wrappers supporting /v1/fetch only. Manage connection and credentials in Relay settings. Tool-call limits do not replace relay HTTP limits."
+    "relayDescription": "For stdio wrappers supporting /v1/fetch only. Manage connection and credentials in Relay settings. Tool-call limits do not replace relay HTTP limits.",
+    "rateTitle": "Tool rate limit (shared across this MCP)",
+    "advanced": "Queue, concurrency and error backoff (advanced, optional)"
   },
   "relayLimits": {
     "title": "Relay HTTP limits",
@@ -1526,11 +1529,12 @@
     "label": "Key suffix",
     "remove": "Remove",
     "add": "Add key",
-    "recovery": "Failed keys remain configured. Retry-After is respected; explicit daily/monthly quota errors wait until the next UTC day/month, and other failures cool down for 60 seconds. Runtime cooldowns reset when Hub restarts."
+    "recovery": "Failed keys remain configured. Retry-After is respected; explicit daily/monthly quota errors wait until the next UTC day/month, and other failures cool down for 60 seconds. Runtime cooldowns reset when Hub restarts.",
+    "singleIgnored": "Rotation supplies the API key for this connection; do not enter a second single key below. Turning rotation off restores the saved single key. Use interchangeable keys for the same service, never separate Notion / Slack workspaces."
   },
   "targets": {
     "title": "Target connections",
-    "description": "Exact target required for discovery and calls. No automatic fallback. Access lists use Bearer Key IDs or usernames; empty lists allow administrators only. MCP limits are shared across all targets.",
+    "description": "Each target has its own MCP version and credentials. Callers must supply its exact path, e.g. atlas/official; there is no automatic selection or fallback. All targets share the rate limit below. Empty access lists allow administrators only.",
     "path": "Target path",
     "kind": "Connection kind",
     "static": "Persistent MCP connection",
@@ -1543,7 +1547,7 @@
     "env": "Environment variables",
     "headers": "HTTP headers",
     "remove": "Remove target",
-    "add": "Add target",
+    "add": "Add a blank connection (another version / workspace)",
     "managed": "Target managed",
     "enabled": "Enable this target",
     "implementation": "Implementation",
@@ -1554,7 +1558,10 @@
     "version": "Configured version / revision",
     "versionHint": "The version is a label. Pin the real version in the command, package path or container image. Enabled targets connect on first use; their clients close after five idle minutes. Once targets exist, callers must select an exact target; the parent connection is not used.",
     "duplicate": "Copy target",
-    "fromCurrent": "Create target from current connection"
+    "fromCurrent": "Convert the connection below into the first target (keep credentials)",
+    "optionalTitle": "Multiple versions or workspaces (optional)",
+    "singleDescription": "For one version and one credential set, leave this section empty. To run multiple versions or workspaces, convert the connection below into your first target, then add the others. Only target configurations are used afterwards. Callers must supply a target path, e.g. atlas/official.",
+    "headersHint": "One Header=Value per line, e.g. Authorization=Bearer your-key. Credentials apply only to this target and are never inherited from another target."
   },
   "statistics": {
     "description": "Completed tool calls counted once, across the full selected period (UTC). HTTP attempts are excluded. Model and benchmark labels are supplied by callers; historical unlabeled calls remain unmarked.",

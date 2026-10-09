@@ -286,7 +286,8 @@
       "resource": "资源 / 受众",
       "accessToken": "访问令牌",
       "refreshToken": "刷新令牌"
-    }
+    },
+    "connectionEnvHint": "左边是 MCP 要求的变量名，右边直接填写 key 或其他值。${变量名} 表示读取 Hub 的环境变量，不会读取 Atlas 的 .env。保存后新连接使用更新值。"
   },
   "status": {
     "sleeping": "休眠",
@@ -1471,7 +1472,9 @@
     "relayOn": "使用托管 Relay",
     "relayOff": "关闭 Relay",
     "envPrefix": "Wrapper 环境变量前缀",
-    "relayDescription": "仅适用于已支持 /v1/fetch 的 stdio wrapper。连接与密钥在 Relay 设置中管理；工具层限速不会替代 Relay 的 HTTP 限速。"
+    "relayDescription": "仅适用于已支持 /v1/fetch 的 stdio wrapper。连接与密钥在 Relay 设置中管理；工具层限速不会替代 Relay 的 HTTP 限速。",
+    "rateTitle": "调用限速（整个 MCP 共享）",
+    "advanced": "排队、并发与错误退避（高级，可选）"
   },
   "relayLimits": {
     "title": "Relay HTTP 限速",
@@ -1528,11 +1531,12 @@
     "label": "Key 后6位",
     "remove": "移除",
     "add": "添加 Key",
-    "recovery": "失败的 key 保留配置；优先遵循上游重试时间。明确日/月额度错误默认等到下个 UTC 日/月，其他情况冷却 60 秒后重新参与。Hub 重启会清空运行时冷却状态。"
+    "recovery": "失败的 key 保留配置；优先遵循上游重试时间。明确日/月额度错误默认等到下个 UTC 日/月，其他情况冷却 60 秒后重新参与。Hub 重启会清空运行时冷却状态。",
+    "singleIgnored": "轮询已接管此连接的 API key，下方不再重复填写单个 key。关闭轮询后恢复使用原先的单个 key。仅同一服务账号类型的可替换 key 应放在此处，不用于区分 Notion / Slack 工作区。"
   },
   "targets": {
     "title": "目标连接",
-    "description": "发现工具和调用时都必须明确指定目标，不会自动回退。访问列表填写 Bearer Key ID 或用户名；留空时仅管理员可访问。同一 MCP 的所有目标共用限速。",
+    "description": "每个目标是一套独立的 MCP 版本和凭证。调用方必须明确传入路径（例如 atlas/official），不会自动选择或回退。所有目标共用下方的调用限速。访问列表留空时仅管理员可访问。",
     "path": "目标路径",
     "kind": "连接类型",
     "static": "固定 MCP 连接",
@@ -1545,7 +1549,7 @@
     "env": "环境变量",
     "headers": "HTTP 请求头",
     "remove": "删除目标",
-    "add": "添加目标",
+    "add": "新增空白连接（其他版本 / 工作区）",
     "managed": "按目标连接",
     "enabled": "启用此目标",
     "implementation": "实现类型",
@@ -1556,7 +1560,10 @@
     "version": "配置版本 / 修订号",
     "versionHint": "版本是标记，实际版本请固定在启动命令、包路径或容器镜像中。启用的目标在首次请求时连接，空闲 5 分钟后释放连接。配置目标后，调用方必须明确选择目标，父连接不再使用。",
     "duplicate": "复制此目标",
-    "fromCurrent": "从当前连接创建目标"
+    "fromCurrent": "将下方连接转为第一个目标（保留 key）",
+    "optionalTitle": "多个版本或工作区（可选）",
+    "singleDescription": "只用一个版本、一套 key 时，无需配置这里。需要并存多个版本或不同工作区时，可将下方连接转为第一个目标，再为其他版本添加连接。切换后仅使用目标内的配置，调用方必须传入目标路径，例如 atlas/official。",
+    "headersHint": "每行一个 请求头名称=值，例如 Authorization=Bearer your-key。凭证仅用于此目标，不会继承其他目标。"
   },
   "statistics": {
     "description": "统计所选时间段内完成的工具调用（UTC），每次调用只计一次，不计换 key 等内部 HTTP 尝试。模型和测评集标签由调用方提供；历史无标签记录显示为未标记。",

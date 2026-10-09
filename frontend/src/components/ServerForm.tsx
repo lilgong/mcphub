@@ -1,3 +1,4 @@
+import { getKeyPoolProvider, isPooledCredential } from '../../../src/utils/keyPoolCompatibility';
 import TargetConnectionEditor from './TargetConnectionEditor';
 import KeyPoolEditor from './KeyPoolEditor';
 import ServiceControls from './ServiceControls';
@@ -564,6 +565,13 @@ const ServerForm = ({
     };
   }, [isEdit, openApiSource.key, serverType]);
 
+  const keyPoolProvider = getKeyPoolProvider({
+    type: serverType,
+    command: formData.command,
+    args: formData.args,
+    env: Object.fromEntries(envVars.map(({ key, value }) => [key, value])),
+  });
+
   // Submit handler for server configuration
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -607,52 +615,6 @@ const ServerForm = ({
       )}
 
       <form onSubmit={handleSubmit}>
-        <TargetConnectionEditor
-          value={formData.targets}
-          currentConnection={
-            serverType !== 'openapi' &&
-            !initialData?.config?.credentialTemplate?.length &&
-            !initialData?.config?.proxy &&
-            !initialData?.config?.perSessionClient &&
-            !initialData?.config?.oauth &&
-            !formData.passthroughHeaders?.trim() &&
-            (serverType === 'stdio' ? !!formData.command : !!formData.url)
-              ? {
-                  type: serverType,
-                  command: serverType === 'stdio' ? formData.command : undefined,
-                  args: serverType === 'stdio' ? formData.args : undefined,
-                  url: serverType !== 'stdio' ? formData.url : undefined,
-                  env: Object.fromEntries(
-                    envVars
-                      .filter((item) => item.key.trim())
-                      .map((item) => [item.key.trim(), item.value]),
-                  ),
-                  headers: Object.fromEntries(
-                    headerVars
-                      .filter((item) => item.key.trim())
-                      .map((item) => [item.key.trim(), item.value]),
-                  ),
-                  options: formData.options,
-                  keyPool: formData.keyPool,
-                  relay: formData.relay,
-                }
-              : undefined
-          }
-          onChange={(targets) => setFormData((previous) => ({ ...previous, targets }))}
-        />
-        {serverType === 'stdio' && !formData.targets?.length && (
-          <KeyPoolEditor
-            serverName={formData.name}
-            value={formData.keyPool}
-            onChange={(keyPool) => setFormData((previous) => ({ ...previous, keyPool }))}
-          />
-        )}
-        <ServiceControls
-          rateLimit={formData.rateLimit}
-          relay={formData.relay}
-          stdio={serverType === 'stdio'}
-          onChange={(value) => setFormData((previous) => ({ ...previous, ...value }))}
-        />
         {/* ─── Section 1: Basic Info ─── */}
         <div className="mb-5">
           <h3 className="text-sm font-semibold text-[var(--hub-ink)] mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
@@ -703,174 +665,350 @@ const ServerForm = ({
           </div>
         </div>
 
-        {/* ─── Section 2: Connection ─── */}
-        <div className="mb-5">
-          <h3 className="text-sm font-semibold text-[var(--hub-ink)] mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
-            {t('server.sectionConnection', 'Connection')}
-          </h3>
+        <div>
+          <label
+            className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]"
+            htmlFor="visibility"
+          >
+            {t('server.visibility', 'Visibility')}
+          </label>
+          <select
+            id="visibility"
+            name="visibility"
+            value={formData.visibility || 'private'}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                visibility: e.target.value as 'private' | 'group' | 'public',
+              }))
+            }
+            className="w-full py-2 px-3 form-input"
+          >
+            <option value="private">
+              {t('server.visibilityPrivate', 'Private — only the owner and admins')}
+            </option>
+            <option value="group">
+              {t('server.visibilityGroup', 'Shared — selected users only')}
+            </option>
+            <option value="public">
+              {t('server.visibilityPublic', 'Public — every authenticated user')}
+            </option>
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            {t(
+              'server.visibilityDescription',
+              'Controls which non-admin users can discover and call this server. Admins always have access.',
+            )}
+          </p>
 
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]">
-              {t('server.type')}
-            </label>
-            <div className="flex flex-wrap gap-x-4 gap-y-2">
-              <div>
-                <input
-                  type="radio"
-                  id="command"
-                  name="serverType"
-                  value="command"
-                  checked={serverType === 'stdio'}
-                  onChange={() => updateServerType('stdio')}
-                  className="mr-1"
-                />
-                <label htmlFor="command" className="text-[var(--hub-ink)]">
-                  {t('server.typeStdio')}
-                </label>
+          {formData.visibility === 'group' && (
+            <div className="mt-4 rounded border border-gray-200 dark:border-gray-700 p-3">
+              <div className="text-sm font-medium text-[var(--hub-ink-2)]">
+                {t('server.shareWithUsers', 'Share with users')}
               </div>
-              <div>
-                <input
-                  type="radio"
-                  id="url"
-                  name="serverType"
-                  value="url"
-                  checked={serverType === 'sse'}
-                  onChange={() => updateServerType('sse')}
-                  className="mr-1"
-                />
-                <label htmlFor="url" className="text-[var(--hub-ink)]">
-                  {t('server.typeSse')}
-                </label>
-              </div>
-              <div>
-                <input
-                  type="radio"
-                  id="streamable-http"
-                  name="serverType"
-                  value="streamable-http"
-                  checked={serverType === 'streamable-http'}
-                  onChange={() => updateServerType('streamable-http')}
-                  className="mr-1"
-                />
-                <label htmlFor="streamable-http" className="text-[var(--hub-ink)]">
-                  {t('server.typeStreamableHttp')}
-                </label>
-              </div>
-              <div>
-                <input
-                  type="radio"
-                  id="openapi"
-                  name="serverType"
-                  value="openapi"
-                  checked={serverType === 'openapi'}
-                  onChange={() => updateServerType('openapi')}
-                  className="mr-1"
-                />
-                <label htmlFor="openapi" className="text-[var(--hub-ink)]">
-                  {t('server.typeOpenapi')}
-                </label>
-              </div>
+              <p className="text-xs text-gray-500 mt-1 mb-3">
+                {t(
+                  'server.shareWithUsersDescription',
+                  'Selected users can discover and call this server, but cannot manage its configuration.',
+                )}
+              </p>
+
+              {!initialData?.name ? (
+                <p className="text-sm text-gray-500">
+                  {t('server.shareAfterCreate', 'Save the server before selecting users.')}
+                </p>
+              ) : (
+                <>
+                  {shareCandidatesLoading && (
+                    <p className="text-sm text-gray-500">
+                      {t('server.shareCandidatesLoading', 'Loading users...')}
+                    </p>
+                  )}
+                  {shareCandidatesError && (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {t('server.shareCandidatesError', 'Failed to load users.')}
+                    </p>
+                  )}
+                  {!shareCandidatesLoading &&
+                    !shareCandidatesError &&
+                    selectableShareUsers.length === 0 && (
+                      <p className="text-sm text-gray-500">
+                        {t('server.noShareCandidates', 'No other users are available.')}
+                      </p>
+                    )}
+                  {selectableShareUsers.length > 0 && (
+                    <>
+                      <div className="mb-3 space-y-2">
+                        <label
+                          htmlFor="share-user-search"
+                          className="block text-xs font-medium text-[var(--hub-ink-2)]"
+                        >
+                          {t('server.shareUserSearchLabel', 'Search users')}
+                        </label>
+                        <input
+                          id="share-user-search"
+                          type="search"
+                          value={shareUserSearch}
+                          onChange={(event) => setShareUserSearch(event.target.value)}
+                          placeholder={t(
+                            'server.shareUserSearchPlaceholder',
+                            'Search usernames...',
+                          )}
+                          className="w-full py-2 px-3 form-input text-sm"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={selectFilteredShareUsers}
+                            disabled={allFilteredShareUsersSelected}
+                            className="hub-btn text-sm"
+                          >
+                            {t('server.selectAllShareUsers', 'Select all')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={deselectFilteredShareUsers}
+                            disabled={noFilteredShareUsersSelected}
+                            className="hub-btn text-sm"
+                          >
+                            {t('server.deselectAllShareUsers', 'Deselect all')}
+                          </button>
+                        </div>
+                      </div>
+                      {filteredShareUsers.length === 0 ? (
+                        <p className="text-sm text-gray-500">
+                          {t('server.noMatchingShareUsers', 'No users match your search.')}
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {filteredShareUsers.map((username) => (
+                            <label
+                              key={username}
+                              className="flex items-center gap-2 rounded border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-[var(--hub-ink-2)]"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedShareUsers.has(username)}
+                                onChange={() => toggleSharedUser(username)}
+                              />
+                              <span>{username}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Connection details — indented to show hierarchy under Server Type */}
-          <div className="pl-4 border-l-2 border-gray-200 dark:border-gray-700 ml-2">
-            {serverType === 'openapi' ? (
-              <>
-                {/* Input Mode Selection */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]">
-                    {t('server.openapi.inputMode')}
-                  </label>
-                  <div className="flex space-x-4">
-                    <div>
-                      <input
-                        type="radio"
-                        id="input-mode-url"
-                        name="inputMode"
-                        value="url"
-                        checked={formData.openapi?.inputMode === 'url'}
-                        onChange={() =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            openapi: { ...prev.openapi!, inputMode: 'url' },
-                          }))
-                        }
-                        className="mr-1"
-                      />
-                      <label htmlFor="input-mode-url">{t('server.openapi.inputModeUrl')}</label>
-                    </div>
-                    <div>
-                      <input
-                        type="radio"
-                        id="input-mode-schema"
-                        name="inputMode"
-                        value="schema"
-                        checked={formData.openapi?.inputMode === 'schema'}
-                        onChange={() =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            openapi: { ...prev.openapi!, inputMode: 'schema' },
-                          }))
-                        }
-                        className="mr-1"
-                      />
-                      <label htmlFor="input-mode-schema">
-                        {t('server.openapi.inputModeSchema')}
-                      </label>
-                    </div>
+        <TargetConnectionEditor
+          value={formData.targets}
+          currentConnection={
+            serverType !== 'openapi' &&
+            !initialData?.config?.credentialTemplate?.length &&
+            !initialData?.config?.proxy &&
+            !initialData?.config?.perSessionClient &&
+            !initialData?.config?.oauth &&
+            !formData.passthroughHeaders?.trim() &&
+            (serverType === 'stdio' ? !!formData.command : !!formData.url)
+              ? {
+                  type: serverType,
+                  command: serverType === 'stdio' ? formData.command : undefined,
+                  args: serverType === 'stdio' ? formData.args : undefined,
+                  url: serverType !== 'stdio' ? formData.url : undefined,
+                  env: Object.fromEntries(
+                    envVars
+                      .filter((item) => item.key.trim())
+                      .map((item) => [item.key.trim(), item.value]),
+                  ),
+                  headers: Object.fromEntries(
+                    headerVars
+                      .filter((item) => item.key.trim())
+                      .map((item) => [item.key.trim(), item.value]),
+                  ),
+                  options: formData.options,
+                  keyPool: formData.keyPool,
+                  relay: formData.relay,
+                }
+              : undefined
+          }
+          onChange={(targets) => setFormData((previous) => ({ ...previous, targets }))}
+        />
+        {!formData.targets?.length && (
+          <>
+            {/* ─── Section 2: Connection ─── */}
+            <div className="mb-5">
+              <h3 className="text-sm font-semibold text-[var(--hub-ink)] mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
+                {t('server.sectionConnection', 'Connection')}
+              </h3>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]">
+                  {t('server.type')}
+                </label>
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                  <div>
+                    <input
+                      type="radio"
+                      id="command"
+                      name="serverType"
+                      value="command"
+                      checked={serverType === 'stdio'}
+                      onChange={() => updateServerType('stdio')}
+                      className="mr-1"
+                    />
+                    <label htmlFor="command" className="text-[var(--hub-ink)]">
+                      {t('server.typeStdio')}
+                    </label>
+                  </div>
+                  <div>
+                    <input
+                      type="radio"
+                      id="url"
+                      name="serverType"
+                      value="url"
+                      checked={serverType === 'sse'}
+                      onChange={() => updateServerType('sse')}
+                      className="mr-1"
+                    />
+                    <label htmlFor="url" className="text-[var(--hub-ink)]">
+                      {t('server.typeSse')}
+                    </label>
+                  </div>
+                  <div>
+                    <input
+                      type="radio"
+                      id="streamable-http"
+                      name="serverType"
+                      value="streamable-http"
+                      checked={serverType === 'streamable-http'}
+                      onChange={() => updateServerType('streamable-http')}
+                      className="mr-1"
+                    />
+                    <label htmlFor="streamable-http" className="text-[var(--hub-ink)]">
+                      {t('server.typeStreamableHttp')}
+                    </label>
+                  </div>
+                  <div>
+                    <input
+                      type="radio"
+                      id="openapi"
+                      name="serverType"
+                      value="openapi"
+                      checked={serverType === 'openapi'}
+                      onChange={() => updateServerType('openapi')}
+                      className="mr-1"
+                    />
+                    <label htmlFor="openapi" className="text-[var(--hub-ink)]">
+                      {t('server.typeOpenapi')}
+                    </label>
                   </div>
                 </div>
+              </div>
 
-                {/* URL Input */}
-                {formData.openapi?.inputMode === 'url' && (
-                  <div className="mb-4">
-                    <label
-                      className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]"
-                      htmlFor="openapi-url"
-                    >
-                      {t('server.openapi.specUrl')}
-                    </label>
-                    <input
-                      type="url"
-                      name="openapi-url"
-                      id="openapi-url"
-                      value={formData.openapi?.url || ''}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          openapi: { ...prev.openapi!, url: e.target.value },
-                        }))
-                      }
-                      className="w-full py-2 px-3 form-input"
-                      placeholder="e.g.: https://api.example.com/openapi.json"
-                      required={serverType === 'openapi' && formData.openapi?.inputMode === 'url'}
-                    />
-                  </div>
-                )}
+              {/* Connection details — indented to show hierarchy under Server Type */}
+              <div className="pl-4 border-l-2 border-gray-200 dark:border-gray-700 ml-2">
+                {serverType === 'openapi' ? (
+                  <>
+                    {/* Input Mode Selection */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]">
+                        {t('server.openapi.inputMode')}
+                      </label>
+                      <div className="flex space-x-4">
+                        <div>
+                          <input
+                            type="radio"
+                            id="input-mode-url"
+                            name="inputMode"
+                            value="url"
+                            checked={formData.openapi?.inputMode === 'url'}
+                            onChange={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                openapi: { ...prev.openapi!, inputMode: 'url' },
+                              }))
+                            }
+                            className="mr-1"
+                          />
+                          <label htmlFor="input-mode-url">{t('server.openapi.inputModeUrl')}</label>
+                        </div>
+                        <div>
+                          <input
+                            type="radio"
+                            id="input-mode-schema"
+                            name="inputMode"
+                            value="schema"
+                            checked={formData.openapi?.inputMode === 'schema'}
+                            onChange={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                openapi: { ...prev.openapi!, inputMode: 'schema' },
+                              }))
+                            }
+                            className="mr-1"
+                          />
+                          <label htmlFor="input-mode-schema">
+                            {t('server.openapi.inputModeSchema')}
+                          </label>
+                        </div>
+                      </div>
+                    </div>
 
-                {/* Schema Input */}
-                {formData.openapi?.inputMode === 'schema' && (
-                  <div className="mb-4">
-                    <label
-                      className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]"
-                      htmlFor="openapi-schema"
-                    >
-                      {t('server.openapi.schema')}
-                    </label>
-                    <textarea
-                      name="openapi-schema"
-                      id="openapi-schema"
-                      rows={10}
-                      value={formData.openapi?.schema || ''}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          openapi: { ...prev.openapi!, schema: e.target.value },
-                        }))
-                      }
-                      className="w-full py-2 px-3 form-input font-mono text-sm"
-                      placeholder={`{
+                    {/* URL Input */}
+                    {formData.openapi?.inputMode === 'url' && (
+                      <div className="mb-4">
+                        <label
+                          className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]"
+                          htmlFor="openapi-url"
+                        >
+                          {t('server.openapi.specUrl')}
+                        </label>
+                        <input
+                          type="url"
+                          name="openapi-url"
+                          id="openapi-url"
+                          value={formData.openapi?.url || ''}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              openapi: { ...prev.openapi!, url: e.target.value },
+                            }))
+                          }
+                          className="w-full py-2 px-3 form-input"
+                          placeholder="e.g.: https://api.example.com/openapi.json"
+                          required={
+                            serverType === 'openapi' && formData.openapi?.inputMode === 'url'
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {/* Schema Input */}
+                    {formData.openapi?.inputMode === 'schema' && (
+                      <div className="mb-4">
+                        <label
+                          className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]"
+                          htmlFor="openapi-schema"
+                        >
+                          {t('server.openapi.schema')}
+                        </label>
+                        <textarea
+                          name="openapi-schema"
+                          id="openapi-schema"
+                          rows={10}
+                          value={formData.openapi?.schema || ''}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              openapi: { ...prev.openapi!, schema: e.target.value },
+                            }))
+                          }
+                          className="w-full py-2 px-3 form-input font-mono text-sm"
+                          placeholder={`{
   "openapi": "3.1.0",
   "info": {
     "title": "API",
@@ -885,539 +1023,149 @@ const ServerForm = ({
     ...
   }
 }`}
-                      required={
-                        serverType === 'openapi' && formData.openapi?.inputMode === 'schema'
-                      }
-                    />
-                    <p className="text-xs text-[var(--hub-ink-3)] mt-1">
-                      {t('server.openapi.schemaHelp')}
-                    </p>
-                  </div>
-                )}
-
-                {!isEdit && openApiSourcePresent && (
-                  <div
-                    className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-900 dark:bg-blue-950/30"
-                    aria-live="polite"
-                  >
-                    {openApiStatsLoading ? (
-                      <p className="text-blue-700 dark:text-blue-300">
-                        {t('server.openapi.statsMeasuring')}
-                      </p>
-                    ) : openApiStats ? (
-                      <>
-                        <p className="font-medium text-blue-900 dark:text-blue-100">
-                          {t('server.openapi.statsSummary', {
-                            toolCount: openApiStats.toolCount,
-                            bytes: formatBytes(openApiStats.definitionsBytes),
-                            tokens: formatTokens(openApiStats.estimatedTokens),
-                          })}
+                          required={
+                            serverType === 'openapi' && formData.openapi?.inputMode === 'schema'
+                          }
+                        />
+                        <p className="text-xs text-[var(--hub-ink-3)] mt-1">
+                          {t('server.openapi.schemaHelp')}
                         </p>
-                        {openApiStats.estimatedTokens >= OPENAPI_STATS_WARN_TOKENS && (
-                          <p className="mt-1 text-yellow-700 dark:text-yellow-300">
-                            {t('server.openapi.statsWarning')}
+                      </div>
+                    )}
+
+                    {!isEdit && openApiSourcePresent && (
+                      <div
+                        className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-900 dark:bg-blue-950/30"
+                        aria-live="polite"
+                      >
+                        {openApiStatsLoading ? (
+                          <p className="text-blue-700 dark:text-blue-300">
+                            {t('server.openapi.statsMeasuring')}
                           </p>
-                        )}
-                      </>
-                    ) : openApiStatsUnavailable ? (
-                      <p className="text-gray-600 dark:text-gray-300">
-                        {t('server.openapi.statsUnavailable')}
-                      </p>
-                    ) : null}
-                  </div>
-                )}
-
-                {/* Security Configuration */}
-                <div className="mb-4" onChange={markOpenApiSecurityTouched}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-sm font-medium text-[var(--hub-ink-2)]">
-                      {t('server.openapi.security')}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => void detectOpenApiSecurity()}
-                      disabled={
-                        securityDetectionLoading || openApiStatsLoading || !openApiSourcePresent
-                      }
-                      className="hub-btn text-xs !h-7 !px-2"
-                    >
-                      {securityDetectionLoading || openApiStatsLoading
-                        ? t('server.openapi.securityDetecting')
-                        : t('server.openapi.securityDetect')}
-                    </button>
-                  </div>
-                  <select
-                    value={formData.openapi?.securityType || 'none'}
-                    onChange={(e) =>
-                      setFormData((prev) => {
-                        setOpenApiSecurityNotice(null);
-                        return {
-                          ...prev,
-                          openapi: {
-                            ...prev.openapi,
-                            securityType: e.target.value as any,
-                            url: prev.openapi?.url || '',
-                          },
-                        };
-                      })
-                    }
-                    className="w-full py-2 px-3 form-input"
-                  >
-                    <option value="none">{t('server.openapi.securityNone')}</option>
-                    <option value="apiKey">{t('server.openapi.securityApiKey')}</option>
-                    <option value="http">{t('server.openapi.securityHttp')}</option>
-                    <option value="oauth2">{t('server.openapi.securityOAuth2')}</option>
-                    <option value="openIdConnect">
-                      {t('server.openapi.securityOpenIdConnect')}
-                    </option>
-                  </select>
-                  {openApiSecurityNotice && (
-                    <p
-                      className={`mt-2 text-xs ${
-                        openApiSecurityNotice.kind === 'warning'
-                          ? 'text-yellow-700 dark:text-yellow-300'
-                          : 'text-blue-700 dark:text-blue-300'
-                      }`}
-                    >
-                      {t(
-                        `server.openapi.${openApiSecurityNotice.messageKey}`,
-                        openApiSecurityNotice.values,
-                      )}
-                    </p>
-                  )}
-                </div>
-
-                {/* API Key Configuration */}
-                {formData.openapi?.securityType === 'apiKey' && (
-                  <div className="mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
-                    <h4 className="text-sm font-medium mb-3 text-[var(--hub-ink-2)]">
-                      {t('server.openapi.apiKeyConfig')}
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs text-[var(--hub-ink-2)] mb-1">
-                          {t('server.openapi.apiKeyName')}
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.openapi?.apiKeyName || ''}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                apiKeyName: e.target.value,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm form-input focus:outline-none"
-                          placeholder="Authorization"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-[var(--hub-ink-2)] mb-1">
-                          {t('server.openapi.apiKeyIn')}
-                        </label>
-                        <select
-                          value={formData.openapi?.apiKeyIn || 'header'}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                apiKeyIn: e.target.value as any,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                        >
-                          <option value="header">{t('server.openapi.apiKeyInHeader')}</option>
-                          <option value="query">{t('server.openapi.apiKeyInQuery')}</option>
-                          <option value="cookie">{t('server.openapi.apiKeyInCookie')}</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          {t('server.openapi.apiKeyValue')}
-                        </label>
-                        <input
-                          type="password"
-                          value={formData.openapi?.apiKeyValue || ''}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                apiKeyValue: e.target.value,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                          placeholder="your-api-key"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* HTTP Authentication Configuration */}
-                {formData.openapi?.securityType === 'http' && (
-                  <div className="mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
-                    <h4 className="text-sm font-medium mb-3 text-gray-700 dark:text-gray-300">
-                      {t('server.openapi.httpAuthConfig')}
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          {t('server.openapi.httpScheme')}
-                        </label>
-                        <select
-                          value={formData.openapi?.httpScheme || 'bearer'}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                httpScheme: e.target.value as any,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                        >
-                          <option value="basic">{t('server.openapi.httpSchemeBasic')}</option>
-                          <option value="bearer">{t('server.openapi.httpSchemeBearer')}</option>
-                          <option value="digest">{t('server.openapi.httpSchemeDigest')}</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          {t('server.openapi.httpCredentials')}
-                        </label>
-                        <input
-                          type="password"
-                          value={formData.openapi?.httpCredentials || ''}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                httpCredentials: e.target.value,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                          placeholder={
-                            formData.openapi?.httpScheme === 'basic'
-                              ? 'user:password or base64'
-                              : 'bearer-token'
-                          }
-                        />
-                        {formData.openapi?.httpScheme === 'basic' && (
-                          <p className="text-xs text-[var(--hub-ink-3)] mt-1">
-                            {t('server.openapi.httpCredentialsBasicHint')}
+                        ) : openApiStats ? (
+                          <>
+                            <p className="font-medium text-blue-900 dark:text-blue-100">
+                              {t('server.openapi.statsSummary', {
+                                toolCount: openApiStats.toolCount,
+                                bytes: formatBytes(openApiStats.definitionsBytes),
+                                tokens: formatTokens(openApiStats.estimatedTokens),
+                              })}
+                            </p>
+                            {openApiStats.estimatedTokens >= OPENAPI_STATS_WARN_TOKENS && (
+                              <p className="mt-1 text-yellow-700 dark:text-yellow-300">
+                                {t('server.openapi.statsWarning')}
+                              </p>
+                            )}
+                          </>
+                        ) : openApiStatsUnavailable ? (
+                          <p className="text-gray-600 dark:text-gray-300">
+                            {t('server.openapi.statsUnavailable')}
                           </p>
-                        )}
+                        ) : null}
                       </div>
-                    </div>
-                  </div>
-                )}
+                    )}
 
-                {/* OpenID Connect Configuration */}
-                {formData.openapi?.securityType === 'openIdConnect' && (
-                  <div className="mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
-                    <h4 className="text-sm font-medium mb-3 text-gray-700 dark:text-gray-300">
-                      {t('server.openapi.openIdConnectConfig')}
-                    </h4>
-                    <div className="grid grid-cols-1 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          {t('server.openapi.openIdConnectUrl')}
-                        </label>
-                        <input
-                          type="url"
-                          value={formData.openapi?.openIdConnectUrl || ''}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                openIdConnectUrl: e.target.value,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                          placeholder="https://example.com/.well-known/openid_configuration"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          {t('server.openapi.openIdConnectToken')}
-                        </label>
-                        <input
-                          type="password"
-                          value={formData.openapi?.openIdConnectToken || ''}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                openIdConnectToken: e.target.value,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                          placeholder="id-token"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* OAuth2 Configuration */}
-                {formData.openapi?.securityType === 'oauth2' && (
-                  <div className="mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
-                    <h4 className="text-sm font-medium mb-3 text-gray-700 dark:text-gray-300">
-                      {t('server.openapi.oauth2Config')}
-                    </h4>
-                    <div className="grid grid-cols-1 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          {t('server.oauth.tokenEndpoint')}
-                        </label>
-                        <input
-                          type="url"
-                          value={formData.openapi?.oauth2TokenUrl || ''}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                oauth2TokenUrl: e.target.value,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                          placeholder="https://example.com/oauth/token"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          {t('server.oauth.clientId')}
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.openapi?.oauth2ClientId || ''}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                oauth2ClientId: e.target.value,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                          placeholder="client-id"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          {t('server.oauth.clientSecret')}
-                        </label>
-                        <input
-                          type="password"
-                          value={formData.openapi?.oauth2ClientSecret || ''}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                oauth2ClientSecret: e.target.value,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                          placeholder="client-secret"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          {t('server.openapi.oauth2Token')}
-                        </label>
-                        <input
-                          type="password"
-                          value={formData.openapi?.oauth2Token || ''}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              openapi: {
-                                ...prev.openapi,
-                                oauth2Token: e.target.value,
-                                url: prev.openapi?.url || '',
-                              },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                          placeholder="access-token"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Specification Download Security (#1079) */}
-                <div className="mb-4">
-                  <div className="flex items-center mb-1">
-                    <input
-                      type="checkbox"
-                      id="openapiSpecSecurity"
-                      checked={(formData.openapi?.specSecurityType || 'none') !== 'none'}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          openapi: {
-                            ...prev.openapi,
-                            url: prev.openapi?.url || '',
-                            specSecurityType: e.target.checked ? 'http' : 'none',
-                          },
-                        }))
-                      }
-                      className="mr-2"
-                    />
-                    <label
-                      htmlFor="openapiSpecSecurity"
-                      className="text-gray-700 dark:text-gray-300 text-sm font-medium"
-                    >
-                      {t('server.openapi.specSecurityToggle')}
-                    </label>
-                  </div>
-                  <p className="text-xs text-gray-500 ml-6">
-                    {t('server.openapi.specSecurityHelp')}
-                  </p>
-                  {(formData.openapi?.specSecurityType || 'none') !== 'none' && (
-                    <div className="mt-2 ml-6 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
-                      <div className="mb-3">
-                        <label className="block text-xs text-gray-600 mb-1">
+                    {/* Security Configuration */}
+                    <div className="mb-4" onChange={markOpenApiSecurityTouched}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-sm font-medium text-[var(--hub-ink-2)]">
                           {t('server.openapi.security')}
                         </label>
-                        <select
-                          value={formData.openapi?.specSecurityType || 'http'}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
+                        <button
+                          type="button"
+                          onClick={() => void detectOpenApiSecurity()}
+                          disabled={
+                            securityDetectionLoading || openApiStatsLoading || !openApiSourcePresent
+                          }
+                          className="hub-btn text-xs !h-7 !px-2"
+                        >
+                          {securityDetectionLoading || openApiStatsLoading
+                            ? t('server.openapi.securityDetecting')
+                            : t('server.openapi.securityDetect')}
+                        </button>
+                      </div>
+                      <select
+                        value={formData.openapi?.securityType || 'none'}
+                        onChange={(e) =>
+                          setFormData((prev) => {
+                            setOpenApiSecurityNotice(null);
+                            return {
                               ...prev,
                               openapi: {
                                 ...prev.openapi,
+                                securityType: e.target.value as any,
                                 url: prev.openapi?.url || '',
-                                specSecurityType: e.target.value as any,
                               },
-                            }))
-                          }
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                            };
+                          })
+                        }
+                        className="w-full py-2 px-3 form-input"
+                      >
+                        <option value="none">{t('server.openapi.securityNone')}</option>
+                        <option value="apiKey">{t('server.openapi.securityApiKey')}</option>
+                        <option value="http">{t('server.openapi.securityHttp')}</option>
+                        <option value="oauth2">{t('server.openapi.securityOAuth2')}</option>
+                        <option value="openIdConnect">
+                          {t('server.openapi.securityOpenIdConnect')}
+                        </option>
+                      </select>
+                      {openApiSecurityNotice && (
+                        <p
+                          className={`mt-2 text-xs ${
+                            openApiSecurityNotice.kind === 'warning'
+                              ? 'text-yellow-700 dark:text-yellow-300'
+                              : 'text-blue-700 dark:text-blue-300'
+                          }`}
                         >
-                          <option value="http">{t('server.openapi.securityHttp')}</option>
-                          <option value="apiKey">{t('server.openapi.securityApiKey')}</option>
-                          <option value="oauth2">{t('server.openapi.securityOAuth2')}</option>
-                        </select>
-                      </div>
-
-                      {formData.openapi?.specSecurityType === 'http' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">
-                              {t('server.openapi.httpScheme')}
-                            </label>
-                            <select
-                              value={formData.openapi?.specHttpScheme || 'basic'}
-                              onChange={(e) =>
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  openapi: {
-                                    ...prev.openapi,
-                                    url: prev.openapi?.url || '',
-                                    specHttpScheme: e.target.value as any,
-                                  },
-                                }))
-                              }
-                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                            >
-                              <option value="basic">{t('server.openapi.httpSchemeBasic')}</option>
-                              <option value="bearer">{t('server.openapi.httpSchemeBearer')}</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">
-                              {t('server.openapi.httpCredentials')}
-                            </label>
-                            <input
-                              type="password"
-                              value={formData.openapi?.specHttpCredentials || ''}
-                              onChange={(e) =>
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  openapi: {
-                                    ...prev.openapi,
-                                    url: prev.openapi?.url || '',
-                                    specHttpCredentials: e.target.value,
-                                  },
-                                }))
-                              }
-                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                              placeholder={
-                                formData.openapi?.specHttpScheme === 'basic'
-                                  ? 'user:password or base64'
-                                  : 'bearer-token'
-                              }
-                            />
-                          </div>
-                        </div>
+                          {t(
+                            `server.openapi.${openApiSecurityNotice.messageKey}`,
+                            openApiSecurityNotice.values,
+                          )}
+                        </p>
                       )}
+                    </div>
 
-                      {formData.openapi?.specSecurityType === 'apiKey' && (
+                    {/* API Key Configuration */}
+                    {formData.openapi?.securityType === 'apiKey' && (
+                      <div className="mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
+                        <h4 className="text-sm font-medium mb-3 text-[var(--hub-ink-2)]">
+                          {t('server.openapi.apiKeyConfig')}
+                        </h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">
+                            <label className="block text-xs text-[var(--hub-ink-2)] mb-1">
                               {t('server.openapi.apiKeyName')}
                             </label>
                             <input
                               type="text"
-                              value={formData.openapi?.specApiKeyName || ''}
+                              value={formData.openapi?.apiKeyName || ''}
                               onChange={(e) =>
                                 setFormData((prev) => ({
                                   ...prev,
                                   openapi: {
                                     ...prev.openapi,
+                                    apiKeyName: e.target.value,
                                     url: prev.openapi?.url || '',
-                                    specApiKeyName: e.target.value,
                                   },
                                 }))
                               }
-                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                              placeholder="X-API-Key"
+                              className="w-full border rounded px-2 py-1 text-sm form-input focus:outline-none"
+                              placeholder="Authorization"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">
+                            <label className="block text-xs text-[var(--hub-ink-2)] mb-1">
                               {t('server.openapi.apiKeyIn')}
                             </label>
                             <select
-                              value={formData.openapi?.specApiKeyIn || 'header'}
+                              value={formData.openapi?.apiKeyIn || 'header'}
                               onChange={(e) =>
                                 setFormData((prev) => ({
                                   ...prev,
                                   openapi: {
                                     ...prev.openapi,
+                                    apiKeyIn: e.target.value as any,
                                     url: prev.openapi?.url || '',
-                                    specApiKeyIn: e.target.value as any,
                                   },
                                 }))
                               }
@@ -1434,996 +1182,1299 @@ const ServerForm = ({
                             </label>
                             <input
                               type="password"
-                              value={formData.openapi?.specApiKeyValue || ''}
+                              value={formData.openapi?.apiKeyValue || ''}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  openapi: {
+                                    ...prev.openapi,
+                                    apiKeyValue: e.target.value,
+                                    url: prev.openapi?.url || '',
+                                  },
+                                }))
+                              }
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                              placeholder="your-api-key"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HTTP Authentication Configuration */}
+                    {formData.openapi?.securityType === 'http' && (
+                      <div className="mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
+                        <h4 className="text-sm font-medium mb-3 text-gray-700 dark:text-gray-300">
+                          {t('server.openapi.httpAuthConfig')}
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">
+                              {t('server.openapi.httpScheme')}
+                            </label>
+                            <select
+                              value={formData.openapi?.httpScheme || 'bearer'}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  openapi: {
+                                    ...prev.openapi,
+                                    httpScheme: e.target.value as any,
+                                    url: prev.openapi?.url || '',
+                                  },
+                                }))
+                              }
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                            >
+                              <option value="basic">{t('server.openapi.httpSchemeBasic')}</option>
+                              <option value="bearer">{t('server.openapi.httpSchemeBearer')}</option>
+                              <option value="digest">{t('server.openapi.httpSchemeDigest')}</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">
+                              {t('server.openapi.httpCredentials')}
+                            </label>
+                            <input
+                              type="password"
+                              value={formData.openapi?.httpCredentials || ''}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  openapi: {
+                                    ...prev.openapi,
+                                    httpCredentials: e.target.value,
+                                    url: prev.openapi?.url || '',
+                                  },
+                                }))
+                              }
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                              placeholder={
+                                formData.openapi?.httpScheme === 'basic'
+                                  ? 'user:password or base64'
+                                  : 'bearer-token'
+                              }
+                            />
+                            {formData.openapi?.httpScheme === 'basic' && (
+                              <p className="text-xs text-[var(--hub-ink-3)] mt-1">
+                                {t('server.openapi.httpCredentialsBasicHint')}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* OpenID Connect Configuration */}
+                    {formData.openapi?.securityType === 'openIdConnect' && (
+                      <div className="mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
+                        <h4 className="text-sm font-medium mb-3 text-gray-700 dark:text-gray-300">
+                          {t('server.openapi.openIdConnectConfig')}
+                        </h4>
+                        <div className="grid grid-cols-1 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">
+                              {t('server.openapi.openIdConnectUrl')}
+                            </label>
+                            <input
+                              type="url"
+                              value={formData.openapi?.openIdConnectUrl || ''}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  openapi: {
+                                    ...prev.openapi,
+                                    openIdConnectUrl: e.target.value,
+                                    url: prev.openapi?.url || '',
+                                  },
+                                }))
+                              }
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                              placeholder="https://example.com/.well-known/openid_configuration"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">
+                              {t('server.openapi.openIdConnectToken')}
+                            </label>
+                            <input
+                              type="password"
+                              value={formData.openapi?.openIdConnectToken || ''}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  openapi: {
+                                    ...prev.openapi,
+                                    openIdConnectToken: e.target.value,
+                                    url: prev.openapi?.url || '',
+                                  },
+                                }))
+                              }
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                              placeholder="id-token"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* OAuth2 Configuration */}
+                    {formData.openapi?.securityType === 'oauth2' && (
+                      <div className="mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
+                        <h4 className="text-sm font-medium mb-3 text-gray-700 dark:text-gray-300">
+                          {t('server.openapi.oauth2Config')}
+                        </h4>
+                        <div className="grid grid-cols-1 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">
+                              {t('server.oauth.tokenEndpoint')}
+                            </label>
+                            <input
+                              type="url"
+                              value={formData.openapi?.oauth2TokenUrl || ''}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  openapi: {
+                                    ...prev.openapi,
+                                    oauth2TokenUrl: e.target.value,
+                                    url: prev.openapi?.url || '',
+                                  },
+                                }))
+                              }
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                              placeholder="https://example.com/oauth/token"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">
+                              {t('server.oauth.clientId')}
+                            </label>
+                            <input
+                              type="text"
+                              value={formData.openapi?.oauth2ClientId || ''}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  openapi: {
+                                    ...prev.openapi,
+                                    oauth2ClientId: e.target.value,
+                                    url: prev.openapi?.url || '',
+                                  },
+                                }))
+                              }
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                              placeholder="client-id"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">
+                              {t('server.oauth.clientSecret')}
+                            </label>
+                            <input
+                              type="password"
+                              value={formData.openapi?.oauth2ClientSecret || ''}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  openapi: {
+                                    ...prev.openapi,
+                                    oauth2ClientSecret: e.target.value,
+                                    url: prev.openapi?.url || '',
+                                  },
+                                }))
+                              }
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                              placeholder="client-secret"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">
+                              {t('server.openapi.oauth2Token')}
+                            </label>
+                            <input
+                              type="password"
+                              value={formData.openapi?.oauth2Token || ''}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  openapi: {
+                                    ...prev.openapi,
+                                    oauth2Token: e.target.value,
+                                    url: prev.openapi?.url || '',
+                                  },
+                                }))
+                              }
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                              placeholder="access-token"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Specification Download Security (#1079) */}
+                    <div className="mb-4">
+                      <div className="flex items-center mb-1">
+                        <input
+                          type="checkbox"
+                          id="openapiSpecSecurity"
+                          checked={(formData.openapi?.specSecurityType || 'none') !== 'none'}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              openapi: {
+                                ...prev.openapi,
+                                url: prev.openapi?.url || '',
+                                specSecurityType: e.target.checked ? 'http' : 'none',
+                              },
+                            }))
+                          }
+                          className="mr-2"
+                        />
+                        <label
+                          htmlFor="openapiSpecSecurity"
+                          className="text-gray-700 dark:text-gray-300 text-sm font-medium"
+                        >
+                          {t('server.openapi.specSecurityToggle')}
+                        </label>
+                      </div>
+                      <p className="text-xs text-gray-500 ml-6">
+                        {t('server.openapi.specSecurityHelp')}
+                      </p>
+                      {(formData.openapi?.specSecurityType || 'none') !== 'none' && (
+                        <div className="mt-2 ml-6 p-4 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
+                          <div className="mb-3">
+                            <label className="block text-xs text-gray-600 mb-1">
+                              {t('server.openapi.security')}
+                            </label>
+                            <select
+                              value={formData.openapi?.specSecurityType || 'http'}
                               onChange={(e) =>
                                 setFormData((prev) => ({
                                   ...prev,
                                   openapi: {
                                     ...prev.openapi,
                                     url: prev.openapi?.url || '',
-                                    specApiKeyValue: e.target.value,
+                                    specSecurityType: e.target.value as any,
                                   },
                                 }))
                               }
                               className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                            />
+                            >
+                              <option value="http">{t('server.openapi.securityHttp')}</option>
+                              <option value="apiKey">{t('server.openapi.securityApiKey')}</option>
+                              <option value="oauth2">{t('server.openapi.securityOAuth2')}</option>
+                            </select>
                           </div>
-                        </div>
-                      )}
 
-                      {formData.openapi?.specSecurityType === 'oauth2' && (
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">
-                            {t('server.openapi.oauth2Token')}
-                          </label>
-                          <input
-                            type="password"
-                            value={formData.openapi?.specOauth2Token || ''}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                openapi: {
-                                  ...prev.openapi,
-                                  url: prev.openapi?.url || '',
-                                  specOauth2Token: e.target.value,
-                                },
-                              }))
-                            }
-                            className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
-                            placeholder="access-token"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Cookie Session Handling */}
-                <div className="mb-4">
-                  <div className="flex items-center mb-1">
-                    <input
-                      type="checkbox"
-                      id="openapiCookieSession"
-                      checked={formData.openapi?.cookieSession || false}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          openapi: {
-                            ...prev.openapi,
-                            passthroughHeaders: prev.openapi?.passthroughHeaders || '',
-                            url: prev.openapi?.url || '',
-                            cookieSession: e.target.checked,
-                          },
-                        }))
-                      }
-                      className="mr-2"
-                    />
-                    <label
-                      htmlFor="openapiCookieSession"
-                      className="text-gray-700 dark:text-gray-300 text-sm font-medium"
-                    >
-                      {t('server.openapi.cookieSession', 'Cookie Session Handling')}
-                    </label>
-                  </div>
-                  <p className="text-xs text-gray-500 ml-6">
-                    {t(
-                      'server.openapi.cookieSessionHelp',
-                      'Capture Set-Cookie from upstream login responses and replay them on later calls within the same downstream session. Isolated per MCP session; not persisted.',
-                    )}
-                  </p>
-                </div>
-
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {t('server.headers')}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addHeaderVar}
-                      className="hub-btn primary !w-[30px] !h-[30px] !p-0 justify-center text-base font-bold"
-                    >
-                      +
-                    </button>
-                  </div>
-                  {headerVars.map((headerVar, index) => (
-                    <div key={index} className="flex items-center mb-2">
-                      <div className="flex items-center space-x-2 flex-grow">
-                        <input
-                          type="text"
-                          value={headerVar.key}
-                          onChange={(e) => handleHeaderVarChange(index, 'key', e.target.value)}
-                          className="w-1/2 py-2 px-3 form-input"
-                          placeholder="Authorization"
-                        />
-                        <span className="flex items-center">:</span>
-                        <input
-                          type="text"
-                          value={headerVar.value}
-                          onChange={(e) => handleHeaderVarChange(index, 'value', e.target.value)}
-                          className="w-1/2 py-2 px-3 form-input"
-                          placeholder="Bearer token..."
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeHeaderVar(index)}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-2 rounded text-sm flex items-center justify-center min-w-[30px] min-h-[30px] ml-2 btn-danger"
-                      >
-                        -
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : serverType === 'sse' || serverType === 'streamable-http' ? (
-              <>
-                <div className="mb-4">
-                  <label
-                    className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300"
-                    htmlFor="url"
-                  >
-                    {t('server.url')}
-                  </label>
-                  <input
-                    type="url"
-                    name="url"
-                    id="url"
-                    value={formData.url}
-                    onChange={handleInputChange}
-                    className="w-full py-2 px-3 form-input"
-                    placeholder={
-                      serverType === 'streamable-http'
-                        ? 'e.g.: http://localhost:3000/mcp'
-                        : 'e.g.: http://localhost:3000/sse'
-                    }
-                    required={
-                      !formData.targets?.length &&
-                      (serverType === 'sse' || serverType === 'streamable-http')
-                    }
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {t('server.headers')}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addHeaderVar}
-                      className="hub-btn primary !w-[30px] !h-[30px] !p-0 justify-center text-base font-bold"
-                    >
-                      +
-                    </button>
-                  </div>
-                  {headerVars.map((headerVar, index) => (
-                    <div key={index} className="flex items-center mb-2">
-                      <div className="flex items-center space-x-2 flex-grow">
-                        <input
-                          type="text"
-                          value={headerVar.key}
-                          onChange={(e) => handleHeaderVarChange(index, 'key', e.target.value)}
-                          className="w-1/2 py-2 px-3 form-input"
-                          placeholder="Authorization"
-                        />
-                        <span className="flex items-center">:</span>
-                        <input
-                          type="text"
-                          value={headerVar.value}
-                          onChange={(e) => handleHeaderVarChange(index, 'value', e.target.value)}
-                          className="w-1/2 py-2 px-3 form-input"
-                          placeholder="Bearer token..."
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeHeaderVar(index)}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-2 rounded text-sm flex items-center justify-center min-w-[30px] min-h-[30px] ml-2 btn-danger"
-                      >
-                        -
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {t('server.envVars')}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addEnvVar}
-                      className="hub-btn primary !w-[30px] !h-[30px] !p-0 justify-center text-base font-bold"
-                    >
-                      +
-                    </button>
-                  </div>
-                  {envVars.map((envVar, index) => (
-                    <div key={index} className="flex items-center mb-2">
-                      <div className="flex items-center space-x-2 flex-grow">
-                        <input
-                          type="text"
-                          value={envVar.key}
-                          onChange={(e) => handleEnvVarChange(index, 'key', e.target.value)}
-                          className="w-1/2 py-2 px-3 form-input"
-                          placeholder={t('server.key')}
-                        />
-                        <span className="flex items-center">:</span>
-                        <input
-                          type="text"
-                          value={envVar.value}
-                          onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
-                          className="w-1/2 py-2 px-3 form-input"
-                          placeholder={t('server.value')}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeEnvVar(index)}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-2 rounded text-sm flex items-center justify-center min-w-[30px] min-h-[30px] ml-2 btn-danger"
-                      >
-                        -
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="mb-4">
-                  <label
-                    className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300"
-                    htmlFor="command"
-                  >
-                    {t('server.command')}
-                  </label>
-                  <input
-                    type="text"
-                    name="command"
-                    id="command"
-                    value={formData.command}
-                    onChange={handleInputChange}
-                    className="w-full py-2 px-3 form-input"
-                    placeholder="e.g.: npx"
-                    required={!formData.targets?.length && serverType === 'stdio'}
-                  />
-                </div>
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {t('server.arguments')}
-                    </span>
-                    <button
-                      type="button"
-                      className="text-sm text-blue-600 dark:text-blue-400"
-                      onClick={() =>
-                        setFormData((prev) => ({ ...prev, args: [...(prev.args || []), ''] }))
-                      }
-                    >
-                      {t('server.addArgument')}
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-2">{t('server.argumentsHint')}</p>
-                  {(formData.args || []).map((arg, index) => (
-                    <div key={index} className="flex items-center gap-2 mb-2">
-                      <input
-                        type="text"
-                        aria-label={t('server.argumentLabel', { index: index + 1 })}
-                        value={arg}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData((prev) => ({
-                            ...prev,
-                            args: prev.args?.map((item, i) => (i === index ? value : item)),
-                          }));
-                        }}
-                        className="w-full py-2 px-3 form-input"
-                      />
-                      <button
-                        type="button"
-                        aria-label={t('server.removeArgument', { index: index + 1 })}
-                        onClick={() =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            args: prev.args?.filter((_, i) => i !== index),
-                          }))
-                        }
-                        className="text-gray-500 hover:text-red-600"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {t('server.envVars')}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addEnvVar}
-                      className="hub-btn primary !w-[30px] !h-[30px] !p-0 justify-center text-base font-bold"
-                    >
-                      +
-                    </button>
-                  </div>
-                  {envVars.map((envVar, index) => (
-                    <div key={index} className="flex items-center mb-2">
-                      <div className="flex items-center space-x-2 flex-grow">
-                        <input
-                          type="text"
-                          value={envVar.key}
-                          onChange={(e) => handleEnvVarChange(index, 'key', e.target.value)}
-                          className="w-1/2 py-2 px-3 form-input"
-                          placeholder={t('server.key')}
-                        />
-                        <span className="flex items-center">:</span>
-                        <input
-                          type="text"
-                          value={envVar.value}
-                          onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
-                          className="w-1/2 py-2 px-3 form-input"
-                          placeholder={t('server.value')}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeEnvVar(index)}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-2 rounded text-sm flex items-center justify-center min-w-[30px] min-h-[30px] ml-2 btn-danger"
-                      >
-                        -
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* ─── Section 3: Advanced Options (collapsible) ─── */}
-        <div className="mb-4">
-          <div
-            className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-700"
-            onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
-          >
-            <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-              {t('server.sectionAdvanced', 'Advanced Options')}
-            </h3>
-            <span className="text-gray-500 text-sm">{isAdvancedExpanded ? '▼' : '▶'}</span>
-          </div>
-
-          {isAdvancedExpanded && (
-            <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-white dark:bg-gray-900 border-t-0 space-y-4">
-              <fieldset className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-                <legend className="px-1 font-medium">{t('credentials.slots')}</legend>
-                <p className="text-sm text-gray-500">{t('credentials.slotsHint')}</p>
-                {(formData.credentialTemplate || []).map((slot, index) => (
-                  <div key={index} className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm">
-                      {t(serverType === 'stdio' ? 'server.envVars' : 'server.headers')}
-                    </span>
-                    <input
-                      required
-                      maxLength={128}
-                      aria-label={t('credentials.fieldName')}
-                      placeholder={t('credentials.fieldName')}
-                      value={slot.name}
-                      className="min-w-0 flex-1 py-2 px-3 form-input"
-                      onChange={(event) =>
-                        setFormData({
-                          ...formData,
-                          credentialTemplate: formData.credentialTemplate?.map((item, i) =>
-                            i === index ? { ...item, name: event.target.value } : item,
-                          ),
-                        })
-                      }
-                    />
-                    <input
-                      maxLength={200}
-                      aria-label={t('credentials.label')}
-                      placeholder={t('credentials.label')}
-                      value={slot.label || ''}
-                      className="min-w-0 flex-1 py-2 px-3 form-input"
-                      onChange={(event) =>
-                        setFormData({
-                          ...formData,
-                          credentialTemplate: formData.credentialTemplate?.map((item, i) =>
-                            i === index ? { ...item, label: event.target.value } : item,
-                          ),
-                        })
-                      }
-                    />
-                    <button
-                      type="button"
-                      aria-label={t('credentials.removeSlot')}
-                      onClick={() =>
-                        setFormData({
-                          ...formData,
-                          credentialTemplate: formData.credentialTemplate?.filter(
-                            (_, i) => i !== index,
-                          ),
-                        })
-                      }
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="text-sm text-blue-600"
-                  disabled={(formData.credentialTemplate?.length || 0) >= 32}
-                  onClick={() =>
-                    setFormData({
-                      ...formData,
-                      credentialTemplate: [
-                        ...(formData.credentialTemplate || []),
-                        { target: serverType === 'stdio' ? 'env' : 'headers', name: '' },
-                      ],
-                    })
-                  }
-                >
-                  {t('credentials.addSlot')}
-                </button>
-              </fieldset>
-
-              {/* Visibility */}
-              <div>
-                <label
-                  className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]"
-                  htmlFor="visibility"
-                >
-                  {t('server.visibility', 'Visibility')}
-                </label>
-                <select
-                  id="visibility"
-                  name="visibility"
-                  value={formData.visibility || 'private'}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      visibility: e.target.value as 'private' | 'group' | 'public',
-                    }))
-                  }
-                  className="w-full py-2 px-3 form-input"
-                >
-                  <option value="private">
-                    {t('server.visibilityPrivate', 'Private — only the owner and admins')}
-                  </option>
-                  <option value="group">
-                    {t('server.visibilityGroup', 'Shared — selected users only')}
-                  </option>
-                  <option value="public">
-                    {t('server.visibilityPublic', 'Public — every authenticated user')}
-                  </option>
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  {t(
-                    'server.visibilityDescription',
-                    'Controls which non-admin users can discover and call this server. Admins always have access.',
-                  )}
-                </p>
-
-                {formData.visibility === 'group' && (
-                  <div className="mt-4 rounded border border-gray-200 dark:border-gray-700 p-3">
-                    <div className="text-sm font-medium text-[var(--hub-ink-2)]">
-                      {t('server.shareWithUsers', 'Share with users')}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1 mb-3">
-                      {t(
-                        'server.shareWithUsersDescription',
-                        'Selected users can discover and call this server, but cannot manage its configuration.',
-                      )}
-                    </p>
-
-                    {!initialData?.name ? (
-                      <p className="text-sm text-gray-500">
-                        {t('server.shareAfterCreate', 'Save the server before selecting users.')}
-                      </p>
-                    ) : (
-                      <>
-                        {shareCandidatesLoading && (
-                          <p className="text-sm text-gray-500">
-                            {t('server.shareCandidatesLoading', 'Loading users...')}
-                          </p>
-                        )}
-                        {shareCandidatesError && (
-                          <p className="text-sm text-red-600 dark:text-red-400">
-                            {t('server.shareCandidatesError', 'Failed to load users.')}
-                          </p>
-                        )}
-                        {!shareCandidatesLoading &&
-                          !shareCandidatesError &&
-                          selectableShareUsers.length === 0 && (
-                            <p className="text-sm text-gray-500">
-                              {t('server.noShareCandidates', 'No other users are available.')}
-                            </p>
-                          )}
-                        {selectableShareUsers.length > 0 && (
-                          <>
-                            <div className="mb-3 space-y-2">
-                              <label
-                                htmlFor="share-user-search"
-                                className="block text-xs font-medium text-[var(--hub-ink-2)]"
-                              >
-                                {t('server.shareUserSearchLabel', 'Search users')}
-                              </label>
-                              <input
-                                id="share-user-search"
-                                type="search"
-                                value={shareUserSearch}
-                                onChange={(event) => setShareUserSearch(event.target.value)}
-                                placeholder={t(
-                                  'server.shareUserSearchPlaceholder',
-                                  'Search usernames...',
-                                )}
-                                className="w-full py-2 px-3 form-input text-sm"
-                              />
-                              <div className="flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={selectFilteredShareUsers}
-                                  disabled={allFilteredShareUsersSelected}
-                                  className="hub-btn text-sm"
+                          {formData.openapi?.specSecurityType === 'http' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs text-gray-600 mb-1">
+                                  {t('server.openapi.httpScheme')}
+                                </label>
+                                <select
+                                  value={formData.openapi?.specHttpScheme || 'basic'}
+                                  onChange={(e) =>
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      openapi: {
+                                        ...prev.openapi,
+                                        url: prev.openapi?.url || '',
+                                        specHttpScheme: e.target.value as any,
+                                      },
+                                    }))
+                                  }
+                                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
                                 >
-                                  {t('server.selectAllShareUsers', 'Select all')}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={deselectFilteredShareUsers}
-                                  disabled={noFilteredShareUsersSelected}
-                                  className="hub-btn text-sm"
-                                >
-                                  {t('server.deselectAllShareUsers', 'Deselect all')}
-                                </button>
+                                  <option value="basic">
+                                    {t('server.openapi.httpSchemeBasic')}
+                                  </option>
+                                  <option value="bearer">
+                                    {t('server.openapi.httpSchemeBearer')}
+                                  </option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-600 mb-1">
+                                  {t('server.openapi.httpCredentials')}
+                                </label>
+                                <input
+                                  type="password"
+                                  value={formData.openapi?.specHttpCredentials || ''}
+                                  onChange={(e) =>
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      openapi: {
+                                        ...prev.openapi,
+                                        url: prev.openapi?.url || '',
+                                        specHttpCredentials: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                                  placeholder={
+                                    formData.openapi?.specHttpScheme === 'basic'
+                                      ? 'user:password or base64'
+                                      : 'bearer-token'
+                                  }
+                                />
                               </div>
                             </div>
-                            {filteredShareUsers.length === 0 ? (
-                              <p className="text-sm text-gray-500">
-                                {t('server.noMatchingShareUsers', 'No users match your search.')}
-                              </p>
-                            ) : (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {filteredShareUsers.map((username) => (
-                                  <label
-                                    key={username}
-                                    className="flex items-center gap-2 rounded border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-[var(--hub-ink-2)]"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedShareUsers.has(username)}
-                                      onChange={() => toggleSharedUser(username)}
-                                    />
-                                    <span>{username}</span>
-                                  </label>
-                                ))}
+                          )}
+
+                          {formData.openapi?.specSecurityType === 'apiKey' && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <div>
+                                <label className="block text-xs text-gray-600 mb-1">
+                                  {t('server.openapi.apiKeyName')}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={formData.openapi?.specApiKeyName || ''}
+                                  onChange={(e) =>
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      openapi: {
+                                        ...prev.openapi,
+                                        url: prev.openapi?.url || '',
+                                        specApiKeyName: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                                  placeholder="X-API-Key"
+                                />
                               </div>
-                            )}
-                          </>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
+                              <div>
+                                <label className="block text-xs text-gray-600 mb-1">
+                                  {t('server.openapi.apiKeyIn')}
+                                </label>
+                                <select
+                                  value={formData.openapi?.specApiKeyIn || 'header'}
+                                  onChange={(e) =>
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      openapi: {
+                                        ...prev.openapi,
+                                        url: prev.openapi?.url || '',
+                                        specApiKeyIn: e.target.value as any,
+                                      },
+                                    }))
+                                  }
+                                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                                >
+                                  <option value="header">
+                                    {t('server.openapi.apiKeyInHeader')}
+                                  </option>
+                                  <option value="query">{t('server.openapi.apiKeyInQuery')}</option>
+                                  <option value="cookie">
+                                    {t('server.openapi.apiKeyInCookie')}
+                                  </option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-600 mb-1">
+                                  {t('server.openapi.apiKeyValue')}
+                                </label>
+                                <input
+                                  type="password"
+                                  value={formData.openapi?.specApiKeyValue || ''}
+                                  onChange={(e) =>
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      openapi: {
+                                        ...prev.openapi,
+                                        url: prev.openapi?.url || '',
+                                        specApiKeyValue: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                                />
+                              </div>
+                            </div>
+                          )}
 
-              {/* Passthrough Headers Configuration */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]">
-                  {t('server.openapi.passthroughHeaders')}
-                </label>
-                {serverType === 'openapi' ? (
-                  <>
-                    <input
-                      type="text"
-                      value={formData.openapi?.passthroughHeaders || ''}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          openapi: {
-                            ...prev.openapi,
-                            passthroughHeaders: e.target.value,
-                            url: prev.openapi?.url || '',
-                          },
-                        }))
-                      }
-                      className="w-full py-2 px-3 form-input"
-                      placeholder="Authorization, X-API-Key, X-Custom-Header"
-                    />
-                  </>
-                ) : (
-                  <input
-                    type="text"
-                    value={formData.passthroughHeaders || ''}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        passthroughHeaders: e.target.value,
-                      }))
-                    }
-                    className="w-full py-2 px-3 form-input"
-                    placeholder="Authorization, X-Custom-User-Id"
-                  />
-                )}
-                <p className="text-xs text-gray-500 mt-1">
-                  {t('server.openapi.passthroughHeadersHelp')}
-                </p>
-              </div>
-
-              {/* OAuth Configuration - non-OpenAPI types */}
-              {serverType !== 'openapi' && (
-                <div>
-                  <div
-                    className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-700"
-                    onClick={() => setIsOAuthSectionExpanded(!isOAuthSectionExpanded)}
-                  >
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {t('server.oauth.sectionTitle')}
-                    </label>
-                    <span className="text-gray-500 text-sm">
-                      {isOAuthSectionExpanded ? '▼' : '▶'}
-                    </span>
-                  </div>
-
-                  {isOAuthSectionExpanded && (
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-gray-50 dark:bg-gray-800 border-t-0">
-                      <p className="text-xs text-gray-500 mb-3">
-                        {t('server.oauth.sectionDescription')}
-                      </p>
-                      {(serverType === 'sse' || serverType === 'streamable-http') &&
-                        (auth.user?.isAdmin || formData.oauth?.allowInsecureTokenEndpoint) && (
-                          <div className="mb-3">
-                            <label className="flex items-center gap-2 text-sm">
+                          {formData.openapi?.specSecurityType === 'oauth2' && (
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">
+                                {t('server.openapi.oauth2Token')}
+                              </label>
                               <input
-                                type="checkbox"
-                                checked={formData.oauth?.allowInsecureTokenEndpoint === true}
-                                disabled={!auth.user?.isAdmin}
+                                type="password"
+                                value={formData.openapi?.specOauth2Token || ''}
                                 onChange={(e) =>
-                                  handleOAuthChange('allowInsecureTokenEndpoint', e.target.checked)
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    openapi: {
+                                      ...prev.openapi,
+                                      url: prev.openapi?.url || '',
+                                      specOauth2Token: e.target.value,
+                                    },
+                                  }))
                                 }
+                                className="w-full border rounded px-2 py-1 text-sm focus:outline-none form-input"
+                                placeholder="access-token"
                               />
-                              {t('server.oauth.allowInsecureTokenEndpoint')}
-                            </label>
-                            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                              {t('server.oauth.allowInsecureTokenEndpointHelp')}
-                            </p>
-                          </div>
-                        )}
-                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">
-                            {t('server.oauth.clientId')}
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.oauth?.clientId || ''}
-                            onChange={(e) => handleOAuthChange('clientId', e.target.value)}
-                            className="w-full py-2 px-3 form-input"
-                            placeholder="client id"
-                            autoComplete="off"
-                          />
+                            </div>
+                          )}
                         </div>
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">
-                            {t('server.oauth.clientSecret')}
-                          </label>
-                          <input
-                            type="password"
-                            value={formData.oauth?.clientSecret || ''}
-                            onChange={(e) => handleOAuthChange('clientSecret', e.target.value)}
-                            className="w-full py-2 px-3 form-input"
-                            placeholder="client secret"
-                            autoComplete="off"
-                          />
-                        </div>
-                      </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
 
-              {/* Request Options Configuration */}
-              {serverType !== 'openapi' && (
-                <div>
-                  <div
-                    className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 p-3 rounded border border-gray-200 dark:border-gray-700"
-                    onClick={() => setIsRequestOptionsExpanded(!isRequestOptionsExpanded)}
-                  >
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {t('server.requestOptions')}
-                    </label>
-                    <span className="text-gray-500 text-sm">
-                      {isRequestOptionsExpanded ? '▼' : '▶'}
-                    </span>
-                  </div>
-
-                  {isRequestOptionsExpanded && (
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-gray-50 dark:bg-gray-800 border-t-0">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {serverType === 'stdio' && (
-                          <div>
-                            <label
-                              className="block text-gray-600 text-sm font-medium mb-1"
-                              htmlFor="maxBufferSize"
-                            >
-                              {t('server.maxBufferSize')}
-                            </label>
-                            <input
-                              type="number"
-                              id="maxBufferSize"
-                              value={formData.options?.maxBufferSize ?? ''}
-                              onChange={(e) =>
-                                handleOptionsChange(
-                                  'maxBufferSize',
-                                  e.target.value === '' ? undefined : Number(e.target.value),
-                                )
-                              }
-                              className="w-full py-2 px-3 form-input"
-                              placeholder="10485760"
-                              min="1"
-                              step="1"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">
-                              {t('server.maxBufferSizeDescription')}
-                            </p>
-                          </div>
-                        )}
-                        <div>
-                          <label
-                            className="block text-gray-600 text-sm font-medium mb-1"
-                            htmlFor="timeout"
-                          >
-                            {t('server.timeout')}
-                          </label>
-                          <input
-                            type="number"
-                            id="timeout"
-                            value={formData.options?.timeout || 60000}
-                            onChange={(e) =>
-                              handleOptionsChange('timeout', parseInt(e.target.value) || 60000)
-                            }
-                            className="w-full py-2 px-3 form-input"
-                            placeholder="30000"
-                            min="1000"
-                            max="300000"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">
-                            {t('server.timeoutDescription')}
-                          </p>
-                        </div>
-
-                        <div>
-                          <label
-                            className="block text-gray-600 text-sm font-medium mb-1"
-                            htmlFor="maxTotalTimeout"
-                          >
-                            {t('server.maxTotalTimeout')}
-                          </label>
-                          <input
-                            type="number"
-                            id="maxTotalTimeout"
-                            value={formData.options?.maxTotalTimeout || ''}
-                            onChange={(e) =>
-                              handleOptionsChange(
-                                'maxTotalTimeout',
-                                e.target.value ? parseInt(e.target.value) : undefined,
-                              )
-                            }
-                            className="w-full py-2 px-3 form-input"
-                            placeholder="Optional"
-                            min="1000"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">
-                            {t('server.maxTotalTimeoutDescription')}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-3">
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={formData.options?.resetTimeoutOnProgress ?? true}
-                            onChange={(e) =>
-                              handleOptionsChange('resetTimeoutOnProgress', e.target.checked)
-                            }
-                            className="mr-2"
-                          />
-                          <span className="text-gray-600 text-sm">
-                            {t('server.resetTimeoutOnProgress')}
-                          </span>
-                        </label>
-                        <p className="text-xs text-gray-500 mt-1 ml-6">
-                          {t('server.resetTimeoutOnProgressDescription')}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* KeepAlive Configuration - only for SSE/Streamable HTTP */}
-              {(serverType === 'sse' || serverType === 'streamable-http') && (
-                <div>
-                  <div
-                    className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 p-3 rounded border border-gray-200 dark:border-gray-700"
-                    onClick={() => setIsKeepAliveSectionExpanded(!isKeepAliveSectionExpanded)}
-                  >
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {t('server.keepAlive', 'Connection Health')}
-                    </label>
-                    <span className="text-gray-500 text-sm">
-                      {isKeepAliveSectionExpanded ? '▼' : '▶'}
-                    </span>
-                  </div>
-
-                  {isKeepAliveSectionExpanded && (
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-gray-50 dark:bg-gray-800 border-t-0">
-                      <div className="flex items-center mb-3">
+                    {/* Cookie Session Handling */}
+                    <div className="mb-4">
+                      <div className="flex items-center mb-1">
                         <input
                           type="checkbox"
-                          id="enableKeepAlive"
-                          checked={formData.keepAlive?.enabled || false}
+                          id="openapiCookieSession"
+                          checked={formData.openapi?.cookieSession || false}
                           onChange={(e) =>
                             setFormData((prev) => ({
                               ...prev,
-                              keepAlive: {
-                                ...prev.keepAlive,
-                                enabled: e.target.checked,
+                              openapi: {
+                                ...prev.openapi,
+                                passthroughHeaders: prev.openapi?.passthroughHeaders || '',
+                                url: prev.openapi?.url || '',
+                                cookieSession: e.target.checked,
                               },
                             }))
                           }
                           className="mr-2"
                         />
-                        <label htmlFor="enableKeepAlive" className="text-gray-600 text-sm">
-                          {t('server.enableKeepAlive', 'Enable Health Checks and Auto Reconnect')}
+                        <label
+                          htmlFor="openapiCookieSession"
+                          className="text-gray-700 dark:text-gray-300 text-sm font-medium"
+                        >
+                          {t('server.openapi.cookieSession', 'Cookie Session Handling')}
                         </label>
                       </div>
-                      <p className="text-xs text-gray-500 mb-3">
+                      <p className="text-xs text-gray-500 ml-6">
                         {t(
-                          'server.keepAliveDescription',
-                          'Run periodic health checks and automatically reconnect this remote server when it becomes disconnected.',
+                          'server.openapi.cookieSessionHelp',
+                          'Capture Set-Cookie from upstream login responses and replay them on later calls within the same downstream session. Isolated per MCP session; not persisted.',
                         )}
                       </p>
-                      <div>
-                        <label
-                          className="block text-gray-600 text-sm font-medium mb-1"
-                          htmlFor="keepAliveInterval"
-                        >
-                          {t('server.keepAliveInterval', 'Check interval (ms)')}
+                    </div>
+
+                    <div className="mb-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {t('server.headers')}
                         </label>
+                        <button
+                          type="button"
+                          onClick={addHeaderVar}
+                          className="hub-btn primary !w-[30px] !h-[30px] !p-0 justify-center text-base font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                      {headerVars.map((headerVar, index) => (
+                        <div key={index} className="flex items-center mb-2">
+                          <div className="flex items-center space-x-2 flex-grow">
+                            <input
+                              type="text"
+                              value={headerVar.key}
+                              onChange={(e) => handleHeaderVarChange(index, 'key', e.target.value)}
+                              className="w-1/2 py-2 px-3 form-input"
+                              placeholder="Authorization"
+                            />
+                            <span className="flex items-center">:</span>
+                            <input
+                              type="text"
+                              value={headerVar.value}
+                              onChange={(e) =>
+                                handleHeaderVarChange(index, 'value', e.target.value)
+                              }
+                              className="w-1/2 py-2 px-3 form-input"
+                              placeholder="Bearer token..."
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeHeaderVar(index)}
+                            className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-2 rounded text-sm flex items-center justify-center min-w-[30px] min-h-[30px] ml-2 btn-danger"
+                          >
+                            -
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : serverType === 'sse' || serverType === 'streamable-http' ? (
+                  <>
+                    <div className="mb-4">
+                      <label
+                        className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300"
+                        htmlFor="url"
+                      >
+                        {t('server.url')}
+                      </label>
+                      <input
+                        type="url"
+                        name="url"
+                        id="url"
+                        value={formData.url}
+                        onChange={handleInputChange}
+                        className="w-full py-2 px-3 form-input"
+                        placeholder={
+                          serverType === 'streamable-http'
+                            ? 'e.g.: http://localhost:3000/mcp'
+                            : 'e.g.: http://localhost:3000/sse'
+                        }
+                        required={
+                          !formData.targets?.length &&
+                          (serverType === 'sse' || serverType === 'streamable-http')
+                        }
+                      />
+                    </div>
+
+                    <div className="mb-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {t('server.headers')}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={addHeaderVar}
+                          className="hub-btn primary !w-[30px] !h-[30px] !p-0 justify-center text-base font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                      {headerVars.map((headerVar, index) => (
+                        <div key={index} className="flex items-center mb-2">
+                          <div className="flex items-center space-x-2 flex-grow">
+                            <input
+                              type="text"
+                              value={headerVar.key}
+                              onChange={(e) => handleHeaderVarChange(index, 'key', e.target.value)}
+                              className="w-1/2 py-2 px-3 form-input"
+                              placeholder="Authorization"
+                            />
+                            <span className="flex items-center">:</span>
+                            <input
+                              type="text"
+                              value={headerVar.value}
+                              onChange={(e) =>
+                                handleHeaderVarChange(index, 'value', e.target.value)
+                              }
+                              className="w-1/2 py-2 px-3 form-input"
+                              placeholder="Bearer token..."
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeHeaderVar(index)}
+                            className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-2 rounded text-sm flex items-center justify-center min-w-[30px] min-h-[30px] ml-2 btn-danger"
+                          >
+                            -
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mb-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {t('server.envVars')}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={addEnvVar}
+                          className="hub-btn primary !w-[30px] !h-[30px] !p-0 justify-center text-base font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <p className="hub-sub mb-3 text-xs">{t('server.connectionEnvHint')}</p>
+                      {envVars.map((envVar, index) =>
+                        formData.keyPool?.enabled &&
+                        isPooledCredential(envVar.key, keyPoolProvider) ? null : (
+                          <div key={index} className="flex items-center mb-2">
+                            <div className="flex items-center space-x-2 flex-grow">
+                              <input
+                                type="text"
+                                value={envVar.key}
+                                onChange={(e) => handleEnvVarChange(index, 'key', e.target.value)}
+                                className="w-1/2 py-2 px-3 form-input"
+                                placeholder={t('server.key')}
+                              />
+                              <span className="flex items-center">:</span>
+                              <input
+                                type={
+                                  /(?:KEY|TOKEN|SECRET|PASSWORD|HEADERS)$/i.test(envVar.key)
+                                    ? 'password'
+                                    : 'text'
+                                }
+                                autoComplete="off"
+                                value={envVar.value}
+                                onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
+                                className="w-1/2 py-2 px-3 form-input"
+                                placeholder={t('server.value')}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeEnvVar(index)}
+                              className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-2 rounded text-sm flex items-center justify-center min-w-[30px] min-h-[30px] ml-2 btn-danger"
+                            >
+                              -
+                            </button>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-4">
+                      <label
+                        className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300"
+                        htmlFor="command"
+                      >
+                        {t('server.command')}
+                      </label>
+                      <input
+                        type="text"
+                        name="command"
+                        id="command"
+                        value={formData.command}
+                        onChange={handleInputChange}
+                        className="w-full py-2 px-3 form-input"
+                        placeholder="e.g.: npx"
+                        required={!formData.targets?.length && serverType === 'stdio'}
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {t('server.arguments')}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-sm text-blue-600 dark:text-blue-400"
+                          onClick={() =>
+                            setFormData((prev) => ({ ...prev, args: [...(prev.args || []), ''] }))
+                          }
+                        >
+                          {t('server.addArgument')}
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-2">{t('server.argumentsHint')}</p>
+                      {(formData.args || []).map((arg, index) => (
+                        <div key={index} className="flex items-center gap-2 mb-2">
+                          <input
+                            type="text"
+                            aria-label={t('server.argumentLabel', { index: index + 1 })}
+                            value={arg}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setFormData((prev) => ({
+                                ...prev,
+                                args: prev.args?.map((item, i) => (i === index ? value : item)),
+                              }));
+                            }}
+                            className="w-full py-2 px-3 form-input"
+                          />
+                          <button
+                            type="button"
+                            aria-label={t('server.removeArgument', { index: index + 1 })}
+                            onClick={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                args: prev.args?.filter((_, i) => i !== index),
+                              }))
+                            }
+                            className="text-gray-500 hover:text-red-600"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {serverType === 'stdio' && !formData.targets?.length && (
+                      <KeyPoolEditor
+                        provider={keyPoolProvider}
+                        value={formData.keyPool}
+                        onChange={(keyPool) =>
+                          setFormData((previous) => ({ ...previous, keyPool }))
+                        }
+                      />
+                    )}
+                    <div className="mb-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {t('server.envVars')}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={addEnvVar}
+                          className="hub-btn primary !w-[30px] !h-[30px] !p-0 justify-center text-base font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <p className="hub-sub mb-3 text-xs">{t('server.connectionEnvHint')}</p>
+                      {envVars.map((envVar, index) =>
+                        formData.keyPool?.enabled &&
+                        isPooledCredential(envVar.key, keyPoolProvider) ? null : (
+                          <div key={index} className="flex items-center mb-2">
+                            <div className="flex items-center space-x-2 flex-grow">
+                              <input
+                                type="text"
+                                value={envVar.key}
+                                onChange={(e) => handleEnvVarChange(index, 'key', e.target.value)}
+                                className="w-1/2 py-2 px-3 form-input"
+                                placeholder={t('server.key')}
+                              />
+                              <span className="flex items-center">:</span>
+                              <input
+                                type={
+                                  /(?:KEY|TOKEN|SECRET|PASSWORD|HEADERS)$/i.test(envVar.key)
+                                    ? 'password'
+                                    : 'text'
+                                }
+                                autoComplete="off"
+                                value={envVar.value}
+                                onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
+                                className="w-1/2 py-2 px-3 form-input"
+                                placeholder={t('server.value')}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeEnvVar(index)}
+                              className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-2 rounded text-sm flex items-center justify-center min-w-[30px] min-h-[30px] ml-2 btn-danger"
+                            >
+                              -
+                            </button>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* ─── Section 3: Advanced Options (collapsible) ─── */}
+            <div className="mb-4">
+              <div
+                className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-700"
+                onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
+              >
+                <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
+                  {t('server.sectionAdvanced', 'Advanced Options')}
+                </h3>
+                <span className="text-gray-500 text-sm">{isAdvancedExpanded ? '▼' : '▶'}</span>
+              </div>
+
+              {isAdvancedExpanded && (
+                <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-white dark:bg-gray-900 border-t-0 space-y-4">
+                  <fieldset className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                    <legend className="px-1 font-medium">{t('credentials.slots')}</legend>
+                    <p className="text-sm text-gray-500">{t('credentials.slotsHint')}</p>
+                    {(formData.credentialTemplate || []).map((slot, index) => (
+                      <div key={index} className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm">
+                          {t(serverType === 'stdio' ? 'server.envVars' : 'server.headers')}
+                        </span>
                         <input
-                          type="number"
-                          id="keepAliveInterval"
-                          value={formData.keepAlive?.interval || 60000}
+                          required
+                          maxLength={128}
+                          aria-label={t('credentials.fieldName')}
+                          placeholder={t('credentials.fieldName')}
+                          value={slot.name}
+                          className="min-w-0 flex-1 py-2 px-3 form-input"
+                          onChange={(event) =>
+                            setFormData({
+                              ...formData,
+                              credentialTemplate: formData.credentialTemplate?.map((item, i) =>
+                                i === index ? { ...item, name: event.target.value } : item,
+                              ),
+                            })
+                          }
+                        />
+                        <input
+                          maxLength={200}
+                          aria-label={t('credentials.label')}
+                          placeholder={t('credentials.label')}
+                          value={slot.label || ''}
+                          className="min-w-0 flex-1 py-2 px-3 form-input"
+                          onChange={(event) =>
+                            setFormData({
+                              ...formData,
+                              credentialTemplate: formData.credentialTemplate?.map((item, i) =>
+                                i === index ? { ...item, label: event.target.value } : item,
+                              ),
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          aria-label={t('credentials.removeSlot')}
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              credentialTemplate: formData.credentialTemplate?.filter(
+                                (_, i) => i !== index,
+                              ),
+                            })
+                          }
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="text-sm text-blue-600"
+                      disabled={(formData.credentialTemplate?.length || 0) >= 32}
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          credentialTemplate: [
+                            ...(formData.credentialTemplate || []),
+                            { target: serverType === 'stdio' ? 'env' : 'headers', name: '' },
+                          ],
+                        })
+                      }
+                    >
+                      {t('credentials.addSlot')}
+                    </button>
+                  </fieldset>
+
+                  {/* Visibility */}
+                  {/* Passthrough Headers Configuration */}
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]">
+                      {t('server.openapi.passthroughHeaders')}
+                    </label>
+                    {serverType === 'openapi' ? (
+                      <>
+                        <input
+                          type="text"
+                          value={formData.openapi?.passthroughHeaders || ''}
                           onChange={(e) =>
                             setFormData((prev) => ({
                               ...prev,
-                              keepAlive: {
-                                ...prev.keepAlive,
-                                interval: parseInt(e.target.value) || 60000,
+                              openapi: {
+                                ...prev.openapi,
+                                passthroughHeaders: e.target.value,
+                                url: prev.openapi?.url || '',
                               },
                             }))
                           }
                           className="w-full py-2 px-3 form-input"
-                          placeholder="60000"
-                          min="5000"
-                          max="300000"
+                          placeholder="Authorization, X-API-Key, X-Custom-Header"
                         />
-                        <p className="text-xs text-gray-500 mt-1">
-                          {t(
-                            'server.keepAliveIntervalDescription',
-                            'Time between health checks and automatic reconnect attempts in milliseconds (default: 60000ms = 1 minute)',
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Per-session client isolation - applies to any server type except openapi */}
-              {serverType !== 'openapi' && (
-                <div>
-                  <div className="flex items-center mb-1">
-                    <input
-                      type="checkbox"
-                      id="perSessionClient"
-                      checked={formData.perSessionClient || false}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          perSessionClient: e.target.checked,
-                        }))
-                      }
-                      className="mr-2"
-                    />
-                    <label
-                      htmlFor="perSessionClient"
-                      className="text-gray-700 dark:text-gray-300 text-sm font-medium"
-                    >
-                      {t('server.perSessionClient', 'Per-Session Client Isolation')}
-                    </label>
-                  </div>
-                  <p className="text-xs text-gray-500 ml-6">
-                    {t(
-                      'server.perSessionClientDescription',
-                      'Create a dedicated upstream connection per session instead of sharing one across all sessions. Enable for stateful servers like Playwright. Increases upstream connections with concurrent sessions.',
-                    )}
-                  </p>
-                </div>
-              )}
-
-              {/* On-demand spawning - stdio only */}
-              {serverType === 'stdio' && (
-                <div>
-                  <div className="flex items-center mb-1">
-                    <input
-                      type="checkbox"
-                      id="startOnDemand"
-                      checked={formData.startOnDemand || false}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          startOnDemand: e.target.checked,
-                        }))
-                      }
-                      className="mr-2"
-                    />
-                    <label
-                      htmlFor="startOnDemand"
-                      className="text-gray-700 dark:text-gray-300 text-sm font-medium"
-                    >
-                      {t('server.startOnDemand', 'Start On Demand')}
-                    </label>
-                  </div>
-                  <p className="text-xs text-gray-500 ml-6">
-                    {t(
-                      'server.startOnDemandDescription',
-                      'Skip startup connect and spawn this server only when a tool call arrives. The process is shut down automatically after the idle timeout, then restarted on the next call. Reduces persistent memory usage for rarely-used servers.',
-                    )}
-                  </p>
-                  {(formData.startOnDemand || !!formData.credentialTemplate?.length) && (
-                    <div className="ml-6 mt-2">
-                      <label
-                        htmlFor="idleTimeoutMs"
-                        className="block text-xs text-gray-600 dark:text-gray-400 mb-1"
-                      >
-                        {t('server.idleTimeoutMs', 'Idle shutdown timeout (ms)')}
-                      </label>
+                      </>
+                    ) : (
                       <input
-                        type="number"
-                        id="idleTimeoutMs"
-                        min={10000}
-                        step={1000}
-                        value={formData.idleTimeoutMs ?? 300000}
+                        type="text"
+                        value={formData.passthroughHeaders || ''}
                         onChange={(e) =>
                           setFormData((prev) => ({
                             ...prev,
-                            idleTimeoutMs: Number(e.target.value),
+                            passthroughHeaders: e.target.value,
                           }))
                         }
-                        className="hub-input w-40 text-sm"
+                        className="w-full py-2 px-3 form-input"
+                        placeholder="Authorization, X-Custom-User-Id"
                       />
-                      <p className="text-xs text-gray-500 mt-1">
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      {t('server.openapi.passthroughHeadersHelp')}
+                    </p>
+                  </div>
+
+                  {/* OAuth Configuration - non-OpenAPI types */}
+                  {serverType !== 'openapi' && (
+                    <div>
+                      <div
+                        className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-700"
+                        onClick={() => setIsOAuthSectionExpanded(!isOAuthSectionExpanded)}
+                      >
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {t('server.oauth.sectionTitle')}
+                        </label>
+                        <span className="text-gray-500 text-sm">
+                          {isOAuthSectionExpanded ? '▼' : '▶'}
+                        </span>
+                      </div>
+
+                      {isOAuthSectionExpanded && (
+                        <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-gray-50 dark:bg-gray-800 border-t-0">
+                          <p className="text-xs text-gray-500 mb-3">
+                            {t('server.oauth.sectionDescription')}
+                          </p>
+                          {(serverType === 'sse' || serverType === 'streamable-http') &&
+                            (auth.user?.isAdmin || formData.oauth?.allowInsecureTokenEndpoint) && (
+                              <div className="mb-3">
+                                <label className="flex items-center gap-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={formData.oauth?.allowInsecureTokenEndpoint === true}
+                                    disabled={!auth.user?.isAdmin}
+                                    onChange={(e) =>
+                                      handleOAuthChange(
+                                        'allowInsecureTokenEndpoint',
+                                        e.target.checked,
+                                      )
+                                    }
+                                  />
+                                  {t('server.oauth.allowInsecureTokenEndpoint')}
+                                </label>
+                                <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                                  {t('server.oauth.allowInsecureTokenEndpointHelp')}
+                                </p>
+                              </div>
+                            )}
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">
+                                {t('server.oauth.clientId')}
+                              </label>
+                              <input
+                                type="text"
+                                value={formData.oauth?.clientId || ''}
+                                onChange={(e) => handleOAuthChange('clientId', e.target.value)}
+                                className="w-full py-2 px-3 form-input"
+                                placeholder="client id"
+                                autoComplete="off"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">
+                                {t('server.oauth.clientSecret')}
+                              </label>
+                              <input
+                                type="password"
+                                value={formData.oauth?.clientSecret || ''}
+                                onChange={(e) => handleOAuthChange('clientSecret', e.target.value)}
+                                className="w-full py-2 px-3 form-input"
+                                placeholder="client secret"
+                                autoComplete="off"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Request Options Configuration */}
+                  {serverType !== 'openapi' && (
+                    <div>
+                      <div
+                        className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 p-3 rounded border border-gray-200 dark:border-gray-700"
+                        onClick={() => setIsRequestOptionsExpanded(!isRequestOptionsExpanded)}
+                      >
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {t('server.requestOptions')}
+                        </label>
+                        <span className="text-gray-500 text-sm">
+                          {isRequestOptionsExpanded ? '▼' : '▶'}
+                        </span>
+                      </div>
+
+                      {isRequestOptionsExpanded && (
+                        <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-gray-50 dark:bg-gray-800 border-t-0">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {serverType === 'stdio' && (
+                              <div>
+                                <label
+                                  className="block text-gray-600 text-sm font-medium mb-1"
+                                  htmlFor="maxBufferSize"
+                                >
+                                  {t('server.maxBufferSize')}
+                                </label>
+                                <input
+                                  type="number"
+                                  id="maxBufferSize"
+                                  value={formData.options?.maxBufferSize ?? ''}
+                                  onChange={(e) =>
+                                    handleOptionsChange(
+                                      'maxBufferSize',
+                                      e.target.value === '' ? undefined : Number(e.target.value),
+                                    )
+                                  }
+                                  className="w-full py-2 px-3 form-input"
+                                  placeholder="10485760"
+                                  min="1"
+                                  step="1"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {t('server.maxBufferSizeDescription')}
+                                </p>
+                              </div>
+                            )}
+                            <div>
+                              <label
+                                className="block text-gray-600 text-sm font-medium mb-1"
+                                htmlFor="timeout"
+                              >
+                                {t('server.timeout')}
+                              </label>
+                              <input
+                                type="number"
+                                id="timeout"
+                                value={formData.options?.timeout || 60000}
+                                onChange={(e) =>
+                                  handleOptionsChange('timeout', parseInt(e.target.value) || 60000)
+                                }
+                                className="w-full py-2 px-3 form-input"
+                                placeholder="30000"
+                                min="1000"
+                                max="300000"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">
+                                {t('server.timeoutDescription')}
+                              </p>
+                            </div>
+
+                            <div>
+                              <label
+                                className="block text-gray-600 text-sm font-medium mb-1"
+                                htmlFor="maxTotalTimeout"
+                              >
+                                {t('server.maxTotalTimeout')}
+                              </label>
+                              <input
+                                type="number"
+                                id="maxTotalTimeout"
+                                value={formData.options?.maxTotalTimeout || ''}
+                                onChange={(e) =>
+                                  handleOptionsChange(
+                                    'maxTotalTimeout',
+                                    e.target.value ? parseInt(e.target.value) : undefined,
+                                  )
+                                }
+                                className="w-full py-2 px-3 form-input"
+                                placeholder="Optional"
+                                min="1000"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">
+                                {t('server.maxTotalTimeoutDescription')}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-3">
+                            <label className="flex items-center">
+                              <input
+                                type="checkbox"
+                                checked={formData.options?.resetTimeoutOnProgress ?? true}
+                                onChange={(e) =>
+                                  handleOptionsChange('resetTimeoutOnProgress', e.target.checked)
+                                }
+                                className="mr-2"
+                              />
+                              <span className="text-gray-600 text-sm">
+                                {t('server.resetTimeoutOnProgress')}
+                              </span>
+                            </label>
+                            <p className="text-xs text-gray-500 mt-1 ml-6">
+                              {t('server.resetTimeoutOnProgressDescription')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* KeepAlive Configuration - only for SSE/Streamable HTTP */}
+                  {(serverType === 'sse' || serverType === 'streamable-http') && (
+                    <div>
+                      <div
+                        className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 p-3 rounded border border-gray-200 dark:border-gray-700"
+                        onClick={() => setIsKeepAliveSectionExpanded(!isKeepAliveSectionExpanded)}
+                      >
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {t('server.keepAlive', 'Connection Health')}
+                        </label>
+                        <span className="text-gray-500 text-sm">
+                          {isKeepAliveSectionExpanded ? '▼' : '▶'}
+                        </span>
+                      </div>
+
+                      {isKeepAliveSectionExpanded && (
+                        <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-gray-50 dark:bg-gray-800 border-t-0">
+                          <div className="flex items-center mb-3">
+                            <input
+                              type="checkbox"
+                              id="enableKeepAlive"
+                              checked={formData.keepAlive?.enabled || false}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  keepAlive: {
+                                    ...prev.keepAlive,
+                                    enabled: e.target.checked,
+                                  },
+                                }))
+                              }
+                              className="mr-2"
+                            />
+                            <label htmlFor="enableKeepAlive" className="text-gray-600 text-sm">
+                              {t(
+                                'server.enableKeepAlive',
+                                'Enable Health Checks and Auto Reconnect',
+                              )}
+                            </label>
+                          </div>
+                          <p className="text-xs text-gray-500 mb-3">
+                            {t(
+                              'server.keepAliveDescription',
+                              'Run periodic health checks and automatically reconnect this remote server when it becomes disconnected.',
+                            )}
+                          </p>
+                          <div>
+                            <label
+                              className="block text-gray-600 text-sm font-medium mb-1"
+                              htmlFor="keepAliveInterval"
+                            >
+                              {t('server.keepAliveInterval', 'Check interval (ms)')}
+                            </label>
+                            <input
+                              type="number"
+                              id="keepAliveInterval"
+                              value={formData.keepAlive?.interval || 60000}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  keepAlive: {
+                                    ...prev.keepAlive,
+                                    interval: parseInt(e.target.value) || 60000,
+                                  },
+                                }))
+                              }
+                              className="w-full py-2 px-3 form-input"
+                              placeholder="60000"
+                              min="5000"
+                              max="300000"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                              {t(
+                                'server.keepAliveIntervalDescription',
+                                'Time between health checks and automatic reconnect attempts in milliseconds (default: 60000ms = 1 minute)',
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Per-session client isolation - applies to any server type except openapi */}
+                  {serverType !== 'openapi' && (
+                    <div>
+                      <div className="flex items-center mb-1">
+                        <input
+                          type="checkbox"
+                          id="perSessionClient"
+                          checked={formData.perSessionClient || false}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              perSessionClient: e.target.checked,
+                            }))
+                          }
+                          className="mr-2"
+                        />
+                        <label
+                          htmlFor="perSessionClient"
+                          className="text-gray-700 dark:text-gray-300 text-sm font-medium"
+                        >
+                          {t('server.perSessionClient', 'Per-Session Client Isolation')}
+                        </label>
+                      </div>
+                      <p className="text-xs text-gray-500 ml-6">
                         {t(
-                          'server.idleTimeoutMsDescription',
-                          'Shut down the process after this many milliseconds with no tool calls. Default: 300000 (5 minutes).',
+                          'server.perSessionClientDescription',
+                          'Create a dedicated upstream connection per session instead of sharing one across all sessions. Enable for stateful servers like Playwright. Increases upstream connections with concurrent sessions.',
                         )}
                       </p>
+                    </div>
+                  )}
+
+                  {/* On-demand spawning - stdio only */}
+                  {serverType === 'stdio' && (
+                    <div>
+                      <div className="flex items-center mb-1">
+                        <input
+                          type="checkbox"
+                          id="startOnDemand"
+                          checked={formData.startOnDemand || false}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              startOnDemand: e.target.checked,
+                            }))
+                          }
+                          className="mr-2"
+                        />
+                        <label
+                          htmlFor="startOnDemand"
+                          className="text-gray-700 dark:text-gray-300 text-sm font-medium"
+                        >
+                          {t('server.startOnDemand', 'Start On Demand')}
+                        </label>
+                      </div>
+                      <p className="text-xs text-gray-500 ml-6">
+                        {t(
+                          'server.startOnDemandDescription',
+                          'Skip startup connect and spawn this server only when a tool call arrives. The process is shut down automatically after the idle timeout, then restarted on the next call. Reduces persistent memory usage for rarely-used servers.',
+                        )}
+                      </p>
+                      {(formData.startOnDemand || !!formData.credentialTemplate?.length) && (
+                        <div className="ml-6 mt-2">
+                          <label
+                            htmlFor="idleTimeoutMs"
+                            className="block text-xs text-gray-600 dark:text-gray-400 mb-1"
+                          >
+                            {t('server.idleTimeoutMs', 'Idle shutdown timeout (ms)')}
+                          </label>
+                          <input
+                            type="number"
+                            id="idleTimeoutMs"
+                            min={10000}
+                            step={1000}
+                            value={formData.idleTimeoutMs ?? 300000}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                idleTimeoutMs: Number(e.target.value),
+                              }))
+                            }
+                            className="hub-input w-40 text-sm"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            {t(
+                              'server.idleTimeoutMsDescription',
+                              'Shut down the process after this many milliseconds with no tool calls. Default: 300000 (5 minutes).',
+                            )}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
             </div>
-          )}
-        </div>
-
+          </>
+        )}
+        <ServiceControls
+          rateLimit={formData.rateLimit}
+          relay={formData.relay}
+          stdio={!formData.targets?.length && serverType === 'stdio'}
+          onChange={(value) => setFormData((previous) => ({ ...previous, ...value }))}
+        />
         <div className="flex justify-end mt-6">
           <button type="button" onClick={onCancel} className="hub-btn mr-2">
             {t('server.cancel')}

@@ -17,6 +17,8 @@ It works with MCP clients such as Claude Code, Cursor, Cherry Studio, OpenWebUI,
 
 ![Dashboard Preview](assets/dashboard.png)
 
+Custom MCP implementations and dependencies can be imported as independent MCPB packages. The Hub image does not depend on MCP-Atlas. Use explicit targets for multiple versions / workspaces; key rotation is shown only for compatible adapters. See [independent packages and target configuration](docs/features/atlas-integration.mdx).
+
 ## 🌐 Website, Demo & Docs
 
 - **Website**: [mcphub.app](https://www.mcphub.app/)

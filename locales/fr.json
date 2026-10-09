@@ -286,7 +286,8 @@
       "resource": "Ressource / Audience",
       "accessToken": "Jeton d'accès",
       "refreshToken": "Jeton d'actualisation"
-    }
+    },
+    "connectionEnvHint": "À gauche : nom de variable du MCP ; à droite : clé ou valeur. ${NOM} lit les variables du Hub, jamais le .env Atlas. Les nouvelles connexions utilisent les modifications enregistrées."
   },
   "status": {
     "sleeping": "En veille",
@@ -1467,7 +1468,9 @@
     "relayOn": "Use managed relay",
     "relayOff": "Disable relay",
     "envPrefix": "Wrapper environment prefix",
-    "relayDescription": "For stdio wrappers supporting /v1/fetch only. Manage connection and credentials in Relay settings. Tool-call limits do not replace relay HTTP limits."
+    "relayDescription": "For stdio wrappers supporting /v1/fetch only. Manage connection and credentials in Relay settings. Tool-call limits do not replace relay HTTP limits.",
+    "rateTitle": "Limite des appels (partagée par ce MCP)",
+    "advanced": "File, concurrence et temporisation (avancé, facultatif)"
   },
   "relayLimits": {
     "title": "Relay HTTP limits",
@@ -1524,11 +1527,12 @@
     "label": "Suffixe de clé",
     "remove": "Supprimer",
     "add": "Ajouter une clé",
-    "recovery": "Les clés restent configurées. Retry-After est respecté ; les quotas journaliers/mensuels attendent le prochain jour/mois UTC, sinon 60 secondes. Les délais sont réinitialisés au redémarrage."
+    "recovery": "Les clés restent configurées. Retry-After est respecté ; les quotas journaliers/mensuels attendent le prochain jour/mois UTC, sinon 60 secondes. Les délais sont réinitialisés au redémarrage.",
+    "singleIgnored": "La rotation fournit la clé API : ne saisissez pas une deuxième clé ci-dessous. La désactivation restaure la clé unique enregistrée. Utilisez des clés interchangeables du même service, jamais des espaces Notion / Slack distincts."
   },
   "targets": {
     "title": "Connexions cibles",
-    "description": "Cible exacte obligatoire. Aucun repli automatique. Les listes contiennent des identifiants de clés ou des utilisateurs ; vides, elles autorisent uniquement les administrateurs. Les limites MCP sont communes aux cibles.",
+    "description": "Chaque cible possède sa version et ses identifiants. Le client doit fournir le chemin exact, par exemple atlas/official. Aucun choix ou repli automatique. Toutes les cibles partagent la limite ci-dessous. Listes vides : administrateurs uniquement.",
     "path": "Chemin cible",
     "kind": "Type de connexion",
     "static": "Connexion MCP permanente",
@@ -1541,7 +1545,7 @@
     "env": "Variables d’environnement",
     "headers": "En-têtes HTTP",
     "remove": "Supprimer la cible",
-    "add": "Ajouter une cible",
+    "add": "Ajouter une connexion vide (version / espace)",
     "managed": "Connexion par cible",
     "enabled": "Activer cette cible",
     "implementation": "Implémentation",
@@ -1552,7 +1556,10 @@
     "version": "Version / révision configurée",
     "versionHint": "La version est une étiquette. Fixez la version réelle dans la commande, le chemin du paquet ou l’image du conteneur. Les cibles se connectent au premier appel et ferment leur client après cinq minutes d’inactivité. Une cible explicite est requise ; la connexion parente n’est plus utilisée.",
     "duplicate": "Copier la cible",
-    "fromCurrent": "Créer une cible depuis la connexion actuelle"
+    "fromCurrent": "Convertir la connexion en première cible (conserver les identifiants)",
+    "optionalTitle": "Plusieurs versions ou espaces (facultatif)",
+    "singleDescription": "Pour une seule version et des identifiants uniques, laissez cette section vide. Convertissez la connexion ci-dessous en première cible pour ajouter des versions ou espaces. Ensuite, seules les configurations des cibles sont utilisées. Le client doit fournir un chemin, par exemple atlas/official.",
+    "headersHint": "Un En-tête=Valeur par ligne, par exemple Authorization=Bearer your-key. Les identifiants concernent uniquement cette cible et ne sont jamais hérités."
   },
   "statistics": {
     "description": "Appels terminés comptés une fois sur la période UTC complète. Les tentatives HTTP sont exclues. Les étiquettes de modèle et benchmark proviennent des appelants.",

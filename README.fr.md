@@ -15,6 +15,8 @@ MCPHub offre une manière unifiée de connecter et de gérer plusieurs serveurs 
 
 ![Aperçu du tableau de bord](assets/dashboard.fr.png)
 
+Les MCP personnalisés et leurs dépendances sont importés via des paquets MCPB indépendants. L’image Hub ne dépend pas de MCP-Atlas. Utilisez des cibles explicites pour plusieurs versions / espaces ; la rotation des clés apparaît uniquement pour les adaptateurs compatibles. Voir [les paquets et les cibles](docs/features/atlas-integration.mdx).
+
 ## 🌐 Démo en direct et Documentation
 
 - **Site web** : [mcphub.app](https://www.mcphub.app/)
