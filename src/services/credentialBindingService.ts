@@ -281,3 +281,6 @@ export const resolveCredentialBinding = async (
     };
   return { config: resolved, revision: binding.encryptedValues };
 };
+
+// Reuse the credential store's encryption and identity binding for operator relay credentials.
+export { encrypt as encryptCredentialValues, decrypt as decryptCredentialValues };

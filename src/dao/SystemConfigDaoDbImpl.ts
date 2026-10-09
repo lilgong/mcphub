@@ -34,6 +34,7 @@ export class SystemConfigDaoDbImpl implements SystemConfigDao {
       enableSessionRebuild: config.enableSessionRebuild,
       discovery: config.discovery as any,
       activityLog: config.activityLog as any,
+      atlas: config.atlas as any,
     };
   }
 
@@ -52,6 +53,7 @@ export class SystemConfigDaoDbImpl implements SystemConfigDao {
       enableSessionRebuild: updated.enableSessionRebuild,
       discovery: updated.discovery as any,
       activityLog: updated.activityLog as any,
+      atlas: updated.atlas as any,
     };
   }
 
@@ -70,6 +72,7 @@ export class SystemConfigDaoDbImpl implements SystemConfigDao {
       enableSessionRebuild: config.enableSessionRebuild,
       discovery: config.discovery as any,
       activityLog: config.activityLog as any,
+      atlas: config.atlas as any,
     };
   }
 

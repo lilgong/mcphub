@@ -1,3 +1,4 @@
+import type { AtlasConfig } from './atlas.js';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import {
   Client,
@@ -252,6 +253,7 @@ export interface ToolResultCompressionConfig {
 }
 
 export interface SystemConfig {
+  atlas?: AtlasConfig;
   routing?: {
     enableGlobalRoute?: boolean; // Controls whether the /sse endpoint without group is enabled
     enableGroupNameRoute?: boolean; // Controls whether group routing by name is allowed

@@ -1,0 +1,50 @@
+services:
+  mcphub:
+    image: mcphub:atlas
+    build:
+      context: .
+      dockerfile: Dockerfile.atlas
+      args:
+        ATLAS_RUNTIME_IMAGE: mcp-atlas-runtime:mcphub
+    container_name: mcphub
+    restart: unless-stopped
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    ports:
+      - '3002:3000'
+    env_file:
+      - ./data/docker.env
+      - ./data/database.env
+    environment:
+      USE_DB: 'true'
+      MCP_RATE_LIMIT_MAX: '6000'
+    volumes:
+      - ./data/runtime:/app/data
+    depends_on:
+      mcphub-db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '--fail', '--silent', 'http://127.0.0.1:3000/health']
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    logging:
+      options:
+        max-size: '10m'
+        max-file: '3'
+  mcphub-db:
+    image: pgvector/pgvector:pg15
+    container_name: mcphub-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mcphub
+      POSTGRES_USER: mcphub
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in data/database.env}'
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mcphub -d mcphub']
+      interval: 5s
+      timeout: 5s
+      retries: 10

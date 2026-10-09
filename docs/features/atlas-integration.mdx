@@ -1,0 +1,150 @@
+---
+title: 'MCP-Atlas integration'
+description: 'Host Atlas shared MCP servers using existing Hub credentials, authentication and activity logs.'
+---
+
+MCPHub hosts selected shared MCP processes. Atlas keeps its HTTP compatibility
+entrypoint, tool names and disposable task containers. Direct mode retains its existing rate gates. No Yibu HTTP
+proxy or separate key/token management is required.
+
+## Build and import
+
+First build the modified Atlas runtime from its `mcphub` branch:
+
+```bash
+cd ~/mcp-atlas
+make build-atlas-runtime ATLAS_RUNTIME_IMAGE=mcp-atlas-runtime:mcphub
+cd ~/mcphub
+docker build -f Dockerfile.atlas \
+  --build-arg ATLAS_RUNTIME_IMAGE=mcp-atlas-runtime:mcphub \
+  -t mcphub:atlas .
+python3 scripts/export_atlas_servers.py > /tmp/atlas-servers.json
+```
+
+The image contains Atlas's pinned Node/Python MCP packages and compatibility
+patches. Import the JSON using the existing custom-server import flow. Exported
+servers are disabled and contain no secrets: fill credentials using the existing
+server configuration or a personal credential template, then enable them.
+Server configuration values are ordinary stored settings; use personal credential
+bindings when encrypted per-user storage is needed. Do not export/import live
+settings containing keys into version control.
+
+The default export includes `brave-search`, `exa`, `lara-translate`, `weather-data`
+and `oxylabs`. `--servers` can select other shared servers from Atlas's template.
+`--all-shared` exports all 26 shared services with policy presets. Node entrypoints
+use Atlas’s installed packages, including the Slack/GitHub patches; the unpinned
+weather Git source is frozen and built separately in the Hub image.
+Task-isolated filesystem/Git/Memory/Mongo/code execution/Arxiv/PubMed servers are
+rejected. Runtime versions must match between Atlas and Hub.
+
+For Yibu, configure `BRAVE_API_KEY`, `EXA_API_KEY`, `LARA_YIBU_API_KEY`,
+`WEATHER_YIBU_API_KEY`, and `OXYLABS_USERNAME`/`OXYLABS_PASSWORD` on their respective
+servers. Existing patches send those credentials directly to Yibu. Saving a
+connection-related setting reconnects that server; it can interrupt active calls.
+
+## Connect Atlas
+
+Create a key on the existing **Bearer Keys** page. Give it access to the selected
+servers (and an owner if using personal credentials). Configure Atlas's root `.env`:
+
+```dotenv
+MCP_TOOL_TRANSPORT=hub
+MCPHUB_URL=http://host.docker.internal:3002
+MCPHUB_TOKEN=<existing Hub Bearer Key>
+MCPHUB_SERVERS=brave-search,exa,lara-translate,weather-data,oxylabs
+MCPHUB_NAME_SEPARATOR=-
+MCP_SHARED_AGENT_IMAGE=mcp-atlas-runtime:mcphub
+MCP_TASK_AGENT_IMAGE=mcp-atlas-runtime:mcphub
+```
+
+Use the same separator as Hub's routing setting and keep imported server names
+unchanged. Atlas connects separately to `/mcp/<server>` using Streamable HTTP;
+it removes Hub's server prefix before its router adds Atlas's original prefix.
+Only selected servers are replaced, so Atlas never starts duplicate local MCP
+processes for them. In auto-enable mode these servers do not require upstream keys
+on Atlas. An explicit `ENABLED_SERVERS` allowlist still applies.
+
+Restart the shared Atlas runtime to load transport changes. Returning to
+`MCP_TOOL_TRANSPORT=direct` uses the original Atlas configuration and keys.
+Existing task isolation and shared-account write policy remain in Atlas. Main is
+unchanged, and the integration branch supports both modes. Only selected Hub
+services delegate their rate gates; other services retain the original behavior.
+
+## Logs and counts
+
+Use **database mode** (`USE_DB=true` and `DB_URL` pointing to PostgreSQL with the
+extensions supported by Hub) to enable the existing **Activity** page. It records
+MCP tool-call counts, outcome and duration. Configure
+`systemConfig.activityLog.storeToolPayload=false` for metadata-only activity logs.
+Activity records count MCP calls, not upstream HTTP attempts.
+
+The modified Yibu MCPs also append durable `started` and `finished` events for
+**each actual upstream request** to `/app/data/mcp-usage`. Bind-mount `/app/data`
+to preserve these logs. A failure to write/fsync the start event prevents the
+request; each retry creates another request ID. A start without a finish means
+an interrupted or incomplete request, not necessarily a failed upstream request.
+Count `started` events to count attempts; never count both event types as calls.
+Only hashed credential identifiers and safe metadata are logged, without keys,
+queries or bodies. Events are emitted on stderr into Hub's existing **Logs** page
+as well; that page keeps a limited in-memory history, while files are durable.
+Tool activities and upstream requests are distinct records; they are not yet
+joined by a task or tool-call ID. Logs are not automatically expired.
+
+The dashboard, MCP endpoint and logs use the same Hub port. No extra HTTP port,
+proxy credentials or Yibu-specific settings store is introduced.
+
+The Atlas Hub image also enables `MCPHUB_AUDIT_LOG_DIR=/app/data/tool-audit`. Every
+MCP tool invocation is durably audited before execution; failure to write prevents
+execution, independently of Activity database availability. Tool arguments, results
+and keys are omitted. These events also appear on the existing Logs page.
+
+`compose.atlas.yaml` provides Hub on port 3002 and internal-only PostgreSQL to
+enable the existing Activity page. Supply private `data/docker.env` (admin/JWT)
+and `data/database.env` (`POSTGRES_PASSWORD` and `DB_URL`), then run
+`docker compose --env-file data/database.env -f compose.atlas.yaml up -d`.
+In database mode, web edits are stored in the database; do not overwrite them by
+reimporting stale settings.
+
+## Per-service scheduling and relay
+
+The admin **Atlas integration** page is served on the existing Hub port. It manages
+FIFO queues, concurrency, minimum start interval, bounded queue wait and 429
+cooldown per service. Shared keys should use server scope; personal credential
+bindings can use principal scope. Policies update immediately; scope changes
+require an idle service. Scheduling state is local to one Hub process and resets
+on restart. It is not a distributed quota or daily/monthly billing limit. There
+is no automatic replay of a failed tool call. Tool counts remain on Activity;
+queue and cooldown indicators are live process statistics.
+
+The exporter includes policy defaults copied from Atlas for Brave (1500 ms), E2B
+(15000 ms), OSM (1000 ms), TwelveData (8000 ms) and Wikipedia (6000 ms). Other
+shared services use 20 concurrent calls and zero start spacing by default. JSON
+custom MCP import imports server definitions; configure policy presets separately
+on the integration page or through `PUT /api/atlas` as an admin. Do not overwrite
+existing service credentials when adding more servers. The compose deployment
+raises the separate per-IP MCP transport guard from 480 to 6000 requests/minute;
+this guard counts transport requests, while service scheduling controls calls.
+
+In Hub mode, `MCPHUB_MANAGE_RATE_LIMITS=true` (default) delegates only selected
+services’ outer tool gates. Set it to `false` when connecting to a Hub without
+these policies. Direct mode never delegates them.
+
+The relay section manages the existing relay URL, encrypted token and HTTP
+timeout. It does not replace the residential proxy daemon or edit its upstream
+credentials/HTTP pacing. OSM and Wikipedia reload when connection settings change.
+Their compatibility wrappers retain HTTP pacing. To fetch an authorized relay-only
+snapshot when creating new isolated Arxiv/PubMed task containers, opt in:
+
+```dotenv
+MCPHUB_MANAGE_RELAY=true
+MCPHUB_CONFIG_URL=http://127.0.0.1:3002
+```
+
+`MCPHUB_CONFIG_URL` is reachable from the completion host; `MCPHUB_URL` is reachable
+from Atlas containers. The existing operator Bearer Key must allow each requested
+Arxiv/PubMed server (or all). Ordinary user keys cannot read the shared token.
+Snapshots contain only relay settings; no Hub token is passed to task containers.
+If opted in, a failed configuration fetch prevents task startup rather than using
+stale credentials. Already running tasks keep their snapshot. Direct mode uses
+its existing environment and never reads this endpoint. Save-and-disable clears
+managed relay variables for new tasks and reloaded Hub services.

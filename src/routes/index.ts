@@ -1,3 +1,4 @@
+import { getAtlasSettings, updateAtlasSettings, checkAtlasRelay, getAtlasRelayRuntime } from '../controllers/atlasController.js';
 import { listMyCredentials, updateMyCredential } from '../controllers/credentialBindingController.js';
 import express from 'express';
 import { check } from 'express-validator';
@@ -266,6 +267,10 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.get('/credentials', listMyCredentials);
   authenticatedRouter.put('/credentials/:name', updateMyCredential);
   authenticatedRouter.delete('/credentials/:name', updateMyCredential);
+  authenticatedRouter.get('/atlas', getAtlasSettings);
+  authenticatedRouter.put('/atlas', updateAtlasSettings);
+  authenticatedRouter.post('/atlas/relay-health', checkAtlasRelay);
+  app.get(`${config.basePath}/atlas/relay-runtime`, mcpConnectionRateLimiter, getAtlasRelayRuntime);
   authenticatedRouter.get('/servers', getAllServers);
   authenticatedRouter.get('/servers/:name/share-candidates', getServerShareCandidates);
   authenticatedRouter.get('/servers/:name', getServerConfig);

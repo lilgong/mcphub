@@ -85,6 +85,8 @@ import {
   isSmartRoutingGroup,
 } from './smartRoutingService.js';
 import { getActivityLoggingService } from './activityLoggingService.js';
+import { toolCallScheduler } from './toolCallSchedulerService.js';
+import { withToolAudit } from './toolAuditService.js';
 import { maybeCompressToolResult } from './toolResultCompressionService.js';
 import {
   assertHostedToolAllowed,
@@ -1574,7 +1576,7 @@ const stripAuthorizationHeader = (headers: Record<string, string>): Record<strin
 
 export const createTransportFromConfig = async (name: string, conf: ServerConfig): Promise<any> => {
   let transport;
-  const env = await getServerEnvironment(conf);
+  const env = await getServerEnvironment(conf, name);
 
   // The encryption key belongs only to the hub, never to a child process.
   delete env.MCPHUB_CREDENTIAL_ENCRYPTION_KEY;
@@ -1743,6 +1745,14 @@ export const createTransportFromConfig = async (name: string, conf: ServerConfig
   return transport;
 };
 
+const callToolWithReconnect = (...args: Parameters<typeof callToolWithReconnectCore>) =>
+  toolCallScheduler.run(
+    args[0].name,
+    () => callToolWithReconnectCore(...args),
+    RequestContextService.getInstance().getUsernameContext(),
+    args[2]?.signal,
+  );
+
 type IsolatedClientContext = {
   sessionId: string;
   client: Client;
@@ -1750,7 +1760,7 @@ type IsolatedClientContext = {
 };
 
 // Helper function to handle client.callTool with reconnection logic
-const callToolWithReconnect = async (
+const callToolWithReconnectCore = async (
   serverInfo: ServerInfo,
   toolParams: any,
   options?: any,
@@ -3894,7 +3904,7 @@ const handleListToolsRequestImpl = async (_: any, extra: any) => {
   };
 };
 
-const handleCallToolRequestImpl = async (request: any, extra: any) => {
+const handleCallToolRequestCore = async (request: any, extra: any) => {
   logger.log('Handling CallToolRequest for tool', summarizeToolRequestForLogging(request.params));
   const startTime = Date.now();
   const activityLogger = getActivityLoggingService();
@@ -4103,13 +4113,13 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
         }
 
         await reserveHostedIfNeeded(targetServerInfo.name, cleanToolName);
-        const result = await openApiClient.callTool(
+        const result = await toolCallScheduler.run(targetServerInfo.name, () => openApiClient.callTool(
           cleanToolName,
           finalArgs,
           passthroughHeaders,
           false,
           stateId,
-        );
+        ), username, extra?.signal);
         await settleHostedIfNeeded({
           success: true,
           requestContent: finalArgs,
@@ -4327,13 +4337,13 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
       }
 
       await reserveHostedIfNeeded(serverInfo.name, cleanToolName);
-      const result = await openApiClient.callTool(
+      const result = await toolCallScheduler.run(serverInfo.name, () => openApiClient.callTool(
         cleanToolName,
         finalArgs,
         passthroughHeaders,
         false,
         stateId,
-      );
+      ), username, extra?.signal);
       await settleHostedIfNeeded({
         success: true,
         requestContent: finalArgs,
@@ -4499,6 +4509,16 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
     releaseOnDemandToolCall?.();
   }
 };
+
+const handleCallToolRequestImpl = async (request: any, extra: any) =>
+  withToolAudit(
+    {
+      tool: getActivityToolNameFromRequest(request),
+      group: getMcpRequestGroup(extra),
+      username: RequestContextService.getInstance().getUsernameContext() || extra?.username,
+    },
+    () => handleCallToolRequestCore(request, extra),
+  );
 
 const handleGetPromptRequestImpl = async (request: any, extra: any) => {
   try {

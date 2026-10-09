@@ -71,6 +71,9 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
   ];
 
   const systemItems: MenuItem[] = [
+    ...(auth.user?.isAdmin
+      ? [{ path: '/atlas', label: t('atlas.title'), icon: <RouteIcon className="h-4 w-4" /> }]
+      : []),
     ...(userCanManageUsers
       ? [{ path: '/users', label: t('nav.users'), icon: <UsersIcon className="h-4 w-4" /> }]
       : []),
@@ -134,12 +137,15 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
       }
     >
       {/* Brand */}
-      <div className={'flex items-center gap-2.5 ' + (collapsed ? 'px-2 py-3 justify-center' : 'px-4 py-3')}>
+      <div
+        className={
+          'flex items-center gap-2.5 ' + (collapsed ? 'px-2 py-3 justify-center' : 'px-4 py-3')
+        }
+      >
         <div
           className="relative grid h-7 w-7 place-items-center rounded-md text-white hub-mono text-[12px] font-semibold"
           style={{
-            background:
-              'linear-gradient(135deg, var(--hub-accent), oklch(0.62 0.18 285))',
+            background: 'linear-gradient(135deg, var(--hub-accent), oklch(0.62 0.18 285))',
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14)',
           }}
         >

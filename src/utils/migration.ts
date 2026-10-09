@@ -159,6 +159,8 @@ export async function migrateToDatabase(seedServersAndGroups = true): Promise<bo
         auth: settings.systemConfig.auth || {},
         enableSessionRebuild: settings.systemConfig.enableSessionRebuild,
         discovery: settings.systemConfig.discovery || {},
+        activityLog: settings.systemConfig.activityLog || {},
+        atlas: settings.systemConfig.atlas,
       };
       await systemConfigRepo.update(systemConfig);
       logger.log('  - System configuration updated');

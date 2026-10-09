@@ -1,0 +1,116 @@
+---
+title: '接入 MCP-Atlas'
+description: '用 MCPHub 托管 Atlas 的共享 MCP，复用原有凭证、鉴权和调用统计。'
+---
+
+调用链为 `Atlas 2984 → Hub 3002 /mcp/<server> → 改造版 MCP → 一步`。
+不增加 HTTP 转发服务、专用凭证页面或新的访问 token 机制。每道题的文件、Git、
+Mongo、Memory、代码执行、Arxiv/PubMed 等工具仍在 Atlas 的独立任务容器中。
+
+## 打包和导入
+
+```bash
+cd ~/mcp-atlas
+make build-atlas-runtime ATLAS_RUNTIME_IMAGE=mcp-atlas-runtime:mcphub
+cd ~/mcphub
+docker build -f Dockerfile.atlas \
+  --build-arg ATLAS_RUNTIME_IMAGE=mcp-atlas-runtime:mcphub \
+  -t mcphub:atlas .
+python3 scripts/export_atlas_servers.py > /tmp/atlas-servers.json
+```
+
+在原有自定义 MCP 导入界面导入 JSON。默认提供 Brave、Exa、Lara、WeatherAPI、
+Oxylabs 的固定版本和改造代码；`--servers` 可选择其他共享服务。
+导入内容不读取 Atlas 的 `.env`，不包含真实 key，服务默认停用。使用原有配置界面
+填写凭证后启用；需要加密的个人凭证时使用原有 Credentials 绑定功能。
+普通服务配置中的 key 是配置值，不属于个人凭证加密存储。
+
+一步凭证分别填写 `BRAVE_API_KEY`、`EXA_API_KEY`、`LARA_YIBU_API_KEY`、
+`WEATHER_YIBU_API_KEY` 和 `OXYLABS_USERNAME`/`OXYLABS_PASSWORD`。
+网页修改连接配置会重连该 MCP，期间可能中断正在执行的调用。
+
+## Atlas 配置
+
+在 Hub 原有 Bearer Keys 页面创建访问凭证，并授权选中的服务。若使用个人凭证，
+访问 key 必须对应拥有该凭证的用户。Atlas 根目录 `.env` 设置：
+
+```dotenv
+MCP_TOOL_TRANSPORT=hub
+MCPHUB_URL=http://host.docker.internal:3002
+MCPHUB_TOKEN=<Hub 原有 Bearer Key>
+MCPHUB_SERVERS=brave-search,exa,lara-translate,weather-data,oxylabs
+MCPHUB_NAME_SEPARATOR=-
+MCP_SHARED_AGENT_IMAGE=mcp-atlas-runtime:mcphub
+MCP_TASK_AGENT_IMAGE=mcp-atlas-runtime:mcphub
+```
+
+保持导入服务名称和 Hub 分隔符一致。重启 Atlas 共享 runtime 后生效。
+Hub 模式只替换选中的 MCP，不会在 Atlas 再启动同一份进程；未选中的仍走直连。
+自动启用模式不要求 Atlas 持有选中服务的上游 key；显式 `ENABLED_SERVERS` 仍生效。
+切回 `MCP_TOOL_TRANSPORT=direct` 即恢复 Atlas 原配置。评测工具名称、允许列表、
+任务隔离和共享账号写操作保护不变。直连仍使用原有限速，Hub 模式只将选中服务的外层工具调度交给 Hub。
+
+## 记录和统计
+
+Hub 的原有 Activity 页面需要数据库模式（PostgreSQL，`USE_DB=true` 和 `DB_URL`），
+展示工具调用次数、结果和耗时。建议设置
+`systemConfig.activityLog.storeToolPayload=false`，不存储工具请求和响应正文。
+无需新端口。普通文件配置模式不提供原有 Activity 统计。
+
+改造版一步 MCP 在实际发送请求前，将 `started` 事件写入
+`/app/data/mcp-usage` 并执行 fsync；写失败就不发送请求。结束后记录 `finished`
+事件，同一次请求使用相同 request ID。每次重试单独记录，不记录 key、查询或正文，
+使用 key 的哈希标识区分凭证。挂载 `/app/data` 保证日志持久化。
+事件也发送到 stderr，在 Hub 原有 Logs 页面查看。该页面仅保留有限的内存历史，
+持久文件不会自动清理。
+
+统计上游请求次数只数 `started`，不能把开始和结束各算一次。只有开始、没有结束
+表示调用被中断或结果未知，不代表上游一定失败。Activity 统计的是 MCP 工具调用，
+与上游 HTTP 次数不同；这版尚未将两者通过任务或工具调用 ID 关联。
+
+Atlas Hub 镜像还默认开启 `MCPHUB_AUDIT_LOG_DIR=/app/data/tool-audit`，所有 MCP
+工具调用在执行前写入持久审计，写失败就拒绝执行；不依赖 Activity 数据库是否可用。
+该审计不保存参数、返回内容或 key，也在原有 Logs 页面显示。
+
+`compose.atlas.yaml` 提供 Hub（3002）和仅内部访问的 PostgreSQL，可复用原有
+Activity 页面，不发布数据库宿主端口。需要私有的 `data/docker.env`（账号/JWT）
+和 `data/database.env`（`POSTGRES_PASSWORD`、`DB_URL`），使用
+`docker compose --env-file data/database.env -f compose.atlas.yaml up -d` 启动。
+数据库模式下配置以数据库为准，网页保存后不要用旧导入文件覆盖。
+
+## 按 MCP 限速与 relay
+
+管理员侧栏的 **Atlas 集成** 页面复用 Hub 的 3002 端口。每个服务可独立设置 FIFO
+队列、并发数、启动间隔、排队超时和 429 冷却。共享 key 选择“整个服务共用”，
+个人凭据可选“按用户独立”。策略即时生效；修改配额范围需等待服务空闲。
+状态仅限当前 Hub 进程，重启清零，不提供多实例共享配额或每日/月度额度限制。
+失败调用不会自动重放。历史次数仍看 Activity，排队与冷却为实时状态。
+
+`--all-shared` 导出 26 个共享服务及限速预设，保留已有 wrapper 和固定版本；
+Node 服务使用镜像内的 Atlas 依赖，Slack/GitHub 改造继续保留，原来未固定版本的
+weather Git 服务在 Hub 镜像中单独固定并构建。10 个有任务状态的服务不导入。
+原有 JSON 导入只导入服务定义；策略在此页面设置，或由管理员调用 `PUT /api/atlas`。
+新增服务时不要覆盖已有 key。预设 Brave 1500ms、E2B 15000ms、OSM 1000ms、
+TwelveData 8000ms、Wikipedia 6000ms；其余默认 20 并发、零启动间隔。
+
+Hub 模式默认 `MCPHUB_MANAGE_RATE_LIMITS=true`，只绕过选中服务在 Atlas 的外层
+工具限速；旧版 Hub 没有此策略时设为 false。MCP/HTTP wrapper 内部的保护仍保留。
+部署配置把另一层按 IP 的入口保护从 480 调到 6000 次/分钟，它计数的是 MCP
+HTTP 请求，不是各上游服务的配额。
+
+Relay 区域管理现有 relay 的 URL、加密 Token、HTTP 超时，不另起转发服务。
+保存连接变更会重连已启用的 OSM/Wikipedia；住宅代理凭据和 HTTP 请求级限速
+仍在现有 relay 进程管理。Arxiv/PubMed 保持独立任务容器，需要以下显式配置，
+才会在**新建任务时**从 Hub 获取仅含 relay 变量的快照：
+
+```dotenv
+MCPHUB_MANAGE_RELAY=true
+MCPHUB_CONFIG_URL=http://127.0.0.1:3002
+```
+
+`MCPHUB_CONFIG_URL` 供宿主机测评进程访问，`MCPHUB_URL` 供 Atlas 容器访问。
+复用已有管理员/operator Bearer Key，需授权任务使用的 Arxiv/PubMed 服务或全部服务；
+普通用户 key 不能获取全局 relay Token。不会将 Hub Token 传入任务容器。
+选择托管后，获取配置失败会阻止新任务启动；运行中任务保留原快照。
+关闭托管 relay 后，新任务及重连后的服务会清空 relay 变量。直连模式始终使用
+原有环境变量，不访问这个接口。

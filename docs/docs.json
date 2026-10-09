@@ -33,6 +33,7 @@
               "features/oauth",
               "features/authentication",
               "features/monitoring",
+              "features/atlas-integration",
               "features/cli"
             ]
           },
@@ -80,6 +81,7 @@
               "zh/features/oauth",
               "zh/features/authentication",
               "zh/features/monitoring",
+              "zh/features/atlas-integration",
               "zh/features/cli"
             ]
           },
