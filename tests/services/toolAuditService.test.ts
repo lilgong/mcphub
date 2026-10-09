@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { withToolAudit } from '../../src/services/toolAuditService.js';
+import { captureToolDiagnostic, withToolAudit } from '../../src/services/toolAuditService.js';
 
 jest.mock('../../src/utils/logger.js', () => ({ logger: { log: jest.fn() } }));
 
@@ -58,6 +58,18 @@ describe('durable tool audit', () => {
     ).rejects.toThrow('secret');
     expect(records(directory)[1].status).toBe('error');
     expect(JSON.stringify(records(directory))).not.toContain('secret');
+  });
+
+  it('correlates scheduling and safe error details with the admission record', async () => {
+    await withToolAudit({ tool: 'api-search' }, async () => {
+      captureToolDiagnostic('api')('dispatched', { wait_ms: 12 });
+      return { isError: true, content: [{ text: 'HTTP 429 secret=never-log' }] };
+    });
+    const events = records(directory);
+    expect(new Set(events.map((record) => record.request_id)).size).toBe(1);
+    expect(events[1]).toMatchObject({ server: 'api', event: 'dispatched', wait_ms: 12 });
+    expect(events[2]).toMatchObject({ status: 'error', category: 'rate_limit', http_status: 429 });
+    expect(JSON.stringify(events)).not.toContain('never-log');
   });
 
   it('preserves existing behavior when the optional audit is disabled', async () => {

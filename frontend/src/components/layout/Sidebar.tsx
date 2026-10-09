@@ -72,7 +72,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
 
   const systemItems: MenuItem[] = [
     ...(auth.user?.isAdmin
-      ? [{ path: '/atlas', label: t('atlas.title'), icon: <RouteIcon className="h-4 w-4" /> }]
+      ? [{ path: '/relay', label: t('atlas.title'), icon: <RouteIcon className="h-4 w-4" /> }]
       : []),
     ...(userCanManageUsers
       ? [{ path: '/users', label: t('nav.users'), icon: <UsersIcon className="h-4 w-4" /> }]

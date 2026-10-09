@@ -17,9 +17,11 @@ services:
       - ./data/database.env
     environment:
       USE_DB: 'true'
-      MCP_RATE_LIMIT_MAX: '6000'
+      MCP_RATE_LIMIT_MAX: 'off'
+      MCPHUB_RELAY_LOG_FILE: /app/data/relay/usage.jsonl
     volumes:
       - ./data/runtime:/app/data
+      - ./data/relay:/app/data/relay:ro
     depends_on:
       mcphub-db:
         condition: service_healthy

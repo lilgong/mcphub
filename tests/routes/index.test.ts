@@ -6,6 +6,7 @@ const uploadMiddleware = jest.fn();
 const authMiddleware = jest.fn((_req, _res, next) => next());
 
 jest.mock('../../src/controllers/atlasController.js', () => ({
+  relayLimits: routeHandler,
   getAtlasSettings: routeHandler,
   updateAtlasSettings: routeHandler,
   checkAtlasRelay: routeHandler,
@@ -101,6 +102,7 @@ jest.mock('../../src/controllers/authController.js', () => ({
 }));
 
 jest.mock('../../src/controllers/logController.js', () => ({
+  getCallLogs: routeHandler,
   getAllLogs: routeHandler,
   clearLogs: routeHandler,
   streamLogs: routeHandler,

@@ -31,7 +31,7 @@ settings containing keys into version control.
 
 The default export includes `brave-search`, `exa`, `lara-translate`, `weather-data`
 and `oxylabs`. `--servers` can select other shared servers from Atlas's template.
-`--all-shared` exports all 26 shared services with policy presets. Node entrypoints
+`--all-shared` exports all 26 shared services with reviewed service settings. Node entrypoints
 use Atlas’s installed packages, including the Slack/GitHub patches; the unpinned
 weather Git source is frozen and built separately in the Hub image.
 Task-isolated filesystem/Git/Memory/Mongo/code execution/Arxiv/PubMed servers are
@@ -107,31 +107,48 @@ reimporting stale settings.
 
 ## Per-service scheduling and relay
 
-The admin **Atlas integration** page is served on the existing Hub port. It manages
-FIFO queues, concurrency, minimum start interval, bounded queue wait and 429
-cooldown per service. Shared keys should use server scope; personal credential
-bindings can use principal scope. Policies update immediately; scope changes
-require an idle service. Scheduling state is local to one Hub process and resets
-on restart. It is not a distributed quota or daily/monthly billing limit. There
-is no automatic replay of a failed tool call. Tool counts remain on Activity;
-queue and cooldown indicators are live process statistics.
+Each registered MCP editor has **Call limits and relay** settings. Tool limits
+are shared by all callers of that registered server, including different users,
+clients and groups. Optional fields include a rolling-window call budget,
+minimum start interval, concurrency and 429 cooldown. Unset rate/concurrency
+fields impose no extra limit. Waiting defaults to 60 seconds and can be changed;
+client cancellation removes queued calls. Policy edits apply live without
+reconnecting a server. The scheduler never automatically replays a tool call.
+Scheduling is local to one Hub process and resets on restart. Separately
+registered copies and clients bypassing Hub do not share this scheduler.
 
-The exporter includes policy defaults copied from Atlas for Brave (1500 ms), E2B
-(15000 ms), OSM (1000 ms), TwelveData (8000 ms) and Wikipedia (6000 ms). Other
-shared services use 20 concurrent calls and zero start spacing by default. JSON
-custom MCP import imports server definitions; configure policy presets separately
-on the integration page or through `PUT /api/atlas` as an admin. Do not overwrite
-existing service credentials when adding more servers. The compose deployment
-raises the separate per-IP MCP transport guard from 480 to 6000 requests/minute;
-this guard counts transport requests, while service scheduling controls calls.
+Reviewed export presets retain Brave's 1500 ms start spacing and TwelveData
+Basic's 8000 ms spacing plus 8 calls per 60-second rolling window. This is
+only a single-credit approximation: endpoint-weighted credits and the 800/day
+budget are not yet enforced. Other MCPs receive no invented concurrency or
+rate defaults. The Open Library wrapper paces each HTTP request at 1000 ms;
+change `OPEN_LIBRARY_MIN_INTERVAL_MS` in its environment to change this rate.
+
+`compose.atlas.yaml` sets `MCP_RATE_LIMIT_MAX=off`, disabling only the aggregate
+MCP transport IP guard. Login, registration and dashboard API guards remain.
+
+Durable tool audit records now include queued/dispatched/completed events,
+wait and execution duration, safe error category, HTTP status where available,
+and cooldown. These events share the tool request ID and appear in Logs.
+Count `started` records for tool admissions and `dispatched` for executions;
+never count every diagnostic event as another invocation. Arguments, response
+bodies, credentials and raw error text are not included.
 
 In Hub mode, `MCPHUB_MANAGE_RATE_LIMITS=true` (default) delegates only selected
 services’ outer tool gates. Set it to `false` when connecting to a Hub without
 these policies. Direct mode never delegates them.
 
-The relay section manages the existing relay URL, encrypted token and HTTP
-timeout. It does not replace the residential proxy daemon or edit its upstream
-credentials/HTTP pacing. OSM and Wikipedia reload when connection settings change.
+The admin **Relay settings** page manages the existing relay URL, encrypted token and HTTP
+timeout. It keeps upstream proxy credentials in the residential relay daemon. The
+HTTP limits section uses authenticated `/v1/limits` on the existing relay port:
+limits apply live and persist in `limits.json` next to its audit log. Older
+relay versions must be upgraded before using these controls. ArXiv keeps 3-second
+spacing and one active request; Nominatim/routing keep 1-second spacing. NCBI
+E-utilities separates anonymous (334 ms) and keyed (100 ms) requests; PMC uses
+a separate conservative policy. Wikipedia uses a project-identifying User-Agent,
+300 ms spacing and one active request. Overpass has no invented fixed interval
+and observes upstream 429 cooldown. These are application controls, not additional
+provider quota or a way to bypass other clients sharing a key. OSM and Wikipedia reload when connection settings change.
 Their compatibility wrappers retain HTTP pacing. To fetch an authorized relay-only
 snapshot when creating new isolated Arxiv/PubMed task containers, opt in:
 
@@ -148,3 +165,26 @@ If opted in, a failed configuration fetch prevents task startup rather than usin
 stale credentials. Already running tasks keep their snapshot. Direct mode uses
 its existing environment and never reads this endpoint. Save-and-disable clears
 managed relay variables for new tasks and reloaded Hub services.
+
+
+Relay HTTP attempts have durable `http_started` / `http_finished` records,
+including retries, status and safe network error type. A start write failure
+prevents the upstream request. Summaries include queue delay, attempt count,
+Retry-After and client disconnects. Tool and relay HTTP IDs are not yet joined.
+
+
+The admin **Logs → Call logs** view defaults to errors only. Filter by HTTP
+status (including 429, 4xx, 5xx and common individual codes), source, MCP/host
+and UTC date; timestamps display in the browser's local timezone. Tool successes
+do not imply upstream HTTP 200. Timeouts, cancellation and queue failures can
+be found under **No HTTP status**. Each finished tool invocation appears once;
+Yibu and Relay rows represent individual HTTP attempts and should not be added
+to tool rows as a single invocation count. Runtime logs remain in a separate tab.
+
+The reader exposes selected metadata only and reads bounded recent file tails;
+a warning indicates when older records are outside the displayed window. Complete
+JSONL files remain on disk. Relay visibility uses `MCPHUB_RELAY_LOG_FILE`, mounted
+read-only from the local relay log directory in `compose.atlas.yaml`; remote
+relay daemons need their log files made available separately. This does not add a
+new port. Call logs require admin access and are not removed by clearing runtime
+logs.

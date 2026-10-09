@@ -1,4 +1,5 @@
-import { getAtlasSettings, updateAtlasSettings, checkAtlasRelay, getAtlasRelayRuntime } from '../controllers/atlasController.js';
+import { getCallLogs } from '../controllers/logController.js';
+import { relayLimits, getAtlasSettings, updateAtlasSettings, checkAtlasRelay, getAtlasRelayRuntime } from '../controllers/atlasController.js';
 import { listMyCredentials, updateMyCredential } from '../controllers/credentialBindingController.js';
 import express from 'express';
 import { check } from 'express-validator';
@@ -267,6 +268,11 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.get('/credentials', listMyCredentials);
   authenticatedRouter.put('/credentials/:name', updateMyCredential);
   authenticatedRouter.delete('/credentials/:name', updateMyCredential);
+  authenticatedRouter.get('/relay/limits', relayLimits);
+  authenticatedRouter.put('/relay/limits', relayLimits);
+  authenticatedRouter.get('/relay/config', getAtlasSettings);
+  authenticatedRouter.put('/relay/config', updateAtlasSettings);
+  authenticatedRouter.post('/relay/health', checkAtlasRelay);
   authenticatedRouter.get('/atlas', getAtlasSettings);
   authenticatedRouter.put('/atlas', updateAtlasSettings);
   authenticatedRouter.post('/atlas/relay-health', checkAtlasRelay);
@@ -445,6 +451,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.get('/changelog/update-info', getChangelogUpdateInfoHandler);
 
   // Log routes
+  authenticatedRouter.get('/logs/calls', getCallLogs);
   authenticatedRouter.get('/logs', getAllLogs);
   authenticatedRouter.delete('/logs', clearLogs);
   authenticatedRouter.get('/logs/stream', streamLogs);

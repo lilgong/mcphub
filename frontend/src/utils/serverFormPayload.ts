@@ -239,6 +239,8 @@ export const buildServerPayload = ({
   const description = formData.description?.trim() || '';
 
   const config: Partial<ServerConfig> = {
+    rateLimit: formData.rateLimit,
+    relay: formData.relay,
     type: serverType,
     description,
     options,

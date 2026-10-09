@@ -11,6 +11,7 @@ import {
   getCredentialBindingDao,
 } from '../../src/dao/DaoFactory.js';
 import {
+  relayLimits,
   getAtlasSettings,
   updateAtlasSettings,
   getAtlasRelayRuntime,
@@ -38,6 +39,8 @@ app.use((req, _res, next) => {
   };
   next();
 });
+app.get('/api/relay/limits', relayLimits);
+app.put('/api/relay/limits', relayLimits);
 app.get('/api/atlas', getAtlasSettings);
 app.put('/api/atlas', updateAtlasSettings);
 app.get('/atlas/relay-runtime', getAtlasRelayRuntime);
@@ -168,4 +171,28 @@ test('only trusted relay servers receive the connection token', async () => {
   );
   await saveAtlasConfig({ ...config, relay: { ...config.relay, enabled: false } });
   expect(await getRelayEnvironment('pubmed')).toHaveProperty('PUBMED_RELAY_TOKEN', '');
+});
+
+test('relay limits require admin authorization and never return the shared token', async () => {
+  await saveAtlasConfig(config, 'synthetic-relay-secret');
+  await request(app).get('/api/relay/limits').expect(403);
+  await request(app).put('/api/relay/limits').send({ limits: {} }).expect(403);
+  const originalFetch = global.fetch;
+  const fetchMock = jest.fn(async () => ({
+    ok: true,
+    json: async () => ({ limits: { arxiv: { minIntervalMs: 3000 } } }),
+  }));
+  global.fetch = fetchMock as unknown as typeof fetch;
+  try {
+    const response = await request(app)
+      .get('/api/relay/limits')
+      .set('x-test-admin', 'yes')
+      .expect(200);
+    expect(response.body.data.limits.arxiv.minIntervalMs).toBe(3000);
+    expect(JSON.stringify(response.body)).not.toContain('synthetic-relay-secret');
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });

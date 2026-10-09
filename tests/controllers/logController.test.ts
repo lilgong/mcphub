@@ -12,12 +12,18 @@ jest.mock('../../src/services/logService.js', () => ({
   },
 }));
 
-import { clearLogs, getAllLogs, streamLogs } from '../../src/controllers/logController.js';
+import {
+  clearLogs,
+  getAllLogs,
+  streamLogs,
+  getCallLogs,
+} from '../../src/controllers/logController.js';
 
 const makeRes = () =>
   ({
     json: jest.fn().mockReturnThis(),
     status: jest.fn().mockReturnThis(),
+    setHeader: jest.fn(),
     writeHead: jest.fn(),
     write: jest.fn(),
   }) as unknown as Response;
@@ -30,7 +36,7 @@ const makeReq = () =>
 
 describe('logController authorization', () => {
   it('rejects non-admin access to log read, clear, and stream endpoints', async () => {
-    const handlers = [getAllLogs, clearLogs, streamLogs];
+    const handlers = [getAllLogs, clearLogs, streamLogs, getCallLogs];
 
     for (const handler of handlers) {
       const res = makeRes();
@@ -47,5 +53,20 @@ describe('logController authorization', () => {
     expect(mockGetLogs).not.toHaveBeenCalled();
     expect(mockClearLogs).not.toHaveBeenCalled();
     expect(mockSubscribeToStream).not.toHaveBeenCalled();
+  });
+});
+
+describe('call log filter validation', () => {
+  it.each([
+    { date: '../secrets' },
+    { date: '2026-02-30' },
+    { status: 'secret' },
+    { source: 'unknown' },
+    { page: '0' },
+    { limit: '10000' },
+  ])('rejects invalid filters %j', async (query) => {
+    const res = makeRes();
+    await getCallLogs({ user: { isAdmin: true }, query } as unknown as Request, res);
+    expect(res.status).toHaveBeenCalledWith(400);
   });
 });

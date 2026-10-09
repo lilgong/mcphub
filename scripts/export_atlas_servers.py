@@ -13,11 +13,8 @@ ISOLATED = {
 }
 WEATHER_REVISION = "3474c7841d00f5f40c087c5d2188a5c0f41bd134"
 POLICY_PRESETS = {
-    "brave-search": (1, 1500, 2000, 10000),
-    "e2b-server": (1, 15000, 60000, 240000),
-    "osm-mcp-server": (1, 1000, 2000, 60000),
-    "twelvedata": (1, 8000, 15000, 60000),
-    "wikipedia": (1, 6000, 60000, 60000),
+    "brave-search": {"enabled": True, "minIntervalMs": 1500},
+    "twelvedata": {"enabled": True, "minIntervalMs": 8000, "maxCalls": 8, "windowMs": 60000},
 }
 DEFAULT_SERVERS = "brave-search,exa,lara-translate,weather-data,oxylabs"
 
@@ -66,14 +63,14 @@ def export_servers(atlas: Path, names: list[str]) -> dict:
         })
         server.update({"type": "stdio", "enabled": False})
         result[name] = server
-    policies = {}
-    for name in names:
-        concurrency, interval, backoff, maximum = POLICY_PRESETS.get(name, (20, 0, 2000, 60000))
-        policies[name] = {"enabled": True, "concurrency": concurrency, "minIntervalMs": interval,
-                          "maxQueued": 100, "queueTimeoutMs": 180000,
-                          "rateLimitBackoffMs": backoff, "maxBackoffMs": maximum, "scope": "server"}
-    return {"mcpServers": result, "systemConfig": {"atlas": {"policies": policies,
-            "relay": {"enabled": False, "url": "", "timeoutSeconds": 90}}}}
+    for name, server in result.items():
+        if name in POLICY_PRESETS:
+            server["rateLimit"] = dict(POLICY_PRESETS[name])
+        if name == "open-library":
+            server["command"] = "node"
+            server["args"] = ["/app/scripts/run_open_library_limited.cjs"]
+            server.setdefault("env", {})["OPEN_LIBRARY_MIN_INTERVAL_MS"] = "1000"
+    return {"mcpServers": result}
 
 
 def main() -> None:

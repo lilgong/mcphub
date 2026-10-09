@@ -35,12 +35,10 @@ export async function updateAtlasSettings(req: Request, res: Response): Promise<
   try {
     await saveAtlasConfig(req.body.config, req.body.relayToken, req.body.clearRelayToken === true);
   } catch {
-    res
-      .status(400)
-      .json({
-        success: false,
-        message: 'Invalid Atlas settings, missing relay credentials, or a busy scope change',
-      });
+    res.status(400).json({
+      success: false,
+      message: 'Invalid Atlas settings, missing relay credentials, or a busy scope change',
+    });
     return;
   }
   const failed: string[] = [];
@@ -104,5 +102,44 @@ export async function getAtlasRelayRuntime(req: Request, res: Response): Promise
     res.json({ success: true, data: await getRelayEnvironment(server) });
   } catch {
     res.status(503).json({ success: false, message: 'Relay configuration unavailable' });
+  }
+}
+
+/** Relay rate controls remain at the HTTP layer; Hub never retries an MCP operation. */
+export async function relayLimits(req: Request, res: Response): Promise<void> {
+  if (!(await requireAdmin(req, res))) return;
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const environment = await getRelayEnvironment('pubmed');
+    const url = environment.PUBMED_RELAY_URL;
+    const token = environment.PUBMED_RELAY_TOKEN;
+    if (!url || !token) {
+      res
+        .status(409)
+        .json({ success: false, message: 'Configure and enable the managed relay first' });
+      return;
+    }
+    await assertSafeUrl(`${url}/v1/limits`, { allowInternal: true });
+    const response = await fetch(`${url}/v1/limits`, {
+      method: req.method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      ...(req.method === 'PUT' ? { body: JSON.stringify({ limits: req.body.limits }) } : {}),
+      redirect: 'error',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) {
+      res
+        .status(response.status === 400 ? 400 : 502)
+        .json({
+          success: false,
+          message: 'Relay rejected the rate settings or does not support live limits',
+          httpStatus: response.status,
+        });
+      return;
+    }
+    const data = (await response.json()) as { limits?: unknown };
+    res.json({ success: true, data: { limits: data.limits } });
+  } catch {
+    res.status(502).json({ success: false, message: 'Relay rate configuration unavailable' });
   }
 }

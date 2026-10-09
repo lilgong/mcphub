@@ -2,7 +2,7 @@ import {
   ToolCallScheduler,
   isUpstreamRateLimit,
 } from '../../src/services/toolCallSchedulerService.js';
-import type { ToolCallPolicy } from '../../src/types/atlas.js';
+import type { ServiceRateLimit as ToolCallPolicy } from '../../src/types/serviceControls.js';
 
 const base: ToolCallPolicy = {
   enabled: true,
@@ -12,7 +12,6 @@ const base: ToolCallPolicy = {
   queueTimeoutMs: 1000,
   rateLimitBackoffMs: 35,
   maxBackoffMs: 70,
-  scope: 'server',
 };
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -82,8 +81,8 @@ describe('per-MCP scheduling', () => {
     await first;
   });
 
-  test('personal credential owners get independent queues and hot disabling drains queued calls', async () => {
-    let policy = { ...base, scope: 'principal' as const };
+  test('all credential owners share limits and hot disabling drains queued calls', async () => {
+    let policy = { ...base };
     const scheduler = new ToolCallScheduler(() => policy);
     let release!: () => void;
     const first = scheduler.run(
@@ -92,14 +91,60 @@ describe('per-MCP scheduling', () => {
       'alice',
     );
     const queued = scheduler.run('brave', async () => 'second', 'alice');
-    await expect(scheduler.run('brave', async () => 'bob', 'bob')).resolves.toBe('bob');
+    const bob = scheduler.run('brave', async () => 'bob', 'bob');
+    await pause(1);
+    expect(scheduler.stats().brave.queued).toBe(2);
     policy = { ...policy, enabled: false };
     scheduler.refresh();
     await expect(queued).resolves.toBe('second');
+    await expect(bob).resolves.toBe('bob');
     release();
     await first;
     await pause(1);
     expect(scheduler.stats().brave.active).toBe(0);
+  });
+
+  test('limits a rolling window across clients without adding a concurrency cap', async () => {
+    const scheduler = new ToolCallScheduler(() => ({ enabled: true, maxCalls: 2, windowMs: 50 }));
+    const starts: number[] = [];
+    await Promise.all(
+      Array.from({ length: 4 }, (_, i) =>
+        scheduler.run('api', async () => starts.push(performance.now()), String(i)),
+      ),
+    );
+    expect(starts[2] - starts[0]).toBeGreaterThanOrEqual(45);
+  });
+
+  test('unset concurrency allows parallel calls', async () => {
+    const scheduler = new ToolCallScheduler(() => ({ enabled: true }));
+    let active = 0;
+    let peak = 0;
+    await Promise.all(
+      Array.from({ length: 4 }, () =>
+        scheduler.run('api', async () => {
+          peak = Math.max(peak, ++active);
+          await pause(10);
+          active--;
+        }),
+      ),
+    );
+    expect(peak).toBe(4);
+  });
+
+  test('cancellation during async policy loading never dispatches the removed head', async () => {
+    const scheduler = new ToolCallScheduler(async () => {
+      await pause(5);
+      return base;
+    });
+    const signal = new AbortController();
+    const call = jest.fn(async () => undefined);
+    const pending = scheduler.run('api', call, 'alice', signal.signal);
+    const check = expect(pending).rejects.toThrow('cancelled');
+    await pause(7);
+    signal.abort();
+    await check;
+    await pause(10);
+    expect(call).not.toHaveBeenCalled();
   });
 
   test('does not interpret successful data containing 429 as a provider failure', () => {

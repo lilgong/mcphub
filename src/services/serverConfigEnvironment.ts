@@ -13,9 +13,12 @@ export const getServerEnvironment = async (
   const source = trusted ? process.env : {};
   const name = serverName || config.name || '';
   let relay: Record<string, string> = {};
-  if (trusted && ['arxiv', 'pubmed', 'osm-mcp-server', 'wikipedia'].includes(name)) {
+  if (
+    trusted &&
+    (config.relay || ['arxiv', 'pubmed', 'osm-mcp-server', 'wikipedia'].includes(name))
+  ) {
     const { getRelayEnvironment } = await import('./atlasConfigService.js');
-    relay = await getRelayEnvironment(name);
+    relay = await getRelayEnvironment(name, config.relay);
   }
   return {
     ...(source as Record<string, string>),

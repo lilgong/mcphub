@@ -2,6 +2,7 @@ import { getSystemConfigDao, getCredentialBindingDao } from '../dao/DaoFactory.j
 import { encryptCredentialValues, decryptCredentialValues } from './credentialBindingService.js';
 import { getCachedSystemConfig, setCachedSystemConfig } from '../utils/systemConfigCache.js';
 import { toolCallScheduler } from './toolCallSchedulerService.js';
+import type { FetchRelayConfig } from '../types/serviceControls.js';
 import type { AtlasConfig, ToolCallPolicy } from '../types/atlas.js';
 
 const RELAY_BINDING = { serverName: '$atlas-relay', username: '$system' };
@@ -128,12 +129,18 @@ export async function hasRelayToken(): Promise<boolean> {
   );
 }
 
-export async function getRelayEnvironment(server: string): Promise<Record<string, string>> {
-  if (!RELAY_SERVERS.has(server)) return {};
+export async function getRelayEnvironment(
+  server: string,
+  connection?: FetchRelayConfig,
+): Promise<Record<string, string>> {
+  if (!connection && !RELAY_SERVERS.has(server)) return {};
   const relay = getCachedSystemConfig()?.atlas?.relay;
+  if (!relay && connection?.enabled) throw new Error('Managed relay is not configured');
   if (!relay) return {};
+  if (connection?.enabled && !relay.enabled) throw new Error('Managed relay is disabled');
+  const enabled = relay.enabled && connection?.enabled !== false;
   let token = '';
-  if (relay.enabled) {
+  if (enabled) {
     const binding = await getCredentialBindingDao().get(
       RELAY_BINDING.serverName,
       RELAY_BINDING.username,
@@ -141,9 +148,9 @@ export async function getRelayEnvironment(server: string): Promise<Record<string
     if (!binding) throw new Error('Managed relay credential is unavailable');
     token = (await decryptCredentialValues(binding)).token;
   }
-  const prefix = server === 'wikipedia' ? 'WIKIPEDIA' : 'PUBMED';
+  const prefix = connection?.envPrefix ?? (server === 'wikipedia' ? 'WIKIPEDIA' : 'PUBMED');
   return {
-    [`${prefix}_RELAY_URL`]: relay.enabled ? relay.url : '',
+    [`${prefix}_RELAY_URL`]: enabled ? relay.url : '',
     [`${prefix}_RELAY_TOKEN`]: token,
     [`${prefix}_RELAY_TIMEOUT_SECONDS`]: String(relay.timeoutSeconds),
   };

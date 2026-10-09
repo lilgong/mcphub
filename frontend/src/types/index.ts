@@ -208,6 +208,8 @@ export interface MyCredentialBinding {
 
 // Server config types
 export interface ServerConfig {
+  rateLimit?: import('../../../src/types/serviceControls').ServiceRateLimit;
+  relay?: import('../../../src/types/serviceControls').FetchRelayConfig;
   credentialTemplate?: CredentialSlot[];
   type?: 'stdio' | 'sse' | 'streamable-http' | 'openapi';
   description?: string;
@@ -380,6 +382,8 @@ export interface EnvVar {
 
 // Form data types
 export interface ServerFormData {
+  rateLimit?: import('../../../src/types/serviceControls').ServiceRateLimit;
+  relay?: import('../../../src/types/serviceControls').FetchRelayConfig;
   credentialTemplate?: CredentialSlot[];
   name: string;
   description?: string;

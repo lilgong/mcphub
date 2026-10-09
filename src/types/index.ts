@@ -1,3 +1,4 @@
+import type { ServiceRateLimit, FetchRelayConfig } from './serviceControls.js';
 import type { AtlasConfig } from './atlas.js';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import {
@@ -440,6 +441,8 @@ export interface StoredCredentialBinding {
 
 // Configuration details for an individual server
 export interface ServerConfig {
+  rateLimit?: ServiceRateLimit;
+  relay?: FetchRelayConfig;
   credentialTemplate?: CredentialSlot[]; // Metadata only; every slot requires a personal binding.
   type?: 'stdio' | 'sse' | 'streamable-http' | 'openapi'; // Type of server
   description?: string; // Optional server note/description for management UI

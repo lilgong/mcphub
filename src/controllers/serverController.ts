@@ -1,3 +1,4 @@
+import { toolCallScheduler } from '../services/toolCallSchedulerService.js';
 import {
   copyCredentialBindings,
   deleteCredentialBindings,
@@ -212,6 +213,7 @@ const stripUndefinedDeep = (value: unknown): unknown => {
 // `enabled`, and the tools/prompts/resources per-item overrides) is read-time
 // or access metadata that can be applied without a reconnect.
 const CONNECTION_RELEVANT_CONFIG_FIELDS = [
+  'relay',
   'type',
   'url',
   'command',
@@ -1299,6 +1301,7 @@ export const updateServer = async (req: Request, res: Response): Promise<void> =
         normalizedConfig.visibility ?? 'private',
         normalizedConfig.sharedWithUsers,
       );
+      toolCallScheduler.refresh();
       broadcastToolListChanged();
 
       res.json({

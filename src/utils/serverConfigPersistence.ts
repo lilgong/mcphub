@@ -1,3 +1,4 @@
+import { normalizeServiceRateLimit, normalizeFetchRelay } from './serviceControls.js';
 import { validateCredentialTemplate } from './credentialTemplate.js';
 import { validateMaxBufferSize } from './stdioOptions.js';
 import { ServerConfigValidationError } from './serverConfigValidation.js';
@@ -273,6 +274,7 @@ const inferServerType = (config: ServerConfig): NonNullable<ServerConfig['type']
 };
 
 export const normalizeServerConfigForPersistence = (config: ServerConfig): ServerConfig => {
+  config = { ...config, rateLimit: normalizeServiceRateLimit(config.rateLimit), relay: normalizeFetchRelay(config.relay) };
   const normalizedType = inferServerType(config);
   const description = trimToUndefined(config.description);
   const owner = trimToUndefined(config.owner) ?? config.owner;

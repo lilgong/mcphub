@@ -98,6 +98,8 @@ export class ServerDaoDbImpl implements ServerDao {
       command: entity.command,
       args: entity.args,
       env: entity.env,
+      rateLimit: entity.rateLimit ?? undefined,
+      relay: entity.relay ?? undefined,
       headers: entity.headers,
       enabled: entity.enabled !== undefined ? entity.enabled : true,
       owner: entity.owner,
@@ -150,6 +152,8 @@ export class ServerDaoDbImpl implements ServerDao {
     assignNullable('command');
     assignNullable('args');
     assignNullable('env');
+    assignNullable('rateLimit');
+    assignNullable('relay');
     assignNullable('headers');
     assign('enabled');
     assignNullable('owner');
@@ -290,6 +294,8 @@ export class ServerDaoDbImpl implements ServerDao {
     command?: string;
     args?: string[];
     env?: Record<string, string>;
+    rateLimit?: ServerConfig['rateLimit'];
+    relay?: ServerConfig['relay'];
     headers?: Record<string, string>;
     enabled: boolean;
     owner?: string;
@@ -326,6 +332,8 @@ export class ServerDaoDbImpl implements ServerDao {
       command: server.command,
       args: server.args,
       env: server.env,
+      rateLimit: server.rateLimit,
+      relay: server.relay,
       headers: server.headers,
       enabled: server.enabled,
       owner: server.owner,

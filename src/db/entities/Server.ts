@@ -37,6 +37,12 @@ export class Server {
   env?: Record<string, string>;
 
   @Column({ type: 'simple-json', nullable: true })
+  rateLimit?: import('../../types/serviceControls.js').ServiceRateLimit;
+
+  @Column({ type: 'simple-json', nullable: true })
+  relay?: import('../../types/serviceControls.js').FetchRelayConfig;
+
+  @Column({ type: 'simple-json', nullable: true })
   headers?: Record<string, string>;
 
   @Column({ type: 'boolean', default: true })
