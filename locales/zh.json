@@ -1510,8 +1510,15 @@
     "keyLabel": "Key 后6位",
     "retryAt": "重新参与时间",
     "title": "活动与日志",
-    "activity": "统计与详情",
-    "activityUnavailable": "活动统计需要数据库模式。"
+    "activity": "调用统计",
+    "activityUnavailable": "活动统计需要数据库模式。",
+    "details": "详情",
+    "target": "目标",
+    "model": "模型",
+    "benchmark": "测评集",
+    "taskId": "任务 ID",
+    "runId": "运行 ID",
+    "requestId": "请求 ID"
   },
   "keyPool": {
     "title": "多 Key 轮询",
@@ -1522,5 +1529,40 @@
     "remove": "移除",
     "add": "添加 Key",
     "recovery": "失败的 key 保留配置；优先遵循上游重试时间。明确日/月额度错误默认等到下个 UTC 日/月，其他情况冷却 60 秒后重新参与。Hub 重启会清空运行时冷却状态。"
+  },
+  "targets": {
+    "title": "目标连接",
+    "description": "发现工具和调用时都必须明确指定目标，不会自动回退。访问列表填写 Bearer Key ID 或用户名；留空时仅管理员可访问。同一 MCP 的所有目标共用限速。",
+    "path": "目标路径",
+    "kind": "连接类型",
+    "static": "固定 MCP 连接",
+    "task": "临时任务连接",
+    "allowedKeys": "允许的 Bearer Key ID（逗号分隔）",
+    "allowedUsers": "允许的用户名（逗号分隔）",
+    "transport": "传输方式",
+    "command": "启动命令",
+    "args": "启动参数（每行一个）",
+    "env": "环境变量",
+    "headers": "HTTP 请求头",
+    "remove": "删除目标",
+    "add": "添加目标",
+    "managed": "按目标连接"
+  },
+  "statistics": {
+    "description": "统计所选时间段内完成的工具调用（UTC），每次调用只计一次，不计换 key 等内部 HTTP 尝试。模型和测评集标签由调用方提供；历史无标签记录显示为未标记。",
+    "month": "月份",
+    "start": "开始日期（UTC）",
+    "end": "结束日期（UTC）",
+    "server": "MCP",
+    "target": "目标",
+    "model": "模型",
+    "benchmark": "测评集",
+    "total": "调用次数",
+    "success": "成功次数",
+    "errors": "错误次数",
+    "unmarked": "未标记",
+    "unavailable": "请启用持久化工具审计以收集统计。",
+    "groupBy": "统计维度",
+    "allDimensions": "全部维度"
   }
 }

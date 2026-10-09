@@ -1505,8 +1505,15 @@
     "keyLabel": "Anahtar sonu",
     "retryAt": "Yeniden deneme zamanı",
     "title": "Etkinlik ve günlükler",
-    "activity": "İstatistikler ve ayrıntılar",
-    "activityUnavailable": "Etkinlik istatistikleri veritabanı modunu gerektirir."
+    "activity": "İstatistikler",
+    "activityUnavailable": "Etkinlik istatistikleri veritabanı modunu gerektirir.",
+    "details": "Ayrıntılar",
+    "target": "Hedef",
+    "model": "Model",
+    "benchmark": "Benchmark",
+    "taskId": "Görev kimliği",
+    "runId": "Çalıştırma kimliği",
+    "requestId": "İstek kimliği"
   },
   "keyPool": {
     "title": "Çoklu anahtar dönüşümü",
@@ -1517,5 +1524,40 @@
     "remove": "Kaldır",
     "add": "Anahtar ekle",
     "recovery": "Anahtarlar korunur. Retry-After uygulanır; günlük/aylık kota hataları sonraki UTC gününü/ayını bekler, diğerleri 60 saniye bekler. Hub yeniden başladığında bekleme durumu sıfırlanır."
+  },
+  "targets": {
+    "title": "Hedef bağlantıları",
+    "description": "Tam hedef zorunludur. Otomatik geri dönüş yoktur. Erişim listeleri anahtar kimliklerini veya kullanıcıları içerir; boş listeler yalnızca yöneticilere izin verir. MCP sınırları hedefler arasında paylaşılır.",
+    "path": "Hedef yolu",
+    "kind": "Bağlantı türü",
+    "static": "Kalıcı MCP bağlantısı",
+    "task": "Geçici görev bağlantısı",
+    "allowedKeys": "İzinli anahtar kimlikleri (virgülle ayrılmış)",
+    "allowedUsers": "İzinli kullanıcılar (virgülle ayrılmış)",
+    "transport": "Taşıma",
+    "command": "Komut",
+    "args": "Argümanlar (satır başına bir)",
+    "env": "Ortam değişkenleri",
+    "headers": "HTTP başlıkları",
+    "remove": "Hedefi kaldır",
+    "add": "Hedef ekle",
+    "managed": "Hedef bağlantısı"
+  },
+  "statistics": {
+    "description": "Tam UTC döneminde tamamlanan araç çağrıları bir kez sayılır. HTTP denemeleri hariçtir. Model ve benchmark etiketleri çağıran tarafından sağlanır.",
+    "month": "Ay",
+    "start": "Başlangıç (UTC)",
+    "end": "Bitiş (UTC)",
+    "server": "MCP",
+    "target": "Hedef",
+    "model": "Model",
+    "benchmark": "Benchmark",
+    "total": "Çağrılar",
+    "success": "Başarılı",
+    "errors": "Hatalar",
+    "unmarked": "Etiketsiz",
+    "unavailable": "İstatistik toplamak için kalıcı denetimi etkinleştirin.",
+    "groupBy": "Gruplandırma",
+    "allDimensions": "Tüm boyutlar"
   }
 }

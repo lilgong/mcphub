@@ -40,8 +40,11 @@ export const getServerEnvironment = async (
   if (config.keyPool?.enabled && !trusted)
     throw new Error('Key pools require a trusted operator-owned MCP');
   if (trusted && name && config.keyPool?.enabled) {
-    environment.MCPHUB_KEY_POOL_URL = `http://127.0.0.1:${runtimeConfig.port}/internal/v1/key-pool/${encodeURIComponent(name)}`;
-    environment.MCPHUB_KEY_POOL_TOKEN = keyPoolToken(name);
+    const poolName = config.env?.MCPHUB_CONNECTION_TARGET
+      ? `${name}@${config.env.MCPHUB_CONNECTION_TARGET}`
+      : name;
+    environment.MCPHUB_KEY_POOL_URL = `http://127.0.0.1:${runtimeConfig.port}/internal/v1/key-pool/${encodeURIComponent(poolName)}`;
+    environment.MCPHUB_KEY_POOL_TOKEN = keyPoolToken(poolName);
     if (config.keyPool.provider === 'context7') {
       const preload = join(process.cwd(), 'scripts', 'key_pool_fetch_preload.cjs');
       environment.NODE_OPTIONS = `${environment.NODE_OPTIONS || ''} --require ${JSON.stringify(preload)}`;

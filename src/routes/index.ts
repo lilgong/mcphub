@@ -1,7 +1,24 @@
+import { connectionRuntime } from '../controllers/connectionRuntimeController.js';
+import { callStats } from '../controllers/callStatsController.js';
+import {
+  registerTaskConnection,
+  renewTaskConnection,
+  removeTaskConnection,
+  dispatchTaskConnection,
+} from '../controllers/taskConnectionController.js';
 import { forwardKeyPool } from '../controllers/keyPoolController.js';
 import { getCallLogs } from '../controllers/logController.js';
-import { relayLimits, getAtlasSettings, updateAtlasSettings, checkAtlasRelay, getAtlasRelayRuntime } from '../controllers/atlasController.js';
-import { listMyCredentials, updateMyCredential } from '../controllers/credentialBindingController.js';
+import {
+  relayLimits,
+  getAtlasSettings,
+  updateAtlasSettings,
+  checkAtlasRelay,
+  getAtlasRelayRuntime,
+} from '../controllers/atlasController.js';
+import {
+  listMyCredentials,
+  updateMyCredential,
+} from '../controllers/credentialBindingController.js';
 import express from 'express';
 import { check } from 'express-validator';
 import config from '../config/index.js';
@@ -216,6 +233,11 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
 
   // Health check endpoint (no auth required, accessible at /health)
   app.get('/health', healthCheck);
+  app.post(
+    '/gateway/v1/tasks/:id/:operation',
+    express.json({ limit: '1mb' }),
+    dispatchTaskConnection,
+  );
   app.post('/internal/v1/key-pool/:name', express.json({ limit: '32kb' }), forwardKeyPool);
 
   // Hosted data-plane webhook ingress. HMAC-authenticated by INTERNAL_API_SECRET.
@@ -267,6 +289,9 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   // instead of consuming the shared authenticated-route budget.
 
   // API routes protected by auth middleware in middlewares/index.ts and rate limited here
+  authenticatedRouter.post('/task-connections', registerTaskConnection);
+  authenticatedRouter.put('/task-connections/:id', renewTaskConnection);
+  authenticatedRouter.delete('/task-connections/:id', removeTaskConnection);
   authenticatedRouter.get('/credentials', listMyCredentials);
   authenticatedRouter.put('/credentials/:name', updateMyCredential);
   authenticatedRouter.delete('/credentials/:name', updateMyCredential);
@@ -281,6 +306,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   app.get(`${config.basePath}/atlas/relay-runtime`, mcpConnectionRateLimiter, getAtlasRelayRuntime);
   authenticatedRouter.get('/servers', getAllServers);
   authenticatedRouter.get('/servers/:name/share-candidates', getServerShareCandidates);
+  authenticatedRouter.get('/servers/:name/runtime', connectionRuntime);
   authenticatedRouter.get('/servers/:name', getServerConfig);
   authenticatedRouter.get('/settings', getAllSettings);
   authenticatedRouter.post('/servers', createServer);
@@ -422,7 +448,12 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   // second write path to the stdio execution boundary (GHSA-xf2m-3c3x-53vp).
   // The admin gate must run before `uploadMiddleware` so multer never stages a
   // non-admin upload body on disk.
-  authenticatedRouter.post('/mcpb/upload', requireAdminMiddleware, uploadMiddleware, uploadMcpbFile);
+  authenticatedRouter.post(
+    '/mcpb/upload',
+    requireAdminMiddleware,
+    uploadMiddleware,
+    uploadMcpbFile,
+  );
 
   // Market routes
   authenticatedRouter.get('/market/servers', getAllMarketServers);
@@ -453,6 +484,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.get('/changelog/update-info', getChangelogUpdateInfoHandler);
 
   // Log routes
+  authenticatedRouter.get('/logs/statistics', callStats);
   authenticatedRouter.get('/logs/calls', getCallLogs);
   authenticatedRouter.get('/logs', getAllLogs);
   authenticatedRouter.delete('/logs', clearLogs);

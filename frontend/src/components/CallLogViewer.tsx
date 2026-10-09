@@ -14,6 +14,11 @@ interface Row {
   waitMs?: number;
   keyLabel?: string;
   retryAt?: string;
+  target?: string;
+  model?: string;
+  benchmark?: string;
+  taskId?: string;
+  runId?: string;
 }
 interface Result {
   rows: Row[];
@@ -25,7 +30,7 @@ export default function CallLogViewer() {
   const { t } = useTranslation();
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState('all');
-  const [source, setSource] = useState('all');
+  const [source, setSource] = useState('tool');
   const [server, setServer] = useState('');
   const [errorsOnly, setErrorsOnly] = useState(true);
   const [page, setPage] = useState(1);
@@ -172,19 +177,8 @@ export default function CallLogViewer() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr>
-              {[
-                'time',
-                'source',
-                'server',
-                'operation',
-                'status',
-                'category',
-                'keyLabel',
-                'retryAt',
-                'wait',
-                'duration',
-              ].map((key) => (
-                <th className="p-2" key={key}>
+              {['time', 'server', 'operation', 'status', 'duration', 'details'].map((key) => (
+                <th className="bg-[var(--hub-bg)] p-3 text-xs font-medium hub-sub" key={key}>
                   {t(`callLogs.${key}`)}
                 </th>
               ))}
@@ -192,26 +186,56 @@ export default function CallLogViewer() {
           </thead>
           <tbody>
             {data?.rows.map((row, index) => (
-              <tr className="border-t" key={`${row.source}-${row.id}-${index}`} title={row.id}>
+              <tr
+                className="border-t border-[var(--hub-line)] hover:bg-[var(--hub-bg)]"
+                key={`${row.source}-${row.id}-${index}`}
+                title={row.id}
+              >
                 <td className="whitespace-nowrap p-2">
                   {new Date(row.timestamp).toLocaleString()}
                 </td>
-                <td className="p-2">{t(`callLogs.${row.source}`)}</td>
                 <td className="p-2">{row.server}</td>
                 <td className="max-w-xs break-all p-2">{row.operation}</td>
-                <td className={`p-2 ${row.outcome === 'error' ? 'text-red-600' : ''}`}>
+                <td className={`p-3 font-medium ${row.outcome === 'error' ? 'text-red-600' : ''}`}>
                   {row.httpStatus ?? t(`callLogs.${row.outcome}`)}
-                </td>
-                <td className="p-2">{row.category || '—'}</td>
-                <td className="p-2">{row.keyLabel || '—'}</td>
-                <td className="whitespace-nowrap p-2">
-                  {row.retryAt ? new Date(row.retryAt).toLocaleString() : '—'}
-                </td>
-                <td className="p-2">
-                  {row.waitMs === undefined ? '—' : `${Math.round(row.waitMs)} ms`}
                 </td>
                 <td className="p-2">
                   {row.durationMs === undefined ? '—' : `${Math.round(row.durationMs)} ms`}
+                </td>
+                <td className="p-3">
+                  <details className="min-w-40">
+                    <summary className="cursor-pointer hub-sub">{t('callLogs.details')}</summary>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                      {(
+                        [
+                          ['source', t(`callLogs.${row.source}`)],
+                          ['category', row.category],
+                          ['keyLabel', row.keyLabel],
+                          ['target', row.target],
+                          ['model', row.model],
+                          ['benchmark', row.benchmark],
+                          ['taskId', row.taskId],
+                          ['runId', row.runId],
+                          [
+                            'wait',
+                            row.waitMs === undefined ? undefined : `${Math.round(row.waitMs)} ms`,
+                          ],
+                          [
+                            'retryAt',
+                            row.retryAt ? new Date(row.retryAt).toLocaleString() : undefined,
+                          ],
+                          ['requestId', row.id],
+                        ] as const
+                      )
+                        .filter(([, value]) => value)
+                        .map(([field, value]) => (
+                          <div className="col-span-2 grid grid-cols-2 gap-3" key={field}>
+                            <dt className="hub-sub">{t(`callLogs.${field}`)}</dt>
+                            <dd className="break-all">{value}</dd>
+                          </div>
+                        ))}
+                    </dl>
+                  </details>
                 </td>
               </tr>
             ))}

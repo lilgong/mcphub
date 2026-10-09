@@ -199,3 +199,5 @@ pnpm dev
 本项目采用 [Apache 2.0 许可证](LICENSE)。
 
 托管改造版 Atlas MCP 和配置可选 Hub 模式，参见 [接入 MCP-Atlas](docs/zh/features/atlas-integration.mdx)。
+
+目标连接、通用临时任务路由和调用统计参见 [Target connections](docs/features/target-connections.mdx).

@@ -859,3 +859,97 @@ test('a user who sees fewer tools does not remove the others from the shared ind
   expect(removeServer).not.toHaveBeenCalled();
   expect(removeTools).not.toHaveBeenCalled();
 });
+
+test('generic static targets isolate real MCP clients and support both user and system keys without renaming tools', async () => {
+  await getServerDao().create({
+    name: 'target-fixture',
+    type: 'streamable-http',
+    enabled: true,
+    owner: 'admin',
+    visibility: 'public',
+    targets: [
+      {
+        path: 'benchmark/official',
+        kind: 'static',
+        allowedKeyIds: ['personal-0', 'target-system'],
+        config: {
+          type: 'stdio',
+          command: process.execPath,
+          args: [fixture],
+          env: { PERSONAL_KEY: 'target-a' },
+        },
+      },
+      {
+        path: 'benchmark/synthetic',
+        kind: 'static',
+        allowedKeyIds: ['personal-1'],
+        config: {
+          type: 'stdio',
+          command: process.execPath,
+          args: [fixture],
+          env: { PERSONAL_KEY: 'target-b' },
+        },
+      },
+    ],
+  });
+  await getBearerKeyDao()
+    .create({
+      name: 'target-system',
+      token: 'target-system-token',
+      enabled: true,
+      kind: 'system',
+      accessType: 'all',
+    })
+    .then(async (key) => {
+      // Use the generated ID in the ACL, as the dashboard does.
+      const config = await getServerDao().findById('target-fixture');
+      config!.targets![0].allowedKeyIds!.push(key.id);
+      await getServerDao().update('target-fixture', { targets: config!.targets });
+    });
+  await initializeClientsFromSettings(false, 'target-fixture');
+  const open = async (token: string, target?: string) => {
+    const client = new Client({ name: 'target-e2e', version: '1' });
+    clients.push(client);
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp/target-fixture`), {
+        requestInit: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(target ? { 'X-MCPHub-Target': target } : {}),
+          },
+        },
+      }),
+    );
+    return client;
+  };
+  const [a, b, operator] = await Promise.all([
+    open(`${alice}-bearer`, 'benchmark/official'),
+    open(`${bob}-bearer`, 'benchmark/synthetic'),
+    open('target-system-token', 'benchmark/official'),
+  ]);
+  const inventories = await Promise.all([a.listTools(), b.listTools(), operator.listTools()]);
+  const name = inventories[0].tools[0].name;
+  expect(inventories.every((result) => result.tools[0].name === name)).toBe(true);
+  const results = await Promise.all([
+    a.callTool({ name, arguments: {} }),
+    b.callTool({ name, arguments: {} }),
+    operator.callTool({ name, arguments: {} }),
+  ]);
+  expect(results.map(parseIdentity).map((value) => value.credential)).toEqual([
+    'target-a',
+    'target-b',
+    'target-a',
+  ]);
+  expect(parseIdentity(results[0]).pid).not.toBe(parseIdentity(results[1]).pid);
+  const wrong = await open(`${alice}-bearer`, 'benchmark/synthetic');
+  await expect(wrong.listTools()).rejects.toThrow();
+  const missing = await open(`${alice}-bearer`);
+  await expect(missing.listTools()).rejects.toThrow();
+  const rest = await request(app)
+    .post('/api/tools/target-fixture/identity')
+    .set('x-auth-token', apiToken('admin'))
+    .set('X-MCPHub-Target', 'benchmark/official')
+    .send({});
+  // Explicit ACL applies to dashboard administrators too.
+  expect(rest.body.isError).toBe(true);
+});

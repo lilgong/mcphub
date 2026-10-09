@@ -1,10 +1,21 @@
+import { invocationLabels } from './invocationLabelsService.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { openSync, writeSync, fsyncSync, closeSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { logger } from '../utils/logger.js';
 
-type AuditMetadata = { tool: string; group?: string; username?: string };
+type AuditMetadata = {
+  tool: string;
+  server?: string;
+  group?: string;
+  username?: string;
+  target?: string;
+  model?: string;
+  benchmark?: string;
+  runId?: string;
+  taskId?: string;
+};
 
 type Diagnostic = Record<string, string | number | boolean | undefined>;
 const diagnostics = new AsyncLocalStorage<(event: string, fields: Diagnostic) => void>();
@@ -89,6 +100,8 @@ export async function withToolAudit<T extends { isError?: boolean }>(
     const record = {
       ts: new Date().toISOString(),
       request_id: requestId,
+      ...invocationLabels(),
+      ...metadata,
       tool: metadata.tool.slice(0, 512),
       group: metadata.group?.slice(0, 512),
       username: metadata.username?.slice(0, 512),

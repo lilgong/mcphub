@@ -1,3 +1,5 @@
+import { TargetRuntimeService } from './targetRuntimeService.js';
+import { invocationLabels } from './invocationLabelsService.js';
 import {
   preserveListFreshness,
   combineListFreshness,
@@ -1209,9 +1211,11 @@ export const summarizeServerConnections = (
 };
 
 export const getServerConnectionStats = (): ServerConnectionStats => {
-  // Personal definitions have no shared connection whose readiness can be checked.
+  // Personal and target definitions have no shared connection to check.
   return summarizeServerConnections(
-    serverInfos.filter((info) => !hasCredentialTemplate(info.config)),
+    serverInfos.filter(
+      (info) => !hasCredentialTemplate(info.config) && !info.config?.targets?.length,
+    ),
   );
 };
 
@@ -1228,6 +1232,7 @@ export const cleanupAllServers = (): void => {
   clientStateSweep = undefined;
   for (const id of clientStates.keys()) removeClientState(id);
   principalRuntimes.invalidate();
+  targetRuntimes.invalidate();
   for (const serverInfo of serverInfos) {
     try {
       if (serverInfo.client) {
@@ -1786,7 +1791,10 @@ const callToolWithReconnectCore = async (
     throw new Error(`Client not found for server: ${serverInfo.name}`);
   }
 
-  if (hasCredentialTemplate(serverInfo.config)) {
+  if (
+    hasCredentialTemplate(serverInfo.config) ||
+    serverInfo.config?.env?.MCPHUB_CONNECTION_TARGET
+  ) {
     return client.callTool(toolParams, options || {});
   }
 
@@ -1984,8 +1992,8 @@ export const initializeClientsFromSettings = async (
         continue;
       }
 
-      if (hasCredentialTemplate(expandedConf)) {
-        validateCredentialTemplate(expandedConf);
+      if (hasCredentialTemplate(expandedConf) || expandedConf.targets?.length) {
+        if (hasCredentialTemplate(expandedConf)) validateCredentialTemplate(expandedConf);
         nextServerInfos.push({
           name,
           owner: expandedConf.owner,
@@ -3099,6 +3107,7 @@ const closeServerRuntime = (serverInfo: ServerInfo): void => {
 // Close server client and transport (keeps the entry in serverInfos; the next
 // initializeClientsFromSettings rebuild drops it if it is no longer configured).
 export function closeServer(name: string) {
+  targetRuntimes.invalidate(name);
   principalRuntimes.invalidate({ serverName: name });
   const serverInfo = serverInfos.find((serverInfo) => serverInfo.name === name);
   if (serverInfo) {
@@ -4523,6 +4532,7 @@ const handleCallToolRequestImpl = async (request: any, extra: any) =>
   withToolAudit(
     {
       tool: getActivityToolNameFromRequest(request),
+      server: extra?.server,
       group: getMcpRequestGroup(extra),
       username: RequestContextService.getInstance().getUsernameContext() || extra?.username,
     },
@@ -5037,6 +5047,11 @@ const createPrincipalRuntime = async (
 };
 
 const principalRuntimes = new PrincipalRuntimeService(createPrincipalRuntime, closeServerRuntime);
+const targetRuntimes = new TargetRuntimeService(
+  createPrincipalRuntime,
+  closeServerRuntime,
+  async (name) => getServerDao().findById(name),
+);
 
 /**
  * Resolve the tools of a personal-credential server on behalf of an explicit
@@ -5067,7 +5082,11 @@ type McpHandler = (request: any, extra: any) => Promise<any>;
 const withPrincipalServers =
   (handler: McpHandler, operation: 'list' | 'tool' | 'prompt' | 'resource'): McpHandler =>
   async (request, extra) => {
-    if (!serverInfos.some((info) => hasCredentialTemplate(info.config)))
+    if (
+      !serverInfos.some(
+        (info) => hasCredentialTemplate(info.config) || info.config?.targets?.length,
+      )
+    )
       return handler(request, extra);
     // Built-in content does not require an upstream credential.
     if (operation === 'prompt') {
@@ -5106,9 +5125,26 @@ const withPrincipalServers =
     // A call to a known target must not spawn or keep unrelated personal children alive.
     const selected =
       target && (operation === 'tool' || operation === 'prompt') ? [target] : candidates;
-    const templated = selected.filter((info) => hasCredentialTemplate(info.config));
+    const templated = selected.filter(
+      (info) => hasCredentialTemplate(info.config) || info.config?.targets?.length,
+    );
     if (!templated.length) return handler(request, extra);
     const user = UserContextService.getInstance().getCurrentUser() as RequestPrincipal | null;
+    const bearer = RequestContextService.getInstance().getBearerKeyContext();
+    const operator =
+      bearer.keyId && RequestContextService.getInstance().getKeyKindContext() === 'system'
+        ? await getBearerKeyDao().findById(bearer.keyId)
+        : undefined;
+    // System MCP keys authenticate without a user context. Target ACLs still use
+    // their live ID, and only all-access keys have implicit administrator access.
+    const targetPrincipal =
+      user ??
+      (operator?.enabled
+        ? {
+            username: operator.owner || 'system',
+            isAdmin: operator.accessType === 'all',
+          }
+        : null);
     const releases: Array<() => void> = [];
     const scoped = new Map(serverInfos.map((info) => [info.name, info]));
     const failures = new Map<string, Error>();
@@ -5116,6 +5152,18 @@ const withPrincipalServers =
       await Promise.all(
         templated.map(async (info) => {
           try {
+            if (info.config?.targets?.length) {
+              const lease = await targetRuntimes.acquire(
+                info.name,
+                info.config,
+                invocationLabels().target,
+                targetPrincipal,
+                bearer.keyId,
+              );
+              releases.push(lease.release);
+              scoped.set(info.name, lease.info);
+              return;
+            }
             if (
               !user?.username ||
               user.credentialEligible === false ||
@@ -5137,11 +5185,10 @@ const withPrincipalServers =
       );
       const requiredTarget =
         target ||
-        (candidates.length === 1 && operation !== 'list' && requestedName !== 'search_tools'
-          ? templated[0]
-          : undefined);
+        (candidates.length === 1 && requestedName !== 'search_tools' ? templated[0] : undefined);
       const failure = requiredTarget ? failures.get(requiredTarget.name) : undefined;
       if (failure) {
+        if (operation === 'list') throw failure;
         if (operation === 'resource')
           return {
             contents: [
@@ -5155,7 +5202,8 @@ const withPrincipalServers =
       if (
         operation === 'tool' &&
         extra?.server &&
-        hasCredentialTemplate(scoped.get(extra.server)?.config)
+        (hasCredentialTemplate(scoped.get(extra.server)?.config) ||
+          scoped.get(extra.server)?.config?.env?.MCPHUB_CONNECTION_TARGET)
       ) {
         const prefix = `${extra.server}${getNameSeparator()}`;
         if (typeof requestedName === 'string' && !requestedName.startsWith(prefix)) {

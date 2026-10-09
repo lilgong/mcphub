@@ -1,3 +1,4 @@
+import TargetConnectionEditor from './TargetConnectionEditor';
 import KeyPoolEditor from './KeyPoolEditor';
 import ServiceControls from './ServiceControls';
 import { useEffect, useRef, useState } from 'react';
@@ -126,6 +127,7 @@ const ServerForm = ({
   );
 
   const [formData, setFormData] = useState<ServerFormData>({
+    targets: initialData?.config?.targets ?? undefined,
     keyPool: initialData?.config?.keyPool ?? undefined,
     rateLimit: initialData?.config?.rateLimit ?? undefined,
     relay: initialData?.config?.relay ?? undefined,
@@ -605,7 +607,11 @@ const ServerForm = ({
       )}
 
       <form onSubmit={handleSubmit}>
-        {serverType === 'stdio' && (
+        <TargetConnectionEditor
+          value={formData.targets}
+          onChange={(targets) => setFormData((previous) => ({ ...previous, targets }))}
+        />
+        {serverType === 'stdio' && !formData.targets?.length && (
           <KeyPoolEditor
             serverName={formData.name}
             value={formData.keyPool}
@@ -1542,7 +1548,10 @@ const ServerForm = ({
                         ? 'e.g.: http://localhost:3000/mcp'
                         : 'e.g.: http://localhost:3000/sse'
                     }
-                    required={serverType === 'sse' || serverType === 'streamable-http'}
+                    required={
+                      !formData.targets?.length &&
+                      (serverType === 'sse' || serverType === 'streamable-http')
+                    }
                   />
                 </div>
 
@@ -1649,7 +1658,7 @@ const ServerForm = ({
                     onChange={handleInputChange}
                     className="w-full py-2 px-3 form-input"
                     placeholder="e.g.: npx"
-                    required={serverType === 'stdio'}
+                    required={!formData.targets?.length && serverType === 'stdio'}
                   />
                 </div>
                 <div className="mb-4">

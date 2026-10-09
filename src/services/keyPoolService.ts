@@ -188,7 +188,8 @@ export class KeyPoolService {
       const started = this.now();
       const metadata = {
         request_id: randomUUID(),
-        server,
+        server: server.split('@')[0],
+        target: server.split('@')[1],
         key_id: key.id,
         key_label: keySuffix(key.value),
         path: url.pathname,
@@ -285,7 +286,11 @@ async function sendUpstream(
     body: Buffer.concat(chunks).toString('utf8'),
   };
 }
-export const keyPoolService = new KeyPoolService(
-  async (server) => (await getServerDao().findById(server))?.keyPool,
-  sendUpstream,
-);
+export const keyPoolService = new KeyPoolService(async (server) => {
+  const [name, target] = server.split('@');
+  const config = await getServerDao().findById(name);
+  if (config?.enabled === false) return undefined;
+  return target
+    ? config?.targets?.find((value) => value.path === target)?.config?.keyPool
+    : config?.keyPool;
+}, sendUpstream);

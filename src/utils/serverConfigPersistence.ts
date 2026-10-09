@@ -1,3 +1,4 @@
+import { normalizeTargetConnections } from './targetConnection.js';
 import { normalizeKeyPool } from './keyPool.js';
 import { normalizeServiceRateLimit, normalizeFetchRelay } from './serviceControls.js';
 import { validateCredentialTemplate } from './credentialTemplate.js';
@@ -282,11 +283,16 @@ const inferServerType = (config: ServerConfig): NonNullable<ServerConfig['type']
 export const normalizeServerConfigForPersistence = (config: ServerConfig): ServerConfig => {
   config = {
     ...config,
+    targets: normalizeTargetConnections(config.targets),
     keyPool: normalizeKeyPool(config.keyPool),
     rateLimit: normalizeServiceRateLimit(config.rateLimit),
     relay: normalizeFetchRelay(config.relay),
   };
   const normalizedType = inferServerType(config);
+  if (config.targets?.length && config.credentialTemplate?.length)
+    throw new ServerConfigValidationError(
+      'Target connections and personal credential templates cannot be combined',
+    );
   if (config.keyPool?.enabled && (normalizedType !== 'stdio' || config.credentialTemplate?.length))
     throw new ServerConfigValidationError(
       'Key pools require an operator-managed stdio MCP without personal credential templates',

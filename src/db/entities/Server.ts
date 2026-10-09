@@ -37,6 +37,9 @@ export class Server {
   env?: Record<string, string>;
 
   @Column({ type: 'simple-json', nullable: true })
+  targets?: import('../../types/targetConnection.js').TargetConnection[];
+
+  @Column({ type: 'simple-json', nullable: true })
   keyPool?: import('../../types/keyPool.js').KeyPoolConfig;
 
   @Column({ type: 'simple-json', nullable: true })

@@ -441,6 +441,7 @@ export interface StoredCredentialBinding {
 
 // Configuration details for an individual server
 export interface ServerConfig {
+  targets?: import('./targetConnection.js').TargetConnection[];
   keyPool?: import('./keyPool.js').KeyPoolConfig;
   rateLimit?: ServiceRateLimit;
   relay?: FetchRelayConfig;

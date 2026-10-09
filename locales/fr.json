@@ -1506,8 +1506,15 @@
     "keyLabel": "Suffixe de clé",
     "retryAt": "Nouvelle tentative",
     "title": "Activité et journaux",
-    "activity": "Statistiques et détails",
-    "activityUnavailable": "Les statistiques nécessitent le mode base de données."
+    "activity": "Statistiques",
+    "activityUnavailable": "Les statistiques nécessitent le mode base de données.",
+    "details": "Détails",
+    "target": "Cible",
+    "model": "Modèle",
+    "benchmark": "Benchmark",
+    "taskId": "ID tâche",
+    "runId": "ID exécution",
+    "requestId": "ID requête"
   },
   "keyPool": {
     "title": "Rotation de clés",
@@ -1518,5 +1525,40 @@
     "remove": "Supprimer",
     "add": "Ajouter une clé",
     "recovery": "Les clés restent configurées. Retry-After est respecté ; les quotas journaliers/mensuels attendent le prochain jour/mois UTC, sinon 60 secondes. Les délais sont réinitialisés au redémarrage."
+  },
+  "targets": {
+    "title": "Connexions cibles",
+    "description": "Cible exacte obligatoire. Aucun repli automatique. Les listes contiennent des identifiants de clés ou des utilisateurs ; vides, elles autorisent uniquement les administrateurs. Les limites MCP sont communes aux cibles.",
+    "path": "Chemin cible",
+    "kind": "Type de connexion",
+    "static": "Connexion MCP permanente",
+    "task": "Connexion temporaire de tâche",
+    "allowedKeys": "Identifiants des clés autorisées (virgules)",
+    "allowedUsers": "Utilisateurs autorisés (virgules)",
+    "transport": "Transport",
+    "command": "Commande",
+    "args": "Arguments (un par ligne)",
+    "env": "Variables d’environnement",
+    "headers": "En-têtes HTTP",
+    "remove": "Supprimer la cible",
+    "add": "Ajouter une cible",
+    "managed": "Connexion par cible"
+  },
+  "statistics": {
+    "description": "Appels terminés comptés une fois sur la période UTC complète. Les tentatives HTTP sont exclues. Les étiquettes de modèle et benchmark proviennent des appelants.",
+    "month": "Mois",
+    "start": "Début (UTC)",
+    "end": "Fin (UTC)",
+    "server": "MCP",
+    "target": "Cible",
+    "model": "Modèle",
+    "benchmark": "Benchmark",
+    "total": "Appels",
+    "success": "Réussites",
+    "errors": "Erreurs",
+    "unmarked": "Non renseigné",
+    "unavailable": "Activez l’audit persistant pour collecter les statistiques.",
+    "groupBy": "Regrouper par",
+    "allDimensions": "Toutes les dimensions"
   }
 }

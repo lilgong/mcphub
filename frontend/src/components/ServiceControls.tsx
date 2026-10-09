@@ -12,11 +12,13 @@ const fields = [
   'maxBackoffMs',
 ] as const;
 export default function ServiceControls({
+  hideRateLimit = false,
   rateLimit,
   relay,
   stdio,
   onChange,
 }: {
+  hideRateLimit?: boolean;
   rateLimit?: ServiceRateLimit;
   relay?: FetchRelayConfig;
   stdio: boolean;
@@ -28,15 +30,17 @@ export default function ServiceControls({
     <details className="mb-4 rounded border border-[var(--hub-line)] p-4">
       <summary className="cursor-pointer font-medium">{t('serviceControls.title')}</summary>
       <p className="my-3 text-sm text-[var(--hub-ink-2)]">{t('serviceControls.description')}</p>
-      <label className="flex gap-2">
-        <input
-          type="checkbox"
-          checked={policy.enabled}
-          onChange={(e) => onChange({ rateLimit: { ...policy, enabled: e.target.checked } })}
-        />
-        {t('serviceControls.enabled')}
-      </label>
-      {policy.enabled && (
+      {!hideRateLimit && (
+        <label className="flex gap-2">
+          <input
+            type="checkbox"
+            checked={policy.enabled}
+            onChange={(e) => onChange({ rateLimit: { ...policy, enabled: e.target.checked } })}
+          />
+          {t('serviceControls.enabled')}
+        </label>
+      )}
+      {!hideRateLimit && policy.enabled && (
         <div className="mt-3 grid grid-cols-2 gap-3">
           {fields.map((field) => (
             <label key={field} className="text-sm">

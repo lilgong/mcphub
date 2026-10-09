@@ -213,6 +213,7 @@ const stripUndefinedDeep = (value: unknown): unknown => {
 // `enabled`, and the tools/prompts/resources per-item overrides) is read-time
 // or access metadata that can be applied without a reconnect.
 const CONNECTION_RELEVANT_CONFIG_FIELDS = [
+  'targets',
   'keyPool',
   'relay',
   'type',
@@ -607,6 +608,7 @@ export const createServer = async (req: Request, res: Response): Promise<void> =
       !normalizedConfig.url &&
       !normalizedConfig.openapi?.url &&
       !normalizedConfig.openapi?.schema &&
+      !normalizedConfig.targets?.length &&
       !normalizedConfig.command
     ) {
       res.status(400).json({
@@ -632,6 +634,7 @@ export const createServer = async (req: Request, res: Response): Promise<void> =
     // Validate that URL is provided for sse and streamable-http types
     if (
       (normalizedConfig.type === 'sse' || normalizedConfig.type === 'streamable-http') &&
+      !normalizedConfig.targets?.length &&
       !normalizedConfig.url
     ) {
       res.status(400).json({
@@ -764,6 +767,7 @@ export const batchCreateServers = async (req: Request, res: Response): Promise<v
         !normalizedConfig.url &&
         !normalizedConfig.openapi?.url &&
         !normalizedConfig.openapi?.schema &&
+        !normalizedConfig.targets?.length &&
         !normalizedConfig.command
       ) {
         return {
@@ -787,6 +791,7 @@ export const batchCreateServers = async (req: Request, res: Response): Promise<v
       // Validate URL is provided for sse and streamable-http types
       if (
         (normalizedConfig.type === 'sse' || normalizedConfig.type === 'streamable-http') &&
+        !normalizedConfig.targets?.length &&
         !normalizedConfig.url
       ) {
         return {
@@ -1076,6 +1081,7 @@ export const updateServer = async (req: Request, res: Response): Promise<void> =
       !normalizedConfig.url &&
       !normalizedConfig.openapi?.url &&
       !normalizedConfig.openapi?.schema &&
+      !normalizedConfig.targets?.length &&
       !normalizedConfig.command
     ) {
       res.status(400).json({
@@ -1101,6 +1107,7 @@ export const updateServer = async (req: Request, res: Response): Promise<void> =
     // Validate that URL is provided for sse and streamable-http types
     if (
       (normalizedConfig.type === 'sse' || normalizedConfig.type === 'streamable-http') &&
+      !normalizedConfig.targets?.length &&
       !normalizedConfig.url
     ) {
       res.status(400).json({

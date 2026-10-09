@@ -208,6 +208,7 @@ export interface MyCredentialBinding {
 
 // Server config types
 export interface ServerConfig {
+  targets?: import('../../../src/types/targetConnection').TargetConnection[];
   keyPool?: import('../../../src/types/keyPool').KeyPoolConfig;
   rateLimit?: import('../../../src/types/serviceControls').ServiceRateLimit;
   relay?: import('../../../src/types/serviceControls').FetchRelayConfig;
@@ -383,6 +384,7 @@ export interface EnvVar {
 
 // Form data types
 export interface ServerFormData {
+  targets?: import('../../../src/types/targetConnection').TargetConnection[];
   keyPool?: import('../../../src/types/keyPool').KeyPoolConfig;
   rateLimit?: import('../../../src/types/serviceControls').ServiceRateLimit;
   relay?: import('../../../src/types/serviceControls').FetchRelayConfig;

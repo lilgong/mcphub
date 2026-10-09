@@ -49,7 +49,10 @@ interface ServerCardProps {
   onDuplicate?: (server: Server) => void;
   isDuplicating?: boolean;
   onToggle?: (server: Server, enabled: boolean) => Promise<boolean>;
-  onVisibilityChange?: (server: Server, visibility: 'private' | 'group' | 'public') => Promise<boolean>;
+  onVisibilityChange?: (
+    server: Server,
+    visibility: 'private' | 'group' | 'public',
+  ) => Promise<boolean>;
   onRefresh?: () => void;
   onReload?: (server: Server) => Promise<boolean>;
   onReinstall?: (server: Server) => Promise<boolean>;
@@ -81,7 +84,10 @@ const LoadingControl = ({
   overlayStyle,
   spinnerSize = 12,
 }: LoadingControlProps) => (
-  <div className={className ? `relative flex items-center ${className}` : 'relative flex items-center'} aria-busy={isLoading}>
+  <div
+    className={className ? `relative flex items-center ${className}` : 'relative flex items-center'}
+    aria-busy={isLoading}
+  >
     <div
       className="flex w-full items-center justify-center"
       style={{
@@ -101,7 +107,11 @@ const LoadingControl = ({
           ...overlayStyle,
         }}
       >
-        <RefreshCw size={spinnerSize} className="animate-spin" style={{ color: 'var(--hub-ink-3)' }} />
+        <RefreshCw
+          size={spinnerSize}
+          className="animate-spin"
+          style={{ color: 'var(--hub-ink-3)' }}
+        />
       </div>
     )}
   </div>
@@ -200,8 +210,7 @@ const ServerCard = ({
   const enabled = server.enabled !== false;
   const canManage = canManageServer(server, auth.user);
   // Reinstall is only available for stdio servers using npx or uvx
-  const supportsReinstall =
-    server.config?.command === 'npx' || server.config?.command === 'uvx';
+  const supportsReinstall = server.config?.command === 'npx' || server.config?.command === 'uvx';
   const supportsOAuthDisconnect = Boolean(server.oauth?.connected && onOAuthDisconnect);
 
   const handleToggle = async (nextEnabled: boolean) => {
@@ -224,7 +233,10 @@ const ServerCard = ({
       if (success) {
         showToast(t('server.reloadSuccess') || 'Server reloaded successfully', 'success');
       } else {
-        showToast(t('server.reloadError', { serverName: server.name }) || 'Failed to reload', 'error');
+        showToast(
+          t('server.reloadError', { serverName: server.name }) || 'Failed to reload',
+          'error',
+        );
       }
     } finally {
       setIsReloading(false);
@@ -260,7 +272,8 @@ const ServerCard = ({
         showToast(t('server.disconnectOAuthSuccess') || 'Server OAuth disconnected', 'success');
       } else {
         showToast(
-          t('server.disconnectOAuthError', { serverName: server.name }) || 'Failed to disconnect OAuth',
+          t('server.disconnectOAuthError', { serverName: server.name }) ||
+            'Failed to disconnect OAuth',
           'error',
         );
       }
@@ -274,7 +287,9 @@ const ServerCard = ({
     if (!canManage || isUpdatingVisibility || !onVisibilityChange) return;
 
     const nextVisibility = e.target.value as 'private' | 'group' | 'public';
-    if (nextVisibility === normalizeServerVisibility(server.visibility ?? server.config?.visibility)) {
+    if (
+      nextVisibility === normalizeServerVisibility(server.visibility ?? server.config?.visibility)
+    ) {
       return;
     }
 
@@ -324,7 +339,11 @@ const ServerCard = ({
       const h = 700;
       const left = window.screen.width / 2 - w / 2;
       const top = window.screen.height / 2 - h / 2;
-      window.open(server.oauth.authorizationUrl, 'OAuth Authorization', `width=${w},height=${h},left=${left},top=${top}`);
+      window.open(
+        server.oauth.authorizationUrl,
+        'OAuth Authorization',
+        `width=${w},height=${h},left=${left},top=${top}`,
+      );
       showToast(t('status.oauthWindowOpened'), 'info');
       // When a static clientId is configured, the provider's OAuth client is registered
       // with its own redirect-URI allow-list, which often excludes this hub's callback and
@@ -341,7 +360,10 @@ const ServerCard = ({
       const { toggleTool } = await import('@/services/toolService');
       const result = await toggleTool(server.name, toolName, enabled);
       if (result.success) {
-        showToast(t(enabled ? 'tool.enableSuccess' : 'tool.disableSuccess', { name: toolName }), 'success');
+        showToast(
+          t(enabled ? 'tool.enableSuccess' : 'tool.disableSuccess', { name: toolName }),
+          'success',
+        );
         onRefresh?.();
       } else {
         showToast(result.error || t('tool.toggleFailed'), 'error');
@@ -357,7 +379,10 @@ const ServerCard = ({
       const { togglePrompt } = await import('@/services/promptService');
       const result = await togglePrompt(server.name, promptName, enabled);
       if (result.success) {
-        showToast(t(enabled ? 'tool.enableSuccess' : 'tool.disableSuccess', { name: promptName }), 'success');
+        showToast(
+          t(enabled ? 'tool.enableSuccess' : 'tool.disableSuccess', { name: promptName }),
+          'success',
+        );
         onRefresh?.();
       } else {
         showToast(result.error || t('tool.toggleFailed'), 'error');
@@ -373,7 +398,10 @@ const ServerCard = ({
       const { toggleResource } = await import('@/services/resourceService');
       const result = await toggleResource(server.name, resourceUri, enabled);
       if (result.success) {
-        showToast(t(enabled ? 'tool.enableSuccess' : 'tool.disableSuccess', { name: resourceUri }), 'success');
+        showToast(
+          t(enabled ? 'tool.enableSuccess' : 'tool.disableSuccess', { name: resourceUri }),
+          'success',
+        );
         onRefresh?.();
       } else {
         showToast(result.error || t('tool.toggleFailed'), 'error');
@@ -384,7 +412,11 @@ const ServerCard = ({
     }
   };
 
-  const handleToolDescriptionUpdate = (_name: string, _desc: string, options?: { restored?: boolean }) => {
+  const handleToolDescriptionUpdate = (
+    _name: string,
+    _desc: string,
+    options?: { restored?: boolean },
+  ) => {
     showToast(
       options?.restored ? t('tool.restoreDefaultSuccess') : t('tool.descriptionUpdateSuccess'),
       'success',
@@ -392,7 +424,11 @@ const ServerCard = ({
     onRefresh?.();
   };
 
-  const handlePromptDescriptionUpdate = (_name: string, _desc: string, options?: { restored?: boolean }) => {
+  const handlePromptDescriptionUpdate = (
+    _name: string,
+    _desc: string,
+    options?: { restored?: boolean },
+  ) => {
     showToast(
       options?.restored ? t('prompt.restoreDefaultSuccess') : t('prompt.descriptionUpdateSuccess'),
       'success',
@@ -493,10 +529,7 @@ const ServerCard = ({
 
   return (
     <>
-      <div
-        className="hub-card overflow-visible"
-        style={{ marginBottom: 10 }}
-      >
+      <div className="hub-card overflow-visible" style={{ marginBottom: 10 }}>
         {/* Main row */}
         <div
           className="hub-server-card-row cursor-pointer px-4 py-3 transition-colors hover:bg-[var(--hub-surface-hover)]"
@@ -607,7 +640,10 @@ const ServerCard = ({
                           className="p-3 overflow-auto hub-mono"
                           style={{ maxHeight: 260, fontSize: 12 }}
                         >
-                          <pre className="whitespace-pre-wrap break-words m-0" style={{ color: 'var(--hub-ink-2)' }}>
+                          <pre
+                            className="whitespace-pre-wrap break-words m-0"
+                            style={{ color: 'var(--hub-ink-2)' }}
+                          >
                             {server.error}
                           </pre>
                         </div>
@@ -617,7 +653,13 @@ const ServerCard = ({
                 )}
               </div>
               {!!server.config?.credentialTemplate?.length && (
-                <Link className="hub-tag text-xs" to={`/credentials?server=${encodeURIComponent(server.name)}`} onClick={(event) => event.stopPropagation()}>{t('credentials.personalBadge')} · {t('credentials.manage')}</Link>
+                <Link
+                  className="hub-tag text-xs"
+                  to={`/credentials?server=${encodeURIComponent(server.name)}`}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {t('credentials.personalBadge')} · {t('credentials.manage')}
+                </Link>
               )}
               {server.config?.description && (
                 <div
@@ -634,6 +676,7 @@ const ServerCard = ({
           {/* Status */}
           <div className="hub-server-card-status-cell min-w-0">
             <ServerStatusDot
+              targetManaged={!!server.config?.targets?.length}
               status={server.status}
               enabled={server.enabled}
               startOnDemand={server.config?.startOnDemand === true}
@@ -720,7 +763,10 @@ const ServerCard = ({
               </span>
             </span>
           ) : cost ? (
-            <span className="hub-server-capability-stat hub-mono is-empty" title={t('cost.notConnected')}>
+            <span
+              className="hub-server-capability-stat hub-mono is-empty"
+              title={t('cost.notConnected')}
+            >
               <span className="hub-server-capability-value">—</span>
             </span>
           ) : null}
@@ -894,7 +940,10 @@ const ServerCard = ({
                   >
                     <CapabilityIcon icon={Icon} />
                     <span>{tab.label}</span>
-                    <span className="hub-mono hub-num" style={{ color: 'var(--hub-ink-3)', fontSize: 11 }}>
+                    <span
+                      className="hub-mono hub-num"
+                      style={{ color: 'var(--hub-ink-3)', fontSize: 11 }}
+                    >
                       {tab.total === 0 ? '0' : `${tab.enabled}/${tab.total}`}
                     </span>
                   </button>
@@ -908,7 +957,8 @@ const ServerCard = ({
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] transition-colors hover:bg-[var(--hub-surface-hover)]"
                   style={{
                     background: expandedTab === 'cost' ? 'var(--hub-surface)' : 'transparent',
-                    border: '1px solid ' + (expandedTab === 'cost' ? 'var(--hub-line)' : 'transparent'),
+                    border:
+                      '1px solid ' + (expandedTab === 'cost' ? 'var(--hub-line)' : 'transparent'),
                     color: expandedTab === 'cost' ? 'var(--hub-ink)' : 'var(--hub-ink-2)',
                   }}
                   title={t('cost.estimate')}
@@ -928,7 +978,11 @@ const ServerCard = ({
               <div className="ml-auto max-w-full flex-shrink-0 flex items-center justify-end gap-1.5 flex-wrap">
                 <div className="hub-endpoint" style={{ height: 26 }}>
                   <div className="hub-endpoint-label">/mcp/</div>
-                  <div className="hub-endpoint-url" title={serverEndpoint} style={{ maxWidth: 200 }}>
+                  <div
+                    className="hub-endpoint-url"
+                    title={serverEndpoint}
+                    style={{ maxWidth: 200 }}
+                  >
                     {server.name}
                   </div>
                   <button
@@ -970,16 +1024,21 @@ const ServerCard = ({
             {/* Context Footprint breakdown */}
             {expandedTab === 'cost' && cost?.connected && (
               <div className="mt-2 space-y-1">
-                {[...cost.items].sort((a, b) => b.cost - a.cost).map((item) => (
-                  <div
-                    key={`${item.kind}:${item.name}`}
-                    className="flex items-center justify-between hub-mono"
-                    style={{ fontSize: 11.5, color: item.enabled ? 'var(--hub-ink-2)' : 'var(--hub-ink-3)' }}
-                  >
-                    <span className="truncate">{item.name}</span>
-                    <span className="hub-num flex-shrink-0">{formatTokens(item.cost)}</span>
-                  </div>
-                ))}
+                {[...cost.items]
+                  .sort((a, b) => b.cost - a.cost)
+                  .map((item) => (
+                    <div
+                      key={`${item.kind}:${item.name}`}
+                      className="flex items-center justify-between hub-mono"
+                      style={{
+                        fontSize: 11.5,
+                        color: item.enabled ? 'var(--hub-ink-2)' : 'var(--hub-ink-3)',
+                      }}
+                    >
+                      <span className="truncate">{item.name}</span>
+                      <span className="hub-num flex-shrink-0">{formatTokens(item.cost)}</span>
+                    </div>
+                  ))}
               </div>
             )}
 
@@ -1008,7 +1067,9 @@ const ServerCard = ({
                     readOnly={!canManage}
                     onToggle={handlePromptToggle}
                     onDescriptionUpdate={handlePromptDescriptionUpdate}
-                    cost={cost?.items.find((i) => i.kind === 'prompt' && i.name === prompt.name)?.cost}
+                    cost={
+                      cost?.items.find((i) => i.kind === 'prompt' && i.name === prompt.name)?.cost
+                    }
                   />
                 ))}
               </div>
@@ -1028,7 +1089,10 @@ const ServerCard = ({
                         readOnly={!canManage}
                         onToggle={handleResourceToggle}
                         onDescriptionUpdate={handleResourceDescriptionUpdate}
-                        cost={cost?.items.find((i) => i.kind === 'resource' && i.name === resource.uri)?.cost}
+                        cost={
+                          cost?.items.find((i) => i.kind === 'resource' && i.name === resource.uri)
+                            ?.cost
+                        }
                       />
                     ))}
                   </div>
@@ -1063,7 +1127,10 @@ const ServerCard = ({
           handleReinstall();
         }}
         title={t('server.reinstall')}
-        message={t('server.reinstallConfirm') || 'This will clear the package cache and re-download dependencies. The server will restart.'}
+        message={
+          t('server.reinstallConfirm') ||
+          'This will clear the package cache and re-download dependencies. The server will restart.'
+        }
         confirmText={t('server.reinstall')}
         variant="warning"
       />
@@ -1076,7 +1143,10 @@ const ServerCard = ({
           handleOAuthDisconnect();
         }}
         title={t('server.disconnectOAuth')}
-        message={t('server.disconnectOAuthConfirm') || 'This will revoke stored OAuth credentials where supported and require authorization again.'}
+        message={
+          t('server.disconnectOAuthConfirm') ||
+          'This will revoke stored OAuth credentials where supported and require authorization again.'
+        }
         confirmText={t('server.disconnectOAuth')}
         variant="warning"
       />

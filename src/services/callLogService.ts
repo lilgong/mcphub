@@ -6,6 +6,11 @@ export interface CallLog {
   id: string;
   timestamp: string;
   source: 'tool' | 'yibu' | 'relay' | 'key_pool';
+  target?: string;
+  model?: string;
+  benchmark?: string;
+  taskId?: string;
+  runId?: string;
   keyLabel?: string;
   retryAt?: string;
   server: string;
@@ -110,6 +115,11 @@ export async function getCallLogs(
               id,
               timestamp: safeString(record.ts),
               source: 'tool',
+              target: safeString(record.target) || undefined,
+              model: safeString(record.model) || undefined,
+              benchmark: safeString(record.benchmark) || undefined,
+              taskId: safeString(record.taskId) || undefined,
+              runId: safeString(record.runId) || undefined,
               server: safeString(item.server) || safeString(record.group),
               operation: safeString(record.tool),
               outcome: record.status === 'error' || item.status === 'error' ? 'error' : 'success',
@@ -221,6 +231,7 @@ export async function getCallLogs(
           id: safeString(record.request_id),
           timestamp: safeString(record.ts),
           source: 'key_pool',
+          target: safeString(record.target) || undefined,
           server: safeString(record.server),
           operation: safeString(record.path) || 'HTTP',
           outcome: record.outcome === 'error' ? 'error' : 'success',

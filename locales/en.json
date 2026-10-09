@@ -1508,8 +1508,15 @@
     "keyLabel": "Key suffix",
     "retryAt": "Retry after",
     "title": "Activity & logs",
-    "activity": "Statistics & details",
-    "activityUnavailable": "Activity statistics require database mode."
+    "activity": "Statistics",
+    "activityUnavailable": "Activity statistics require database mode.",
+    "details": "Details",
+    "target": "Target",
+    "model": "Model",
+    "benchmark": "Benchmark",
+    "taskId": "Task ID",
+    "runId": "Run ID",
+    "requestId": "Request ID"
   },
   "keyPool": {
     "title": "Multi-key rotation",
@@ -1520,5 +1527,40 @@
     "remove": "Remove",
     "add": "Add key",
     "recovery": "Failed keys remain configured. Retry-After is respected; explicit daily/monthly quota errors wait until the next UTC day/month, and other failures cool down for 60 seconds. Runtime cooldowns reset when Hub restarts."
+  },
+  "targets": {
+    "title": "Target connections",
+    "description": "Exact target required for discovery and calls. No automatic fallback. Access lists use Bearer Key IDs or usernames; empty lists allow administrators only. MCP limits are shared across all targets.",
+    "path": "Target path",
+    "kind": "Connection kind",
+    "static": "Persistent MCP connection",
+    "task": "Leased task callback",
+    "allowedKeys": "Allowed Bearer Key IDs (comma separated)",
+    "allowedUsers": "Allowed usernames (comma separated)",
+    "transport": "Transport",
+    "command": "Command",
+    "args": "Arguments (one per line)",
+    "env": "Environment variables",
+    "headers": "HTTP headers",
+    "remove": "Remove target",
+    "add": "Add target",
+    "managed": "Target managed"
+  },
+  "statistics": {
+    "description": "Completed tool calls counted once, across the full selected period (UTC). HTTP attempts are excluded. Model and benchmark labels are supplied by callers; historical unlabeled calls remain unmarked.",
+    "month": "Month",
+    "start": "From (UTC)",
+    "end": "To (UTC)",
+    "server": "MCP",
+    "target": "Target",
+    "model": "Model",
+    "benchmark": "Benchmark",
+    "total": "Calls",
+    "success": "Successful",
+    "errors": "Errors",
+    "unmarked": "Unmarked",
+    "unavailable": "Enable durable tool auditing to collect statistics.",
+    "groupBy": "Group by",
+    "allDimensions": "All dimensions"
   }
 }

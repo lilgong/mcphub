@@ -1,0 +1,85 @@
+---
+title: 'Target connections and task routing'
+description: 'Share MCPHub across applications while keeping credentials and task state separate.'
+---
+
+An MCP registration can expose multiple **exact targets**, such as `project/official` and
+`project/synthetic`. Target paths are operator-defined labels; MCPHub does not interpret
+benchmark names, create task containers, or require a Docker socket.
+
+## Persistent targets
+
+In the server editor, open **Target connections** and add a target with its own HTTP/SSE
+URL or stdio command and credentials. Use one logical MCP name for all targets. Each
+static target owns an independent upstream client; credentials and transport settings do
+not fall back to the parent registration or another target.
+
+Supply `X-MCPHub-Target: project/official` on **every** MCP request, including
+initialization and tool discovery. Missing, unknown and unauthorized targets are rejected.
+Targets can allow specific Bearer Key **IDs** or usernames; empty access lists permit
+administrators only. Parent-server visibility and ordinary Bearer Key scope still apply.
+An explicit access list also applies to administrators. Target routing does not rename tools.
+
+Multiple keys in a pool must refer to the **same** provider account resources. Separate
+Notion workspaces, Slack workspaces or databases belong to different targets, not a rotating
+key pool. This version's automatic key rotation supports Context7 and TwelveData;
+other providers use their normal MCP credentials. Keys are shown by their masked suffix.
+
+Rate settings belong to the logical MCP registration and are shared across its targets,
+tasks and callers. Compatible stdio wrappers can also consume the managed relay environment.
+Turning on relay does not make an arbitrary MCP wrapper proxy-aware automatically.
+
+## Task connections (tool-http-v1)
+
+A task adapter starts its own isolated runtime and publishes two authenticated HTTP callbacks:
+
+- `POST {callback}/list-tools` → a JSON array of MCP tools with names prefixed `server_`.
+- `POST {callback}/call-tool` with `{ "tool_name": "server_tool", "tool_args": {} }`
+  → `{ "content": [...], "isError": false }` (or `isError: true` for tool errors).
+
+Configure a target with `kind: "task"`. An operator with a system all-access Bearer Key
+or dashboard administrator identity registers the callback:
+
+```http
+POST /api/task-connections
+Authorization: Bearer OPERATOR_KEY
+X-MCPHub-Model: model-name
+X-MCPHub-Benchmark: benchmark-name
+X-MCPHub-Run-ID: run-id
+Content-Type: application/json
+
+{"server":"filesystem","target":"project/official","taskId":"unique-task-id","url":"http://adapter/internal/opaque-task-route","token":"CALLBACK_SECRET"}
+```
+
+The response `data` contains `id`, `token`, `expiresAt` and `path`. The returned task
+capability is usable only for this connection, at `POST {path}/list-tools` and
+`POST {path}/call-tool`, with `Authorization: Bearer {token}`. URLs must be fixed by the
+trusted adapter, not supplied by models. MCPHub forwards with the separate callback secret,
+rejects redirects, limits response size, and applies the registered MCP's scheduler and audit.
+
+Connections expire after **300 seconds**. Renew with `PUT /api/task-connections/{id}`
+using the registering operator's identity; delete with `DELETE` before destroying the
+runtime. Missing, expired, revoked and cross-task capabilities cannot route requests.
+Restarting MCPHub clears all leases; adapters must fail closed and create new task sessions.
+The tool-http-v1 gateway is a separate adapter protocol on the **same Hub HTTP port**;
+it does not impersonate a public MCP server transport.
+
+An authorized adapter can fetch `GET /api/servers/{name}/runtime?target=project/official`
+for a relay-only `data.env` snapshot before creating a task runtime. Provider keys are
+not included. The adapter determines how its wrapper consumes these environment variables.
+
+## Statistics and logs
+
+The dashboard has separate **Call logs**, **Statistics** and **Runtime logs** tabs.
+Call logs default to tool calls and errors; HTTP attempt sources can be selected separately.
+Statistics stream complete durable audit files for the selected month or UTC date range
+(maximum 366 days). Each completed tool call counts once, regardless of internal key attempts.
+An invocation still in progress is not yet counted. No quota usage or provider request count
+is inferred from tool counts.
+
+`X-MCPHub-Model`, `X-MCPHub-Benchmark`, `X-MCPHub-Run-ID` and `X-MCPHub-Task-ID`
+are optional caller-provided reporting labels, not authorization claims. The statistics API
+defaults to one row per MCP; `groupBy=target`, `model`, `benchmark` or `all` selects
+an optional breakdown. It is `GET /api/logs/statistics?start=...&end=...&server=...&target=...&model=...&benchmark=...`.
+Unlabeled historical calls stay unlabeled. Enable `MCPHUB_AUDIT_LOG_DIR` to persist the tool
+records used for these statistics. Arguments, results and full keys are not written to audit logs.

@@ -195,3 +195,5 @@ Chinese users can also support via WeChat Pay — see [中文版](README.zh.md).
 Licensed under the [Apache 2.0 License](LICENSE).
 
 For pinned MCP-Atlas servers and optional Atlas transport, see [MCP-Atlas integration](docs/features/atlas-integration.mdx).
+
+Target connections, generic task routing and call statistics: [Target connections](docs/features/target-connections.mdx).
