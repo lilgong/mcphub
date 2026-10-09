@@ -218,3 +218,29 @@ test('editing or disabling one implementation preserves an unchanged sibling cli
   await new Promise((resolve) => setImmediate(resolve));
   expect(close).toHaveBeenCalledTimes(2);
 });
+
+test('database nulls and omitted request defaults do not retire unchanged sibling clients', async () => {
+  const connect = jest.fn(async (_name, config) => child(config));
+  const pool = new TargetRuntimeService(connect, jest.fn());
+  const persisted = Object.assign(structuredClone(definition), {
+    enabled: true,
+    visibility: 'private',
+    description: null,
+    tools: null,
+    prompts: null,
+    resources: null,
+    relay: null,
+    rateLimit: null,
+    sharedWithUsers: null,
+  }) as unknown as ServerConfig;
+  const a = await pool.acquire('notion', persisted, 'other/official', principal, 'key-a');
+  const next = structuredClone(definition);
+  next.targets![1].version = 'changed-other-version';
+  pool.invalidate('notion', next);
+  const same = await pool.acquire('notion', next, 'other/official', principal, 'key-a');
+  expect(same.info).toBe(a.info);
+  expect(connect).toHaveBeenCalledTimes(1);
+  a.release();
+  same.release();
+  pool.invalidate();
+});

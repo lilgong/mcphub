@@ -35,18 +35,18 @@ function resolveTargetConfig(definition: ServerConfig, target: TargetConnection)
   // Targets supply their own transport and credentials. Inherit shared controls explicitly.
   return {
     ...target.config,
-    enabled: definition.enabled,
-    description: definition.description,
-    tools: definition.tools,
-    prompts: definition.prompts,
-    resources: definition.resources,
-    relay: target.config?.relay ?? definition.relay,
-    rateLimit: definition.rateLimit,
+    enabled: definition.enabled !== false,
+    description: definition.description ?? undefined,
+    tools: definition.tools ?? undefined,
+    prompts: definition.prompts ?? undefined,
+    resources: definition.resources ?? undefined,
+    relay: target.config?.relay ?? definition.relay ?? undefined,
+    rateLimit: definition.rateLimit ?? undefined,
     perSessionClient: false,
     env: { ...target.config?.env, MCPHUB_CONNECTION_TARGET: target.path },
     owner: definition.owner,
-    visibility: definition.visibility,
-    sharedWithUsers: definition.sharedWithUsers,
+    visibility: definition.visibility ?? 'private',
+    sharedWithUsers: definition.sharedWithUsers?.length ? definition.sharedWithUsers : undefined,
   };
 }
 const targetRevision = (definition: ServerConfig, target: TargetConnection): string =>
