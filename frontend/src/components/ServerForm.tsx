@@ -603,7 +603,7 @@ const ServerForm = ({
   };
 
   return (
-    <div className="hub-card p-6 w-full max-w-3xl max-h-screen overflow-y-auto">
+    <div className="hub-card hub-server-form p-6 w-full max-w-3xl max-h-screen overflow-y-auto">
       <div className="flex justify-between items-center mb-5">
         <h2 className="text-lg font-semibold text-[var(--hub-ink)]">{modalTitle}</h2>
         <button onClick={onCancel} className="hub-icon-btn" aria-label="Close">
@@ -622,7 +622,7 @@ const ServerForm = ({
             {t('server.sectionBasicInfo', 'Basic Info')}
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
             <div className="md:col-span-1">
               <label
                 className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]"
@@ -641,9 +641,9 @@ const ServerForm = ({
                 pattern={enforceNamePattern ? SERVER_NAME_PATTERN.source : undefined}
                 maxLength={enforceNamePattern ? SERVER_NAME_MAX_LENGTH : undefined}
                 title={t('server.nameInvalid')}
+                aria-describedby="server-name-hint"
                 required
               />
-              <p className="text-xs text-[var(--hub-ink-3)] mt-1">{t('server.nameInvalid')}</p>
             </div>
 
             <div className="md:col-span-2">
@@ -664,9 +664,12 @@ const ServerForm = ({
               />
             </div>
           </div>
+          <p id="server-name-hint" className="text-xs leading-relaxed text-[var(--hub-ink-3)]">
+            {t('server.nameInvalid')}
+          </p>
         </div>
 
-        <div>
+        <div className="mb-4">
           <label
             className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]"
             htmlFor="visibility"
@@ -695,7 +698,7 @@ const ServerForm = ({
               {t('server.visibilityPublic', 'Public — every authenticated user')}
             </option>
           </select>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs leading-relaxed text-gray-500 mt-2">
             {t(
               'server.visibilityDescription',
               'Controls which non-admin users can discover and call this server. Admins always have access.',

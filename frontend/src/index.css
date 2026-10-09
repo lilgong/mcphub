@@ -71,6 +71,7 @@
   letter-spacing: 0.08em;
 }
 .hub-card-title { font-size: 13px; font-weight: 500; margin: 0; color: var(--hub-ink); }
+.hub-server-form p.hub-sub { margin-top: 8px; margin-bottom: 12px; line-height: 1.75; }
 
 /* Optional server settings share the dashboard's surfaces and control density. */
 .hub-config-section {
@@ -109,8 +110,8 @@
 }
 .hub-config-description, .hub-config-note {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.75;
   color: var(--hub-ink-2);
 }
 .hub-config-note { color: var(--hub-ink-3); }
