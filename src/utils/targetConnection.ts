@@ -89,8 +89,11 @@ export function normalizeTargetConnections(value: unknown): TargetConnection[] |
       }
       config.relay = normalizeFetchRelay(entry.config.relay);
     }
-    if (entry.kind === 'task' && entry.config?.relay !== undefined)
+    if (entry.kind === 'task' && entry.config) {
       config = { relay: normalizeFetchRelay(entry.config.relay) };
+      if (entry.config.env?.MCPHUB_RELAY_ADAPTER === 'fetch-v1')
+        config.env = { MCPHUB_RELAY_ADAPTER: 'fetch-v1' };
+    }
     return {
       path: entry.path,
       kind: entry.kind,

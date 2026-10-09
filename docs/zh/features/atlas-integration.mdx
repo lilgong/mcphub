@@ -134,3 +134,11 @@ MCPHUB_CONFIG_URL=http://127.0.0.1:3002
 ## 调用统计
 
 调用统计按月份或自选 UTC 时间段汇总每个 MCP 的完成调用次数、成功次数和错误次数。无需在服务器或 Atlas 配置模型、测评集或批次标签；不再按这些标签分类。目标路径仍用于选择版本/工作区，任务 ID 仍用于任务隔离与日志排查。历史审计日志保留，继续参与时间段汇总。
+
+## Relay 配置入口
+
+地址、访问凭据与 HTTP 限速统一在「Relay 设置」填写。已适配的 MCP 连接只显示
+「启用 IP 池转发」开关；未适配的原生 MCP 显示说明，不能开启。环境变量编辑区
+不重复显示 Relay 地址/凭据。Arxiv、PubMed、OSM、Wikipedia 的交付包使用
+`MCP_RELAY_*`，并声明 `MCPHUB_RELAY_ADAPTER=fetch-v1`。已有包继续通过 Hub
+注入的 `PUBMED_RELAY_*` / `WIKIPEDIA_RELAY_*` 兼容，无需重新导入。

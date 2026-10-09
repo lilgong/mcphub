@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { apiGet } from '../utils/fetchInterceptor';
 import { Gauge, Network } from 'lucide-react';
 import ConfigurationSection from './ConfigurationSection';
 import { useTranslation } from 'react-i18next';
@@ -18,15 +21,36 @@ export default function ServiceControls({
   rateLimit,
   relay,
   stdio,
+  relaySupported = false,
   onChange,
 }: {
   hideRateLimit?: boolean;
   rateLimit?: ServiceRateLimit;
   relay?: FetchRelayConfig;
   stdio: boolean;
+  relaySupported?: boolean;
   onChange: (value: { rateLimit?: ServiceRateLimit; relay?: FetchRelayConfig }) => void;
 }) {
   const { t } = useTranslation();
+  const [relayDefault, setRelayDefault] = useState<boolean>();
+  useEffect(() => {
+    if (!stdio || !relaySupported) return;
+    let active = true;
+    void apiGet<{
+      success: boolean;
+      data: { relay: { enabled: boolean }; hasRelayToken: boolean };
+    }>('/relay/config')
+      .then((result) => {
+        if (active && result.success)
+          setRelayDefault(result.data.relay.enabled && result.data.hasRelayToken);
+      })
+      .catch(() => {
+        if (active) setRelayDefault(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [stdio, relaySupported]);
   const policy = rateLimit ?? { enabled: false };
   const renderFields = (names: readonly (typeof fields)[number][]) => (
     <div className="hub-config-fields grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -81,43 +105,37 @@ export default function ServiceControls({
       )}
 
       {stdio && (
-        <ConfigurationSection title="Relay" icon={Network}>
-          <p className="hub-config-description">{t('serviceControls.relayDescription')}</p>
-          <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
-            <label>
-              <span>{t('serviceControls.relay')}</span>
-              <select
-                aria-label={t('serviceControls.relay')}
-                className="hub-input"
-                value={relay == null ? 'inherit' : relay.enabled ? 'on' : 'off'}
-                onChange={(e) =>
-                  onChange({
-                    relay:
-                      e.target.value === 'inherit'
-                        ? undefined
-                        : {
-                            enabled: e.target.value === 'on',
-                            envPrefix: relay?.envPrefix ?? 'PUBMED',
-                          },
-                  })
-                }
-              >
-                <option value="inherit">{t('serviceControls.inherit')}</option>
-                <option value="on">{t('serviceControls.relayOn')}</option>
-                <option value="off">{t('serviceControls.relayOff')}</option>
-              </select>
-            </label>
-            {relay && (
-              <label className="block text-sm">
-                {t('serviceControls.envPrefix')}
+        <ConfigurationSection
+          title={t('serviceControls.relayTitle')}
+          icon={Network}
+          badge={relaySupported ? undefined : t('serviceControls.relayUnsupportedBadge')}
+        >
+          {relaySupported ? (
+            <>
+              <p className="hub-config-description">{t('serviceControls.relayDescription')}</p>
+              <label className="hub-config-toggle">
+                <span>{t('serviceControls.relayEnabled')}</span>
                 <input
-                  className="hub-input"
-                  value={relay.envPrefix}
-                  onChange={(e) => onChange({ relay: { ...relay, envPrefix: e.target.value } })}
+                  type="checkbox"
+                  className="hub-config-checkbox"
+                  checked={relay?.enabled ?? relayDefault ?? false}
+                  disabled={relayDefault === undefined && relay === undefined}
+                  onChange={(e) => onChange({ relay: { ...relay, enabled: e.target.checked } })}
                 />
               </label>
-            )}
-          </div>
+              <p className="hub-config-note">
+                {t('serviceControls.relayCentralHint')}{' '}
+                <Link className="text-[var(--hub-accent)] hover:underline" to="/relay">
+                  {t('atlas.title')}
+                </Link>
+              </p>
+              {relayDefault === false && (
+                <p className="hub-config-note">{t('serviceControls.relayNotConfigured')}</p>
+              )}
+            </>
+          ) : (
+            <p className="hub-config-description">{t('serviceControls.relayUnsupported')}</p>
+          )}
         </ConfigurationSection>
       )}
     </>

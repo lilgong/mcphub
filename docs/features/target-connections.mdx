@@ -34,6 +34,20 @@ other providers use their normal MCP credentials. Keys are shown by their masked
 Rate settings belong to the logical MCP registration and are shared across its targets,
 tasks and callers. Compatible stdio wrappers can also consume the managed relay environment.
 Turning on relay does not make an arbitrary MCP wrapper proxy-aware automatically.
+Configure the IP pool connection and credentials once on **Relay settings**. Compatible
+connections expose only **Route through the IP pool**; native, unadapted MCPs show a
+non-interactive explanation. Relay URL/token fields are hidden from the connection's
+ordinary environment editor, preserving existing values for compatibility.
+
+New wrappers read `MCP_RELAY_URL`, `MCP_RELAY_TOKEN` and
+`MCP_RELAY_TIMEOUT_SECONDS` and declare `MCPHUB_RELAY_ADAPTER=fetch-v1` in their
+connection environment. The declaration describes a real `/v1/fetch` implementation;
+it does not implement one. Hub recognizes older delivered wrapper paths as well.
+It injects legacy `PUBMED_RELAY_*` / `WIKIPEDIA_RELAY_*` aliases for existing packages.
+A disabled switch clears both generic and legacy relay connection values at runtime.
+Legacy `relay.envPrefix` is accepted but no longer shown in the dashboard.
+Task connection configurations can retain the same adapter declaration without
+embedding credentials. The callback adapter must apply the relay snapshot to its runtime.
 
 ## Native implementations, wrappers and versions
 

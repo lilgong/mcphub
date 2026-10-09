@@ -132,11 +132,21 @@ export async function hasRelayToken(): Promise<boolean> {
 export async function getRelayEnvironment(
   server: string,
   connection?: FetchRelayConfig,
+  compatible = false,
 ): Promise<Record<string, string>> {
-  if (!connection && !RELAY_SERVERS.has(server)) return {};
+  if (!compatible && !connection && !RELAY_SERVERS.has(server)) return {};
   const relay = getCachedSystemConfig()?.atlas?.relay;
+  const prefixes = new Set(['MCP', 'PUBMED', 'WIKIPEDIA', connection?.envPrefix].filter(Boolean));
+  const environment = (url: string, token: string, timeout: number): Record<string, string> =>
+    Object.fromEntries(
+      [...prefixes].flatMap((prefix) => [
+        [`${prefix}_RELAY_URL`, url],
+        [`${prefix}_RELAY_TOKEN`, token],
+        [`${prefix}_RELAY_TIMEOUT_SECONDS`, String(timeout)],
+      ]),
+    );
   if (!relay && connection?.enabled) throw new Error('Managed relay is not configured');
-  if (!relay) return {};
+  if (!relay) return connection?.enabled === false ? environment('', '', 90) : {};
   if (connection?.enabled && !relay.enabled) throw new Error('Managed relay is disabled');
   const enabled = relay.enabled && connection?.enabled !== false;
   let token = '';
@@ -148,10 +158,6 @@ export async function getRelayEnvironment(
     if (!binding) throw new Error('Managed relay credential is unavailable');
     token = (await decryptCredentialValues(binding)).token;
   }
-  const prefix = connection?.envPrefix ?? (server === 'wikipedia' ? 'WIKIPEDIA' : 'PUBMED');
-  return {
-    [`${prefix}_RELAY_URL`]: enabled ? relay.url : '',
-    [`${prefix}_RELAY_TOKEN`]: token,
-    [`${prefix}_RELAY_TIMEOUT_SECONDS`]: String(relay.timeoutSeconds),
-  };
+  // Alias both legacy readers, including packages whose logical name has changed.
+  return environment(enabled ? relay.url : '', token, relay.timeoutSeconds);
 }

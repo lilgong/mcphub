@@ -1,3 +1,7 @@
+import {
+  supportsFetchRelay,
+  isRelayEnvironmentVariable,
+} from '../../../src/utils/relayCompatibility';
 import { Layers, Plus } from 'lucide-react';
 import ConfigurationSection from './ConfigurationSection';
 import { getKeyPoolProvider, isPooledCredential } from '../../../src/utils/keyPoolCompatibility';
@@ -99,7 +103,17 @@ export default function TargetConnectionEditor({
               <select
                 className={input}
                 value={target.kind}
-                onChange={(e) => patch(index, { kind: e.target.value as TargetConnection['kind'] })}
+                onChange={(e) => {
+                  const kind = e.target.value as TargetConnection['kind'];
+                  patch(index, {
+                    kind,
+                    ...(kind === 'task' &&
+                    (supportsFetchRelay(target.config ?? {}) ||
+                      supportsFetchRelay(currentConnection ?? {}))
+                      ? { config: { ...target.config, env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' } } }
+                      : {}),
+                  });
+                }}
               >
                 <option value="static">{t('targets.static')}</option>
                 <option value="task">{t('targets.task')}</option>
@@ -219,8 +233,15 @@ export default function TargetConnectionEditor({
                         Object.fromEntries(
                           Object.entries(target.config?.[field] ?? {}).filter(
                             ([key]) =>
-                              !target.config?.keyPool?.enabled ||
-                              !isPooledCredential(key, getKeyPoolProvider(target.config ?? {})),
+                              (!target.config?.keyPool?.enabled ||
+                                !isPooledCredential(
+                                  key,
+                                  getKeyPoolProvider(target.config ?? {}),
+                                )) &&
+                              !(
+                                supportsFetchRelay(target.config ?? {}) &&
+                                isRelayEnvironmentVariable(key, target.config?.relay)
+                              ),
                           ),
                         ),
                       )}
@@ -232,11 +253,13 @@ export default function TargetConnectionEditor({
                               ...Object.fromEntries(
                                 Object.entries(target.config?.[field] ?? {}).filter(
                                   ([key]) =>
-                                    target.config?.keyPool?.enabled &&
-                                    isPooledCredential(
-                                      key,
-                                      getKeyPoolProvider(target.config ?? {}),
-                                    ),
+                                    (supportsFetchRelay(target.config ?? {}) &&
+                                      isRelayEnvironmentVariable(key, target.config?.relay)) ||
+                                    (target.config?.keyPool?.enabled &&
+                                      isPooledCredential(
+                                        key,
+                                        getKeyPoolProvider(target.config ?? {}),
+                                      )),
                                 ),
                               ),
                               ...parseRecord(e.target.value),
@@ -253,6 +276,7 @@ export default function TargetConnectionEditor({
                 hideRateLimit
                 relay={target.config?.relay}
                 stdio={target.config?.type === 'stdio'}
+                relaySupported={supportsFetchRelay(target.config ?? {})}
                 onChange={(changes) =>
                   patch(index, { config: { ...target.config, relay: changes.relay } })
                 }
@@ -263,8 +287,14 @@ export default function TargetConnectionEditor({
             <ServiceControls
               hideRateLimit
               stdio
+              relaySupported={
+                supportsFetchRelay(target.config ?? {}) ||
+                supportsFetchRelay(currentConnection ?? {})
+              }
               relay={target.config?.relay}
-              onChange={(changes) => patch(index, { config: { relay: changes.relay } })}
+              onChange={(changes) =>
+                patch(index, { config: { ...target.config, relay: changes.relay } })
+              }
             />
           )}
           <p className="hub-config-note">{t('targets.versionHint')}</p>

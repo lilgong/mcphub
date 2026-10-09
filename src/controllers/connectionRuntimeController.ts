@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { getServerDao } from '../dao/DaoFactory.js';
 import { requireAdmin } from '../utils/requireAdmin.js';
 import { authorizeTarget } from '../services/targetRuntimeService.js';
+import { supportsFetchRelay } from '../utils/relayCompatibility.js';
 import { getRelayEnvironment } from '../services/atlasConfigService.js';
 /** Credentials for compatible task adapters, never MCP-provider keys. */
 export async function connectionRuntime(req: Request, res: Response): Promise<void> {
@@ -27,7 +28,13 @@ export async function connectionRuntime(req: Request, res: Response): Promise<vo
   try {
     res.json({
       success: true,
-      data: { env: await getRelayEnvironment(server, target?.config?.relay ?? definition.relay) },
+      data: {
+        env: await getRelayEnvironment(
+          server,
+          target?.config?.relay ?? definition.relay,
+          supportsFetchRelay(target?.config ?? definition),
+        ),
+      },
     });
   } catch {
     res.status(503).json({ success: false, message: 'Connection runtime unavailable' });

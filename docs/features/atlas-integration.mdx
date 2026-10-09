@@ -261,3 +261,11 @@ preserved, and legacy labels are ignored for new attempts.
 ## Call statistics
 
 Select a month or custom UTC date range to count completed calls, successes and errors per MCP. No model, benchmark or run labels are configured or collected. Target paths still select implementations/workspaces, and task IDs still identify isolated task connections. Existing audit records remain available for time-range totals.
+
+## One Relay configuration entry
+
+Configure the shared IP pool URL, token and HTTP limits on **Relay settings**.
+Supported MCP connections expose a single enable switch; unsupported connections
+cannot enable it. Arxiv, PubMed, OSM and Wikipedia delivery packages use the generic
+`MCP_RELAY_*` convention and declare their `fetch-v1` adapter. Already imported packages
+keep working through the legacy aliases injected by Hub, without reimporting.

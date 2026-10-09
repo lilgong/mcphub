@@ -12,6 +12,7 @@ import {
 import { toolCallScheduler } from '../services/toolCallSchedulerService.js';
 import { closeServer, initializeClientsFromSettings } from '../services/mcpService.js';
 import { assertSafeUrl } from '../utils/ssrf.js';
+import { supportsFetchRelay } from '../utils/relayCompatibility.js';
 
 export async function getAtlasSettings(req: Request, res: Response): Promise<void> {
   if (!(await requireAdmin(req, res))) return;
@@ -42,15 +43,21 @@ export async function updateAtlasSettings(req: Request, res: Response): Promise<
     return;
   }
   const failed: string[] = [];
-  // Reload only enabled Hub-owned relay services, never task-isolated Atlas processes.
+  // Reconnect compatible Hub-owned implementations; task snapshots remain unchanged.
   const current = await getAtlasConfig();
   const relayChanged =
     JSON.stringify(old.relay) !== JSON.stringify(current.relay) ||
     Boolean(req.body.relayToken) ||
     req.body.clearRelayToken === true;
-  for (const name of relayChanged ? ['osm-mcp-server', 'wikipedia'] : []) {
-    const server = await getServerDao().findById(name);
-    if (!server || server.enabled === false) continue;
+  const servers = relayChanged ? await getServerDao().findAll() : [];
+  for (const server of servers) {
+    const compatible = server.targets?.length
+      ? server.targets.some(
+          (target) => target.kind === 'static' && supportsFetchRelay(target.config ?? {}),
+        )
+      : supportsFetchRelay(server);
+    if (server.enabled === false || !compatible) continue;
+    const name = server.name;
     try {
       closeServer(name);
       await initializeClientsFromSettings(false, name);
@@ -111,8 +118,8 @@ export async function relayLimits(req: Request, res: Response): Promise<void> {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const environment = await getRelayEnvironment('pubmed');
-    const url = environment.PUBMED_RELAY_URL;
-    const token = environment.PUBMED_RELAY_TOKEN;
+    const url = environment.MCP_RELAY_URL;
+    const token = environment.MCP_RELAY_TOKEN;
     if (!url || !token) {
       res
         .status(409)
@@ -128,13 +135,11 @@ export async function relayLimits(req: Request, res: Response): Promise<void> {
       signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) {
-      res
-        .status(response.status === 400 ? 400 : 502)
-        .json({
-          success: false,
-          message: 'Relay rejected the rate settings or does not support live limits',
-          httpStatus: response.status,
-        });
+      res.status(response.status === 400 ? 400 : 502).json({
+        success: false,
+        message: 'Relay rejected the rate settings or does not support live limits',
+        httpStatus: response.status,
+      });
       return;
     }
     const data = (await response.json()) as { limits?: unknown };

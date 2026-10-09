@@ -1,3 +1,7 @@
+import {
+  supportsFetchRelay,
+  isRelayEnvironmentVariable,
+} from '../../../src/utils/relayCompatibility';
 import SecretInput from './SecretInput';
 import { getKeyPoolProvider, isPooledCredential } from '../../../src/utils/keyPoolCompatibility';
 import TargetConnectionEditor from './TargetConnectionEditor';
@@ -569,6 +573,12 @@ const ServerForm = ({
   const keyPoolProvider = getKeyPoolProvider({
     type: serverType,
     command: formData.command,
+    args: formData.args,
+    env: Object.fromEntries(envVars.map(({ key, value }) => [key, value])),
+  });
+
+  const relaySupported = supportsFetchRelay({
+    type: serverType,
     args: formData.args,
     env: Object.fromEntries(envVars.map(({ key, value }) => [key, value])),
   });
@@ -1796,8 +1806,10 @@ const ServerForm = ({
                       </div>
                       <p className="hub-sub mb-3 text-xs">{t('server.connectionEnvHint')}</p>
                       {envVars.map((envVar, index) =>
-                        formData.keyPool?.enabled &&
-                        isPooledCredential(envVar.key, keyPoolProvider) ? null : (
+                        (formData.keyPool?.enabled &&
+                          isPooledCredential(envVar.key, keyPoolProvider)) ||
+                        (relaySupported &&
+                          isRelayEnvironmentVariable(envVar.key, formData.relay)) ? null : (
                           <div key={index} className="flex items-center mb-2">
                             <div className="flex items-center space-x-2 flex-grow">
                               <input
@@ -1916,8 +1928,10 @@ const ServerForm = ({
                       </div>
                       <p className="hub-sub mb-3 text-xs">{t('server.connectionEnvHint')}</p>
                       {envVars.map((envVar, index) =>
-                        formData.keyPool?.enabled &&
-                        isPooledCredential(envVar.key, keyPoolProvider) ? null : (
+                        (formData.keyPool?.enabled &&
+                          isPooledCredential(envVar.key, keyPoolProvider)) ||
+                        (relaySupported &&
+                          isRelayEnvironmentVariable(envVar.key, formData.relay)) ? null : (
                           <div key={index} className="flex items-center mb-2">
                             <div className="flex items-center space-x-2 flex-grow">
                               <input
@@ -2466,6 +2480,7 @@ const ServerForm = ({
           rateLimit={formData.rateLimit}
           relay={formData.relay}
           stdio={!formData.targets?.length && serverType === 'stdio'}
+          relaySupported={relaySupported}
           onChange={(value) => setFormData((previous) => ({ ...previous, ...value }))}
         />
         <div className="flex justify-end mt-6">

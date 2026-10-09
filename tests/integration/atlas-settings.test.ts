@@ -9,6 +9,7 @@ import {
   getBearerKeyDao,
   getUserDao,
   getCredentialBindingDao,
+  getServerDao,
 } from '../../src/dao/DaoFactory.js';
 import {
   relayLimits,
@@ -21,6 +22,7 @@ import {
   saveAtlasConfig,
   getRelayEnvironment,
 } from '../../src/services/atlasConfigService.js';
+import { closeServer, initializeClientsFromSettings } from '../../src/services/mcpService.js';
 import { getServerEnvironment } from '../../src/services/serverConfigEnvironment.js';
 import { clearSettingsCache } from '../../src/config/index.js';
 import { setCachedSystemConfig } from '../../src/utils/systemConfigCache.js';
@@ -156,10 +158,25 @@ test('only trusted relay servers receive the connection token', async () => {
     'PUBMED_RELAY_TOKEN',
     'synthetic-relay-secret',
   );
-  expect(await getServerEnvironment({ name: 'pubmed' })).toHaveProperty(
-    'PUBMED_RELAY_TOKEN',
+  expect(
+    await getServerEnvironment({ name: 'pubmed', env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' } }),
+  ).toHaveProperty('PUBMED_RELAY_TOKEN', 'synthetic-relay-secret');
+  expect(
+    await getServerEnvironment({ name: 'pubmed', type: 'stdio', args: ['-y', 'native-pubmed'] }),
+  ).not.toHaveProperty('MCP_RELAY_TOKEN');
+  await expect(getServerEnvironment({ name: 'native', relay: { enabled: true } })).rejects.toThrow(
+    'no /v1/fetch relay adapter',
+  );
+  const compatible = { name: 'custom-benchmark-search', env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' } };
+  expect(await getServerEnvironment(compatible)).toHaveProperty(
+    'MCP_RELAY_TOKEN',
     'synthetic-relay-secret',
   );
+  const off = await getServerEnvironment({ ...compatible, relay: { enabled: false } });
+  expect(off.MCP_RELAY_URL).toBe('');
+  expect(off.MCP_RELAY_TOKEN).toBe('');
+  expect(off.PUBMED_RELAY_URL).toBe('');
+  expect(off.PUBMED_RELAY_TOKEN).toBe('');
   await request(app)
     .put('/api/atlas')
     .set('x-test-admin', 'yes')
@@ -195,4 +212,31 @@ test('relay limits require admin authorization and never return the shared token
   } finally {
     global.fetch = originalFetch;
   }
+});
+
+test('relay settings reconnect compatible implementations by capability, including renamed services', async () => {
+  await getServerDao().create({
+    name: 'other-suite-search',
+    type: 'stdio',
+    command: 'node',
+    enabled: true,
+    env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' },
+  });
+  await getServerDao().create({
+    name: 'wikipedia',
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'native-wikipedia'],
+    enabled: true,
+  });
+  jest.mocked(closeServer).mockClear();
+  jest.mocked(initializeClientsFromSettings).mockClear();
+  await request(app)
+    .put('/api/atlas')
+    .set('x-test-admin', 'yes')
+    .send({ config, relayToken: 'new-synthetic-relay-secret' })
+    .expect(200);
+  expect(closeServer).toHaveBeenCalledWith('other-suite-search');
+  expect(initializeClientsFromSettings).toHaveBeenCalledWith(false, 'other-suite-search');
+  expect(closeServer).not.toHaveBeenCalledWith('wikipedia');
 });

@@ -244,3 +244,21 @@ test('database nulls and omitted request defaults do not retire unchanged siblin
   same.release();
   pool.invalidate();
 });
+
+// Task capabilities survive registration without retaining unrelated environment secrets.
+test('task targets retain the generic relay adapter declaration', () => {
+  const targets = normalizeTargetConnections([
+    {
+      path: 'other-benchmark/suite',
+      kind: 'task',
+      config: {
+        env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1', PRIVATE_KEY: 'never-copy' },
+        relay: { enabled: false },
+      },
+    },
+  ]);
+  expect(targets?.[0].config).toEqual({
+    env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' },
+    relay: { enabled: false },
+  });
+});
