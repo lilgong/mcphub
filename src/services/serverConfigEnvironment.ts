@@ -6,6 +6,48 @@ import { getUserDao } from '../dao/index.js';
 import { hasCredentialTemplate } from '../utils/credentialTemplate.js';
 import type { ServerConfig } from '../types/index.js';
 
+// Target children may inherit toolchain settings, never implicit provider credentials.
+const TARGET_TOOLCHAIN_ENV = new Set([
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TZ',
+  'PWD',
+  'NODE_ENV',
+  'NODE_PATH',
+  'PYTHONPATH',
+  'PYTHONUNBUFFERED',
+  'VIRTUAL_ENV',
+  'UV_CACHE_DIR',
+  'UV_TOOL_DIR',
+  'UV_TOOL_BIN_DIR',
+  'UV_PYTHON_INSTALL_DIR',
+  'NPM_CONFIG_CACHE',
+  'npm_config_cache',
+  'XDG_CACHE_HOME',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+  'REQUESTS_CA_BUNDLE',
+  'NODE_EXTRA_CA_CERTS',
+  'SystemRoot',
+  'WINDIR',
+  'COMSPEC',
+  'PATHEXT',
+  'USERPROFILE',
+  'APPDATA',
+  'LOCALAPPDATA',
+]);
+
 /** Ownerless operator configuration is trusted; missing owners fail closed. */
 export const getServerEnvironment = async (
   config: ServerConfig & { name?: string },
@@ -28,6 +70,12 @@ export const getServerEnvironment = async (
     ...(hasCredentialTemplate(config) ? config.env : replaceEnvVars(config.env || {}, source)),
     ...relay,
   };
+  if (config.env?.MCPHUB_CONNECTION_TARGET) {
+    for (const key of Object.keys(environment)) {
+      if (!TARGET_TOOLCHAIN_ENV.has(key) && !(key in (config.env || {})) && !(key in relay))
+        delete environment[key];
+    }
+  }
   if (trusted && (name === 'twelvedata' || config.keyPool?.provider === 'twelvedata')) {
     environment.PYTHONPATH = [
       join(process.cwd(), 'scripts', 'key_pool_python'),

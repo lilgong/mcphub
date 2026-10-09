@@ -91,3 +91,30 @@ describe('managed key pool child boundary', () => {
     ).rejects.toThrow('trusted');
   });
 });
+
+test('target environments preserve toolchain variables but require explicit provider credential bindings', async () => {
+  const before = process.env;
+  process.env = {
+    ...before,
+    NOTION_API_KEY: 'workspace-global-sentinel',
+    UNRELATED_PROVIDER_KEY: 'unrelated-sentinel',
+    PATH: '/safe/toolchain',
+    NODE_OPTIONS: '--require inherited-account-loader',
+  };
+  try {
+    const config = { owner: 'admin', env: { MCPHUB_CONNECTION_TARGET: 'other/workspace' } };
+    const environment = await getServerEnvironment(config);
+    expect(environment.PATH).toBe('/safe/toolchain');
+    expect(environment.NOTION_API_KEY).toBeUndefined();
+    expect(environment.UNRELATED_PROVIDER_KEY).toBeUndefined();
+    expect(environment.NODE_OPTIONS).toBeUndefined();
+    const explicit = await getServerEnvironment({
+      ...config,
+      env: { ...config.env, TARGET_KEY: '${NOTION_API_KEY}' },
+    });
+    expect(explicit.TARGET_KEY).toBe('workspace-global-sentinel');
+    expect(explicit.NOTION_API_KEY).toBeUndefined();
+  } finally {
+    process.env = before;
+  }
+});

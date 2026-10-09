@@ -1612,9 +1612,10 @@ export const createTransportFromConfig = async (name: string, conf: ServerConfig
     );
 
     // Create OAuth provider if configured - SDK will handle authentication automatically
-    const authProvider = hasCredentialTemplate(conf)
-      ? undefined
-      : await createOAuthProvider(name, conf);
+    const authProvider =
+      hasCredentialTemplate(conf) || conf.env?.MCPHUB_CONNECTION_TARGET
+        ? undefined
+        : await createOAuthProvider(name, conf);
     if (authProvider) {
       options.authProvider = authProvider;
       // When the OAuth provider is active, strip any static Authorization
@@ -1651,9 +1652,10 @@ export const createTransportFromConfig = async (name: string, conf: ServerConfig
     );
 
     // Create OAuth provider if configured - SDK will handle authentication automatically
-    const authProvider = hasCredentialTemplate(conf)
-      ? undefined
-      : await createOAuthProvider(name, conf);
+    const authProvider =
+      hasCredentialTemplate(conf) || conf.env?.MCPHUB_CONNECTION_TARGET
+        ? undefined
+        : await createOAuthProvider(name, conf);
     if (authProvider) {
       options.authProvider = authProvider;
       // Drop static Authorization header when OAuth manages auth (see above).

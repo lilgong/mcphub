@@ -215,3 +215,24 @@ describe('MCP Service - active OAuth strips stale static Authorization header', 
     },
   );
 });
+
+describe('target connection credentials never share parent OAuth state', () => {
+  it.each(['streamable-http', 'sse'] as const)(
+    'does not enroll or load shared OAuth for a %s target',
+    async (type) => {
+      jest.clearAllMocks();
+      mockedCreateOAuthProvider.mockResolvedValue(new FakeOAuthProvider(true) as any);
+      await createTransportFromConfig('logical-notion', {
+        type,
+        url: 'https://example.com/mcp',
+        env: { MCPHUB_CONNECTION_TARGET: 'benchmark/workspace-a' },
+        headers: { 'X-Workspace-Key': 'fixture-a' },
+      });
+      expect(mockedCreateOAuthProvider).not.toHaveBeenCalled();
+      const constructor = type === 'sse' ? SSEClientTransport : StreamableHTTPClientTransport;
+      const options = (constructor as jest.Mock).mock.calls[0][1];
+      expect(options.authProvider).toBeUndefined();
+      expect(options.requestInit?.headers).toEqual({ 'X-Workspace-Key': 'fixture-a' });
+    },
+  );
+});

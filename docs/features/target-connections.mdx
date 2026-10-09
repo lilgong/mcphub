@@ -12,13 +12,19 @@ benchmark names, create task containers, or require a Docker socket.
 In the server editor, open **Target connections** and add a target with its own HTTP/SSE
 URL or stdio command and credentials. Use one logical MCP name for all targets. Each
 static target owns an independent upstream client; credentials and transport settings do
-not fall back to the parent registration or another target.
+not fall back to the parent registration or another target. Only toolchain environment
+settings are inherited by target child processes; provider credentials must be explicitly
+configured in the target. An explicit environment value such as `${NOTION_API_KEY}`
+may resolve a configured Hub environment variable.
 
 Supply `X-MCPHub-Target: project/official` on **every** MCP request, including
 initialization and tool discovery. Missing, unknown and unauthorized targets are rejected.
 Targets can allow specific Bearer Key **IDs** or usernames; empty access lists permit
 administrators only. Parent-server visibility and ordinary Bearer Key scope still apply.
-An explicit access list also applies to administrators. Target routing does not rename tools.
+An explicit access list also applies to administrators. Target routing does not rename tools. Target connections use their explicitly configured
+credentials; automatic upstream OAuth enrollment is disabled for targets to prevent
+sharing one logical server's OAuth state across workspaces. Configure a target-specific
+Authorization header when the upstream requires an access token.
 
 Multiple keys in a pool must refer to the **same** provider account resources. Separate
 Notion workspaces, Slack workspaces or databases belong to different targets, not a rotating
