@@ -92,7 +92,7 @@ test('admin page never returns tokens and stores relay credentials encrypted', a
     .send({ config: { ...config, policies: { brave: { ...BASE_POLICY, concurrency: 0 } } } })
     .expect(400);
   expect(await getRelayEnvironment('pubmed')).toMatchObject({
-    PUBMED_RELAY_TOKEN: 'synthetic-relay-secret',
+    MCP_RELAY_TOKEN: 'synthetic-relay-secret',
   });
 });
 
@@ -116,7 +116,7 @@ test('runtime requires live scoped operator access; ordinary users cannot read t
     .get('/atlas/relay-runtime?server=pubmed')
     .auth(key.token, { type: 'bearer' })
     .expect(200);
-  expect(response.body.data.PUBMED_RELAY_TOKEN).toBe('synthetic-relay-secret');
+  expect(response.body.data.MCP_RELAY_TOKEN).toBe('synthetic-relay-secret');
   expect(response.headers['cache-control']).toBe('no-store');
   await dao.update(key.id, { enabled: false });
   await request(app)
@@ -151,16 +151,16 @@ test('runtime requires live scoped operator access; ordinary users cannot read t
 
 test('only trusted relay servers receive the connection token', async () => {
   expect(await getServerEnvironment({ owner: 'member', name: 'pubmed' })).not.toHaveProperty(
-    'PUBMED_RELAY_TOKEN',
+    'MCP_RELAY_TOKEN',
     'synthetic-relay-secret',
   );
   expect(await getServerEnvironment({ name: 'unrelated' })).not.toHaveProperty(
-    'PUBMED_RELAY_TOKEN',
+    'MCP_RELAY_TOKEN',
     'synthetic-relay-secret',
   );
   expect(
     await getServerEnvironment({ name: 'pubmed', env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' } }),
-  ).toHaveProperty('PUBMED_RELAY_TOKEN', 'synthetic-relay-secret');
+  ).toHaveProperty('MCP_RELAY_TOKEN', 'synthetic-relay-secret');
   expect(
     await getServerEnvironment({ name: 'pubmed', type: 'stdio', args: ['-y', 'native-pubmed'] }),
   ).not.toHaveProperty('MCP_RELAY_TOKEN');
@@ -175,19 +175,22 @@ test('only trusted relay servers receive the connection token', async () => {
   const off = await getServerEnvironment({ ...compatible, relay: { enabled: false } });
   expect(off.MCP_RELAY_URL).toBe('');
   expect(off.MCP_RELAY_TOKEN).toBe('');
-  expect(off.PUBMED_RELAY_URL).toBe('');
-  expect(off.PUBMED_RELAY_TOKEN).toBe('');
+  expect(Object.keys(await getRelayEnvironment('pubmed')).sort()).toEqual([
+    'MCP_RELAY_TIMEOUT_SECONDS',
+    'MCP_RELAY_TOKEN',
+    'MCP_RELAY_URL',
+  ]);
   await request(app)
     .put('/api/atlas')
     .set('x-test-admin', 'yes')
     .send({ config, relayToken: '' })
     .expect(200);
   expect(await getRelayEnvironment('pubmed')).toHaveProperty(
-    'PUBMED_RELAY_TOKEN',
+    'MCP_RELAY_TOKEN',
     'synthetic-relay-secret',
   );
   await saveAtlasConfig({ ...config, relay: { ...config.relay, enabled: false } });
-  expect(await getRelayEnvironment('pubmed')).toHaveProperty('PUBMED_RELAY_TOKEN', '');
+  expect(await getRelayEnvironment('pubmed')).toHaveProperty('MCP_RELAY_TOKEN', '');
 });
 
 test('relay limits require admin authorization and never return the shared token', async () => {

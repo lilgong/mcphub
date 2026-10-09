@@ -820,6 +820,7 @@ const ServerForm = ({
 
         <TargetConnectionEditor
           value={formData.targets}
+          currentVersion={initialData?.packageVersion}
           currentConnection={
             serverType !== 'openapi' &&
             !initialData?.config?.credentialTemplate?.length &&
@@ -1808,8 +1809,7 @@ const ServerForm = ({
                       {envVars.map((envVar, index) =>
                         (formData.keyPool?.enabled &&
                           isPooledCredential(envVar.key, keyPoolProvider)) ||
-                        (relaySupported &&
-                          isRelayEnvironmentVariable(envVar.key, formData.relay)) ? null : (
+                        (relaySupported && isRelayEnvironmentVariable(envVar.key)) ? null : (
                           <div key={index} className="flex items-center mb-2">
                             <div className="flex items-center space-x-2 flex-grow">
                               <input
@@ -1930,8 +1930,7 @@ const ServerForm = ({
                       {envVars.map((envVar, index) =>
                         (formData.keyPool?.enabled &&
                           isPooledCredential(envVar.key, keyPoolProvider)) ||
-                        (relaySupported &&
-                          isRelayEnvironmentVariable(envVar.key, formData.relay)) ? null : (
+                        (relaySupported && isRelayEnvironmentVariable(envVar.key)) ? null : (
                           <div key={index} className="flex items-center mb-2">
                             <div className="flex items-center space-x-2 flex-grow">
                               <input

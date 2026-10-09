@@ -140,5 +140,5 @@ MCPHUB_CONFIG_URL=http://127.0.0.1:3002
 地址、访问凭据与 HTTP 限速统一在「Relay 设置」填写。已适配的 MCP 连接只显示
 「启用 IP 池转发」开关；未适配的原生 MCP 显示说明，不能开启。环境变量编辑区
 不重复显示 Relay 地址/凭据。Arxiv、PubMed、OSM、Wikipedia 的交付包使用
-`MCP_RELAY_*`，并声明 `MCPHUB_RELAY_ADAPTER=fetch-v1`。已有包继续通过 Hub
-注入的 `PUBMED_RELAY_*` / `WIKIPEDIA_RELAY_*` 兼容，无需重新导入。
+`MCP_RELAY_*`，并声明 `MCPHUB_RELAY_ADAPTER=fetch-v1`。仅使用统一变量名，
+已有本机安装的配置与 wrapper 已同步迁移。

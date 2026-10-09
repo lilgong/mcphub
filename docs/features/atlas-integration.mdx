@@ -267,5 +267,5 @@ Select a month or custom UTC date range to count completed calls, successes and 
 Configure the shared IP pool URL, token and HTTP limits on **Relay settings**.
 Supported MCP connections expose a single enable switch; unsupported connections
 cannot enable it. Arxiv, PubMed, OSM and Wikipedia delivery packages use the generic
-`MCP_RELAY_*` convention and declare their `fetch-v1` adapter. Already imported packages
-keep working through the legacy aliases injected by Hub, without reimporting.
+`MCP_RELAY_*` convention and declare their `fetch-v1` adapter. Only canonical variable
+names are used; existing local installations have been migrated along with their wrappers.

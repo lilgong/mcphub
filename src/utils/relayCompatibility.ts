@@ -23,10 +23,10 @@ export function supportsFetchRelay(connection: Connection): boolean {
   );
 }
 
-/** Keep old wrapper settings available at runtime, while displaying one Relay control. */
-export function isRelayEnvironmentVariable(name: string, relay?: FetchRelayConfig): boolean {
+/** Display a single Relay configuration entry. */
+export function isRelayEnvironmentVariable(name: string): boolean {
   if (name === 'MCPHUB_RELAY_ADAPTER') return true;
-  const prefixes = ['MCP', 'PUBMED', 'WIKIPEDIA', relay?.envPrefix].filter(Boolean);
+  const prefixes = ['MCP'];
   return prefixes.some((prefix) =>
     ['URL', 'TOKEN', 'TIMEOUT_SECONDS'].some((field) => name === `${prefix}_RELAY_${field}`),
   );

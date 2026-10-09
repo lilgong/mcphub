@@ -52,14 +52,7 @@ export function normalizeFetchRelay(value: unknown): FetchRelayConfig | undefine
   if (!value || typeof value !== 'object')
     throw new ServerConfigValidationError('Invalid relay connection');
   const input = value as FetchRelayConfig;
-  if (
-    typeof input.enabled !== 'boolean' ||
-    (input.envPrefix !== undefined &&
-      (typeof input.envPrefix !== 'string' || !/^[A-Z][A-Z0-9_]{0,63}$/.test(input.envPrefix)))
-  )
+  if (typeof input.enabled !== 'boolean')
     throw new ServerConfigValidationError('Invalid relay connection');
-  return {
-    enabled: input.enabled,
-    ...(input.envPrefix ? { envPrefix: input.envPrefix } : {}),
-  };
+  return { enabled: input.enabled };
 }

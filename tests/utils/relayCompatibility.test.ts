@@ -7,7 +7,7 @@ test('native MCPs do not gain relay support from variable names or arbitrary swi
   expect(
     supportsFetchRelay({
       args: ['-y', 'native-mcp'],
-      env: { PUBMED_RELAY_URL: 'http://relay' },
+      env: { MCP_RELAY_URL: 'http://relay' },
       relay: { enabled: true },
     }),
   ).toBe(false);
@@ -25,10 +25,8 @@ test('generic declarations and old standalone wrapper paths support renamed serv
       args: ['/app/data/uploads/mcpb/server-atlas-wikipedia-97253e9-59a8ad35/launch.cjs'],
     }),
   ).toBe(true);
-  expect(isRelayEnvironmentVariable('PUBMED_RELAY_TOKEN')).toBe(true);
+  expect(isRelayEnvironmentVariable('MCP_RELAY_TOKEN')).toBe(true);
   expect(isRelayEnvironmentVariable('MCP_RELAY_URL')).toBe(true);
-  expect(
-    isRelayEnvironmentVariable('CUSTOM_RELAY_TOKEN', { enabled: true, envPrefix: 'CUSTOM' }),
-  ).toBe(true);
+  expect(isRelayEnvironmentVariable('MCP_RELAY_TOKEN')).toBe(true);
   expect(isRelayEnvironmentVariable('NCBI_API_KEY')).toBe(false);
 });

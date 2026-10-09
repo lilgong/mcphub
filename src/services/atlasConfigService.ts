@@ -136,7 +136,7 @@ export async function getRelayEnvironment(
 ): Promise<Record<string, string>> {
   if (!compatible && !connection && !RELAY_SERVERS.has(server)) return {};
   const relay = getCachedSystemConfig()?.atlas?.relay;
-  const prefixes = new Set(['MCP', 'PUBMED', 'WIKIPEDIA', connection?.envPrefix].filter(Boolean));
+  const prefixes = ['MCP'];
   const environment = (url: string, token: string, timeout: number): Record<string, string> =>
     Object.fromEntries(
       [...prefixes].flatMap((prefix) => [
@@ -158,6 +158,6 @@ export async function getRelayEnvironment(
     if (!binding) throw new Error('Managed relay credential is unavailable');
     token = (await decryptCredentialValues(binding)).token;
   }
-  // Alias both legacy readers, including packages whose logical name has changed.
+  // Emit the single shared Relay environment for every compatible connection.
   return environment(enabled ? relay.url : '', token, relay.timeoutSeconds);
 }

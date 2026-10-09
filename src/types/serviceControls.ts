@@ -14,6 +14,4 @@ export interface ServiceRateLimit {
 /** Opt into the managed relay for a compatible stdio wrapper. */
 export interface FetchRelayConfig {
   enabled: boolean;
-  /** Legacy wrapper namespace. New wrappers use MCP_RELAY_* automatically. */
-  envPrefix?: string;
 }

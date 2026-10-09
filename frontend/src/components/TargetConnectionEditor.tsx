@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import SecretInput from './SecretInput';
 import {
   supportsFetchRelay,
   isRelayEnvironmentVariable,
@@ -9,28 +11,16 @@ import { useTranslation } from 'react-i18next';
 import type { TargetConnection, TargetConnectionConfig } from '../../../src/types/targetConnection';
 import ServiceControls from './ServiceControls';
 import KeyPoolEditor from './KeyPoolEditor';
-const recordText = (value?: Record<string, string>) =>
-  Object.entries(value || {})
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
-const parseRecord = (value: string) =>
-  Object.fromEntries(
-    value
-      .split('\n')
-      .filter((line) => line.includes('='))
-      .map((line) => {
-        const i = line.indexOf('=');
-        return [line.slice(0, i).trim(), line.slice(i + 1)];
-      }),
-  );
 export default function TargetConnectionEditor({
   value,
   onChange,
   currentConnection,
+  currentVersion,
 }: {
   value?: TargetConnection[];
   onChange: (value: TargetConnection[]) => void;
   currentConnection?: TargetConnectionConfig;
+  currentVersion?: string;
 }) {
   const { t } = useTranslation();
   const targets = value || [];
@@ -65,28 +55,8 @@ export default function TargetConnectionEditor({
                 className={input}
                 value={target.path}
                 onChange={(e) => patch(index, { path: e.target.value })}
-                placeholder="project/suite"
+                placeholder="atlas / atlas/official / other-benchmark"
               />
-            </label>
-            <label>
-              {t('targets.implementation')}
-              <select
-                className={input}
-                value={target.implementation ?? ''}
-                onChange={(e) =>
-                  patch(index, {
-                    implementation: (e.target.value ||
-                      undefined) as TargetConnection['implementation'],
-                  })
-                }
-              >
-                <option value="">{t('targets.unspecified')}</option>
-                {(['native', 'wrapper', 'custom'] as const).map((kind) => (
-                  <option key={kind} value={kind}>
-                    {t(`targets.${kind}`)}
-                  </option>
-                ))}
-              </select>
             </label>
             <label>
               {t('targets.version')}
@@ -98,116 +68,131 @@ export default function TargetConnectionEditor({
                 placeholder="1.2.3 / git revision / image tag"
               />
             </label>
-            <label>
-              {t('targets.kind')}
-              <select
-                className={input}
-                value={target.kind}
-                onChange={(e) => {
-                  const kind = e.target.value as TargetConnection['kind'];
-                  patch(index, {
-                    kind,
-                    ...(kind === 'task' &&
-                    (supportsFetchRelay(target.config ?? {}) ||
-                      supportsFetchRelay(currentConnection ?? {}))
-                      ? { config: { ...target.config, env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' } } }
-                      : {}),
-                  });
-                }}
-              >
-                <option value="static">{t('targets.static')}</option>
-                <option value="task">{t('targets.task')}</option>
-              </select>
-            </label>
-            <label>
-              {t('targets.allowedKeys')}
-              <input
-                className={input}
-                value={target.allowedKeyIds?.join(',') || ''}
-                onChange={(e) =>
-                  patch(index, {
-                    allowedKeyIds: e.target.value
-                      .split(',')
-                      .map((v) => v.trim())
-                      .filter(Boolean),
-                  })
-                }
-              />
-            </label>
-            <label>
-              {t('targets.allowedUsers')}
-              <input
-                className={input}
-                value={target.allowedUsers?.join(',') || ''}
-                onChange={(e) =>
-                  patch(index, {
-                    allowedUsers: e.target.value
-                      .split(',')
-                      .map((v) => v.trim())
-                      .filter(Boolean),
-                  })
-                }
-              />
-            </label>
-          </div>
-          {target.kind === 'static' && (
-            <>
-              <label className="block text-xs text-[var(--hub-ink-2)]">
-                {t('targets.transport')}
-                <select
-                  className={`${input} mt-1.5`}
-                  value={target.config?.type || 'streamable-http'}
-                  onChange={(e) =>
-                    patch(index, {
-                      config: {
-                        ...target.config,
-                        type: e.target.value as 'stdio' | 'streamable-http' | 'sse',
-                      },
-                    })
-                  }
-                >
-                  <option value="streamable-http">HTTP MCP</option>
-                  <option value="sse">SSE MCP</option>
-                  <option value="stdio">stdio MCP</option>
-                </select>
-              </label>
-              {target.config?.type === 'stdio' ? (
-                <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
-                  <label>
-                    {t('targets.command')}
-                    <input
-                      className={input}
-                      value={target.config.command || ''}
-                      onChange={(e) =>
-                        patch(index, { config: { ...target.config, command: e.target.value } })
-                      }
-                    />
-                  </label>
-                  <label>
-                    {t('targets.args')}
-                    <textarea
-                      className={input}
-                      value={target.config.args?.join('\n') || ''}
-                      onChange={(e) =>
-                        patch(index, {
-                          config: { ...target.config, args: e.target.value.split('\n') },
-                        })
-                      }
-                    />
-                  </label>
-                </div>
-              ) : (
-                <label className="block text-xs text-[var(--hub-ink-2)]">
-                  URL
-                  <input
+            <details className="hub-config-advanced sm:col-span-2">
+              <summary>{t('targets.accessAdvanced')}</summary>
+              <p className="hub-config-note">{t('targets.accessHint')}</p>
+              <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
+                <label>
+                  {t('targets.kind')}
+                  <select
                     className={input}
-                    value={target.config?.url || ''}
+                    value={target.kind}
+                    onChange={(e) => {
+                      const kind = e.target.value as TargetConnection['kind'];
+                      patch(index, {
+                        kind,
+                        ...(kind === 'task' &&
+                        (supportsFetchRelay(target.config ?? {}) ||
+                          supportsFetchRelay(currentConnection ?? {}))
+                          ? {
+                              config: {
+                                ...target.config,
+                                env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' },
+                              },
+                            }
+                          : {}),
+                      });
+                    }}
+                  >
+                    <option value="static">{t('targets.static')}</option>
+                    <option value="task">{t('targets.task')}</option>
+                  </select>
+                </label>
+                <label>
+                  {t('targets.allowedKeys')}
+                  <textarea
+                    className={input}
+                    value={target.allowedKeyIds?.join('\n') || ''}
                     onChange={(e) =>
-                      patch(index, { config: { ...target.config, url: e.target.value } })
+                      patch(index, {
+                        allowedKeyIds: e.target.value
+                          .split('\n')
+                          .map((v) => v.trim())
+                          .filter(Boolean),
+                      })
                     }
                   />
                 </label>
-              )}
+                <label>
+                  {t('targets.allowedUsers')}
+                  <textarea
+                    className={input}
+                    value={target.allowedUsers?.join('\n') || ''}
+                    onChange={(e) =>
+                      patch(index, {
+                        allowedUsers: e.target.value
+                          .split('\n')
+                          .map((v) => v.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                  />
+                </label>
+              </div>
+            </details>
+          </div>
+          {target.kind === 'static' && (
+            <>
+              <details className="hub-config-advanced">
+                <summary>{t('targets.connectionAdvanced')}</summary>
+                <p className="hub-config-note">{t('targets.connectionHint')}</p>
+                <label className="block text-xs text-[var(--hub-ink-2)]">
+                  {t('targets.transport')}
+                  <select
+                    className={`${input} mt-1.5`}
+                    value={target.config?.type || 'streamable-http'}
+                    onChange={(e) =>
+                      patch(index, {
+                        config: {
+                          ...target.config,
+                          type: e.target.value as 'stdio' | 'streamable-http' | 'sse',
+                        },
+                      })
+                    }
+                  >
+                    <option value="streamable-http">HTTP MCP</option>
+                    <option value="sse">SSE MCP</option>
+                    <option value="stdio">stdio MCP</option>
+                  </select>
+                </label>
+                {target.config?.type === 'stdio' ? (
+                  <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
+                    <label>
+                      {t('targets.command')}
+                      <input
+                        className={input}
+                        value={target.config.command || ''}
+                        onChange={(e) =>
+                          patch(index, { config: { ...target.config, command: e.target.value } })
+                        }
+                      />
+                    </label>
+                    <label>
+                      {t('targets.args')}
+                      <textarea
+                        className={input}
+                        value={target.config.args?.join('\n') || ''}
+                        onChange={(e) =>
+                          patch(index, {
+                            config: { ...target.config, args: e.target.value.split('\n') },
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <label className="block text-xs text-[var(--hub-ink-2)]">
+                    URL
+                    <input
+                      className={input}
+                      value={target.config?.url || ''}
+                      onChange={(e) =>
+                        patch(index, { config: { ...target.config, url: e.target.value } })
+                      }
+                    />
+                  </label>
+                )}
+              </details>
               {target.config?.type === 'stdio' && (
                 <KeyPoolEditor
                   provider={getKeyPoolProvider(target.config ?? {})}
@@ -225,27 +210,22 @@ export default function TargetConnectionEditor({
                     <p className="hub-sub text-xs">
                       {t(field === 'env' ? 'server.connectionEnvHint' : 'targets.headersHint')}
                     </p>
-                    <textarea
-                      key={`${field}-${target.path}`}
-                      className={`${input} font-mono text-sm`}
-                      rows={3}
-                      defaultValue={recordText(
-                        Object.fromEntries(
-                          Object.entries(target.config?.[field] ?? {}).filter(
-                            ([key]) =>
-                              (!target.config?.keyPool?.enabled ||
-                                !isPooledCredential(
-                                  key,
-                                  getKeyPoolProvider(target.config ?? {}),
-                                )) &&
-                              !(
-                                supportsFetchRelay(target.config ?? {}) &&
-                                isRelayEnvironmentVariable(key, target.config?.relay)
-                              ),
-                          ),
+                    <ConnectionVariables
+                      key={`${field}-${index}-${target.path}`}
+                      value={Object.fromEntries(
+                        Object.entries(target.config?.[field] ?? {}).filter(
+                          ([key]) =>
+                            !(
+                              supportsFetchRelay(target.config ?? {}) &&
+                              isRelayEnvironmentVariable(key)
+                            ) &&
+                            !(
+                              target.config?.keyPool?.enabled &&
+                              isPooledCredential(key, getKeyPoolProvider(target.config ?? {}))
+                            ),
                         ),
                       )}
-                      onBlur={(e) =>
+                      onChange={(visible) =>
                         patch(index, {
                           config: {
                             ...target.config,
@@ -254,7 +234,7 @@ export default function TargetConnectionEditor({
                                 Object.entries(target.config?.[field] ?? {}).filter(
                                   ([key]) =>
                                     (supportsFetchRelay(target.config ?? {}) &&
-                                      isRelayEnvironmentVariable(key, target.config?.relay)) ||
+                                      isRelayEnvironmentVariable(key)) ||
                                     (target.config?.keyPool?.enabled &&
                                       isPooledCredential(
                                         key,
@@ -262,12 +242,11 @@ export default function TargetConnectionEditor({
                                       )),
                                 ),
                               ),
-                              ...parseRecord(e.target.value),
+                              ...visible,
                             },
                           },
                         })
                       }
-                      placeholder="NAME=value"
                     />
                   </label>
                 ))}
@@ -328,7 +307,14 @@ export default function TargetConnectionEditor({
           onClick={() =>
             onChange([
               ...targets,
-              { path: '', kind: 'static', config: { type: 'streamable-http' } },
+              {
+                path: '',
+                kind: 'static',
+                enabled: true,
+                config: structuredClone(
+                  targets[0]?.config ?? currentConnection ?? { type: 'streamable-http' },
+                ),
+              },
             ])
           }
         >
@@ -344,6 +330,7 @@ export default function TargetConnectionEditor({
                 {
                   path: '',
                   kind: 'static',
+                  version: currentVersion,
                   enabled: true,
                   config: structuredClone(currentConnection),
                 },
@@ -355,5 +342,61 @@ export default function TargetConnectionEditor({
         )}
       </div>
     </ConfigurationSection>
+  );
+}
+
+function ConnectionVariables({
+  value,
+  onChange,
+}: {
+  value: Record<string, string>;
+  onChange: (value: Record<string, string>) => void;
+}) {
+  const { t } = useTranslation();
+  const [rows, setRows] = useState<string[][]>(() => Object.entries(value));
+  const update = (next: string[][]) => {
+    setRows(next);
+    onChange(
+      Object.fromEntries(next.filter(([key]) => key.trim()).map(([key, val]) => [key.trim(), val])),
+    );
+  };
+  return (
+    <div className="space-y-2">
+      {rows.map(([key, val], index) => (
+        <div key={index} className="flex items-center gap-2">
+          <input
+            className="hub-input min-w-0 !w-1/2"
+            aria-label={`${t('targets.variableName')} ${index + 1}`}
+            value={key}
+            placeholder="NAME"
+            onChange={(e) =>
+              update(rows.map((row, i) => (i === index ? [e.target.value, val] : row)))
+            }
+          />
+          <SecretInput
+            className="hub-input"
+            sensitive={/(?:KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)$/i.test(key)}
+            secretLabel={key}
+            aria-label={`${t('targets.variableValue')} ${index + 1}`}
+            value={val}
+            autoComplete="off"
+            onChange={(e) =>
+              update(rows.map((row, i) => (i === index ? [key, e.target.value] : row)))
+            }
+          />
+          <button
+            type="button"
+            className="hub-btn danger"
+            aria-label={`${t('targets.removeVariable')} ${index + 1}`}
+            onClick={() => update(rows.filter((_, i) => i !== index))}
+          >
+            −
+          </button>
+        </div>
+      ))}
+      <button type="button" className="hub-btn" onClick={() => update([...rows, ['', '']])}>
+        {t('targets.addVariable')}
+      </button>
+    </div>
   );
 }

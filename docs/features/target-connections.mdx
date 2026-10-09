@@ -37,15 +37,14 @@ Turning on relay does not make an arbitrary MCP wrapper proxy-aware automaticall
 Configure the IP pool connection and credentials once on **Relay settings**. Compatible
 connections expose only **Route through the IP pool**; native, unadapted MCPs show a
 non-interactive explanation. Relay URL/token fields are hidden from the connection's
-ordinary environment editor, preserving existing values for compatibility.
+ordinary environment editor.
 
 New wrappers read `MCP_RELAY_URL`, `MCP_RELAY_TOKEN` and
 `MCP_RELAY_TIMEOUT_SECONDS` and declare `MCPHUB_RELAY_ADAPTER=fetch-v1` in their
 connection environment. The declaration describes a real `/v1/fetch` implementation;
 it does not implement one. Hub recognizes older delivered wrapper paths as well.
-It injects legacy `PUBMED_RELAY_*` / `WIKIPEDIA_RELAY_*` aliases for existing packages.
-A disabled switch clears both generic and legacy relay connection values at runtime.
-Legacy `relay.envPrefix` is accepted but no longer shown in the dashboard.
+Only the canonical names above are read and injected.
+A disabled switch clears relay URL and token values at runtime.
 Task connection configurations can retain the same adapter declaration without
 embedding credentials. The callback adapter must apply the relay snapshot to its runtime.
 
@@ -164,3 +163,9 @@ labels are not collected or used. Existing audit files remain usable for these t
 Target paths and task IDs still identify connections in logs and runtime inventory.
 Enable `MCPHUB_AUDIT_LOG_DIR` to persist the tool records used for these statistics.
 Arguments, results and full keys are not written to audit logs.
+
+Target names may be a single identifier (`atlas`) or an exact slash-separated name
+(`atlas/official`, `other/suite/workspace`). Slashes are optional and never imply
+inheritance. Creating another workspace copies the existing MCP launch settings;
+provider credentials are edited as individual environment-variable rows.
+Hub client access IDs are separate from provider credentials and live in advanced settings.
