@@ -26,6 +26,20 @@ interface Result {
   truncated: boolean;
   unavailableSources: string[];
 }
+
+function statusBadgeClass(row: Row): string {
+  if (row.httpStatus === 429) {
+    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300';
+  }
+  if (row.outcome === 'error' || (row.httpStatus !== undefined && row.httpStatus >= 400)) {
+    return 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300';
+  }
+  if (row.outcome === 'success' || (row.httpStatus !== undefined && row.httpStatus < 300)) {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300';
+  }
+  return 'border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink-2)]';
+}
+
 export default function CallLogViewer() {
   const { t } = useTranslation();
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -196,8 +210,19 @@ export default function CallLogViewer() {
                 </td>
                 <td className="p-2">{row.server}</td>
                 <td className="max-w-xs break-all p-2">{row.operation}</td>
-                <td className={`p-3 font-medium ${row.outcome === 'error' ? 'text-red-600' : ''}`}>
-                  {row.httpStatus ?? t(`callLogs.${row.outcome}`)}
+                <td className="whitespace-nowrap p-3">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(row)}`}
+                  >
+                    <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
+                    <span
+                      className={
+                        row.httpStatus === undefined ? undefined : 'font-mono tabular-nums'
+                      }
+                    >
+                      {row.httpStatus ?? t(`callLogs.${row.outcome}`)}
+                    </span>
+                  </span>
                 </td>
                 <td className="p-2">
                   {row.durationMs === undefined ? '—' : `${Math.round(row.durationMs)} ms`}
