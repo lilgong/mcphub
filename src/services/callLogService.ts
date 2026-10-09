@@ -1,10 +1,13 @@
 import { open, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { keyPoolLogDirectory } from './keyPoolService.js';
 
 export interface CallLog {
   id: string;
   timestamp: string;
-  source: 'tool' | 'yibu' | 'relay';
+  source: 'tool' | 'yibu' | 'relay' | 'key_pool';
+  keyLabel?: string;
+  retryAt?: string;
   server: string;
   operation: string;
   outcome: 'success' | 'error';
@@ -208,6 +211,28 @@ export async function getCallLogs(
       }
     } catch {
       unavailableSources.push('relay');
+    }
+  }
+  if (query.source === 'all' || query.source === 'key_pool') {
+    try {
+      for (const record of await load(join(keyPoolLogDirectory(), `${query.date}.jsonl`))) {
+        if (!['finished', 'pool_unavailable'].includes(safeString(record.event))) continue;
+        rows.push({
+          id: safeString(record.request_id),
+          timestamp: safeString(record.ts),
+          source: 'key_pool',
+          server: safeString(record.server),
+          operation: safeString(record.path) || 'HTTP',
+          outcome: record.outcome === 'error' ? 'error' : 'success',
+          httpStatus: safeNumber(record.http_status),
+          category: safeString(record.category),
+          keyLabel: safeString(record.key_label) || safeString(record.key_id),
+          retryAt: safeString(record.retry_at) || undefined,
+          durationMs: safeNumber(record.duration_ms),
+        });
+      }
+    } catch {
+      unavailableSources.push('key_pool');
     }
   }
   const filtered = rows

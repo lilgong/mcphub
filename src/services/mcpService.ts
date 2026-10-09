@@ -1700,6 +1700,16 @@ export const createTransportFromConfig = async (name: string, conf: ServerConfig
 
     // Apply proxychains4 wrapper if proxy is configured (Linux/macOS only)
     let resolvedArgs = replaceEnvVars(conf.args ?? [], env) as string[];
+    if (conf.keyPool?.enabled) {
+      // Never pass a legacy CLI credential to the managed child process.
+      resolvedArgs = resolvedArgs.map((value, index, all) =>
+        ['-k', '--api-key'].includes(all[index - 1])
+          ? 'hub-managed'
+          : value.startsWith('--api-key=')
+            ? '--api-key=hub-managed'
+            : value,
+      );
+    }
 
     // If this server is pending a reinstall, inject cache-busting flags (uvx only).
     // For npx, the cache directory was already cleared before reconnect.
@@ -4113,13 +4123,13 @@ const handleCallToolRequestCore = async (request: any, extra: any) => {
         }
 
         await reserveHostedIfNeeded(targetServerInfo.name, cleanToolName);
-        const result = await toolCallScheduler.run(targetServerInfo.name, () => openApiClient.callTool(
-          cleanToolName,
-          finalArgs,
-          passthroughHeaders,
-          false,
-          stateId,
-        ), username, extra?.signal);
+        const result = await toolCallScheduler.run(
+          targetServerInfo.name,
+          () =>
+            openApiClient.callTool(cleanToolName, finalArgs, passthroughHeaders, false, stateId),
+          username,
+          extra?.signal,
+        );
         await settleHostedIfNeeded({
           success: true,
           requestContent: finalArgs,
@@ -4337,13 +4347,12 @@ const handleCallToolRequestCore = async (request: any, extra: any) => {
       }
 
       await reserveHostedIfNeeded(serverInfo.name, cleanToolName);
-      const result = await toolCallScheduler.run(serverInfo.name, () => openApiClient.callTool(
-        cleanToolName,
-        finalArgs,
-        passthroughHeaders,
-        false,
-        stateId,
-      ), username, extra?.signal);
+      const result = await toolCallScheduler.run(
+        serverInfo.name,
+        () => openApiClient.callTool(cleanToolName, finalArgs, passthroughHeaders, false, stateId),
+        username,
+        extra?.signal,
+      );
       await settleHostedIfNeeded({
         success: true,
         requestContent: finalArgs,

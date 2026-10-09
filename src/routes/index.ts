@@ -1,3 +1,4 @@
+import { forwardKeyPool } from '../controllers/keyPoolController.js';
 import { getCallLogs } from '../controllers/logController.js';
 import { relayLimits, getAtlasSettings, updateAtlasSettings, checkAtlasRelay, getAtlasRelayRuntime } from '../controllers/atlasController.js';
 import { listMyCredentials, updateMyCredential } from '../controllers/credentialBindingController.js';
@@ -215,6 +216,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
 
   // Health check endpoint (no auth required, accessible at /health)
   app.get('/health', healthCheck);
+  app.post('/internal/v1/key-pool/:name', express.json({ limit: '32kb' }), forwardKeyPool);
 
   // Hosted data-plane webhook ingress. HMAC-authenticated by INTERNAL_API_SECRET.
   app.post('/internal/v1/events', hostedInternalEventRateLimiter, receiveHostedInternalEvent);

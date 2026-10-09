@@ -17,6 +17,7 @@ describe('call log reader', () => {
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'call-log-'));
     process.env.MCPHUB_AUDIT_LOG_DIR = root;
+    process.env.MCPHUB_KEY_POOL_LOG_DIR = join(root, 'keys');
     process.env.MCP_USAGE_LOG_DIR = join(root, 'yibu');
     process.env.MCPHUB_RELAY_LOG_FILE = join(root, 'relay.jsonl');
   });
@@ -112,6 +113,35 @@ describe('call log reader', () => {
       'yibu',
     );
     expect((await getCallLogs({ ...query, status: '5xx', server: 'example' })).total).toBe(1);
+  });
+  test('shows key labels and recovery times while omitting secrets and admissions', async () => {
+    await mkdir(join(root, 'keys'));
+    await writeFile(
+      join(root, 'keys', `${query.date}.jsonl`),
+      jsonl([
+        { event: 'started', request_id: 'k', server: 'context7', key_label: 'test-key' },
+        {
+          event: 'finished',
+          request_id: 'k',
+          server: 'context7',
+          key_label: 'test-key',
+          ts: `${query.date}T10:00:00Z`,
+          http_status: 429,
+          outcome: 'error',
+          category: 'quota_exhausted',
+          retry_at: '2026-11-01T00:00:00Z',
+          secret: 'do-not-expose',
+        },
+      ]),
+    );
+    const result = await getCallLogs({ ...query, source: 'key_pool', status: '429' });
+    expect(result.total).toBe(1);
+    expect(result.rows[0]).toMatchObject({
+      keyLabel: 'test-key',
+      category: 'quota_exhausted',
+      retryAt: '2026-11-01T00:00:00Z',
+    });
+    expect(JSON.stringify(result)).not.toContain('do-not-expose');
   });
   test('bounded tail tolerates partial appends and missing files', async () => {
     const file = join(root, 'partial');

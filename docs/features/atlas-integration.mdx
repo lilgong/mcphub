@@ -188,3 +188,44 @@ read-only from the local relay log directory in `compose.atlas.yaml`; remote
 relay daemons need their log files made available separately. This does not add a
 new port. Call logs require admin access and are not removed by clearing runtime
 logs.
+
+## Context7 and TwelveData key rotation
+
+Edit the original registered stdio MCP and open **Multi-key rotation**. Select
+Context7 or TwelveData, add named keys, enable rotation, and save. Leave rotation
+disabled to keep the original single-key path. This implementation targets the
+Atlas-packaged Context7 (Node fetch) and TwelveData (Python httpx) MCPs; it does
+not change their tools or require importing separate MCPs for each key. The
+pool configuration uses the same protected server configuration storage and
+owner/admin read permissions as existing environment credentials.
+
+HTTP requests rotate through available keys across all callers. Explicit
+quota/authentication failures and 429 responses try the next key inside Hub;
+ordinary input/document/permission errors, 5xx and network failures do not
+rotate. A request tries each key at most once and shares a 55-second HTTP
+budget. Failed keys remain configured. Retry-After/RateLimit-Reset take precedence;
+explicit daily/monthly quota errors otherwise cool down until the next UTC
+day/month. Other key failures cool down for 60 seconds and then participate
+again. Changed key values take effect on the next request. Runtime cursors and
+cooldowns are process-local and reset on Hub restart. Existing shared MCP limits
+remain in force; key rotation does not automatically change them.
+
+All keys with quota/authentication failures return a safe error prefixed with
+`Error: KEY_POOL_EXHAUSTED`, compatible with Atlas's existing account guard.
+If any key is only temporarily rate-limited, the final error is a recoverable
+HTTP 429 instead. Intermediate failures are hidden from the model but remain
+visible in **Logs → Call logs → Key pool HTTP**, including key name, HTTP status,
+error category and recovery time. HTTP 200 can still be an error if TwelveData
+returns an error code inside JSON. No key values, query strings, response bodies
+or raw exception text are written to these audit files. Every actual upstream
+attempt requires a durable start record before using its key.
+
+The adapters call a capability-protected `/internal/v1/key-pool/:name` endpoint
+on the existing Hub port. Each child receives a random per-server process-local
+capability; it can only access the configured provider's fixed HTTPS host and
+read-only API paths. Pool values stay in Hub, and children receive a placeholder
+single key. This feature applies to Hub mode; Atlas direct mode is unchanged.
+
+The Hub-only TwelveData preload also omits the pinned package's two non-object
+optional output schemas, which the current Hub SDK rejects. Tool names,
+input schemas and results remain unchanged; valid object output schemas remain.

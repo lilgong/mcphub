@@ -76,7 +76,7 @@ export const getCallLogs = async (req: Request, res: Response): Promise<void> =>
     !Number.isFinite(Date.parse(date)) ||
     new Date(date).toISOString().slice(0, 10) !== date ||
     (!['all', 'none', '4xx', '5xx'].includes(status) && !/^[1-5]\d{2}$/.test(status)) ||
-    !['all', 'tool', 'yibu', 'relay'].includes(source) ||
+    !['all', 'tool', 'yibu', 'relay', 'key_pool'].includes(source) ||
     !Number.isSafeInteger(page) ||
     page < 1 ||
     page > 100000 ||

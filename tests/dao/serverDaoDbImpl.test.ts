@@ -364,16 +364,50 @@ describe('ServerDaoDbImpl', () => {
   });
 });
 
-
 test('credential templates survive database create, partial update and explicit removal', async () => {
   const dao = new ServerDaoDbImpl();
   const credentialTemplate = [{ target: 'env' as const, name: 'PERSONAL_KEY' }];
   mockRepository.create.mockResolvedValue({ name: 'shared', enabled: true, credentialTemplate });
-  expect((await dao.create({ name: 'shared', credentialTemplate })).credentialTemplate).toEqual(credentialTemplate);
-  expect(mockRepository.create).toHaveBeenCalledWith(expect.objectContaining({ credentialTemplate }));
+  expect((await dao.create({ name: 'shared', credentialTemplate })).credentialTemplate).toEqual(
+    credentialTemplate,
+  );
+  expect(mockRepository.create).toHaveBeenCalledWith(
+    expect.objectContaining({ credentialTemplate }),
+  );
   mockRepository.update.mockResolvedValue({ name: 'shared', enabled: true, credentialTemplate });
-  expect((await dao.update('shared', { credentialTemplate }))?.credentialTemplate).toEqual(credentialTemplate);
+  expect((await dao.update('shared', { credentialTemplate }))?.credentialTemplate).toEqual(
+    credentialTemplate,
+  );
   expect(mockRepository.update).toHaveBeenCalledWith('shared', { credentialTemplate });
   await dao.update('shared', { credentialTemplate: undefined });
   expect(mockRepository.update).toHaveBeenLastCalledWith('shared', { credentialTemplate: null });
+});
+
+describe('key pool DB persistence', () => {
+  it('round trips keys and clears the nullable column when removed', async () => {
+    const dao = new ServerDaoDbImpl();
+    const keyPool = {
+      enabled: true,
+      provider: 'context7' as const,
+      keys: [{ id: 'one', label: 'one', value: 'test-private-key' }],
+    };
+    mockRepository.create.mockResolvedValue({
+      name: 'context7',
+      command: 'node',
+      enabled: false,
+      keyPool,
+    });
+    expect(
+      (await dao.create({ name: 'context7', command: 'node', enabled: false, keyPool }))?.keyPool,
+    ).toEqual(keyPool);
+    expect(mockRepository.create).toHaveBeenCalledWith(expect.objectContaining({ keyPool }));
+    mockRepository.update.mockResolvedValue({
+      name: 'context7',
+      command: 'node',
+      enabled: false,
+      keyPool: null,
+    });
+    expect((await dao.update('context7', { keyPool: undefined }))?.keyPool).toBeUndefined();
+    expect(mockRepository.update).toHaveBeenCalledWith('context7', { keyPool: null });
+  });
 });

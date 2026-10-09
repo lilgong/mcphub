@@ -1,3 +1,4 @@
+import { normalizeKeyPool } from './keyPool.js';
 import { normalizeServiceRateLimit, normalizeFetchRelay } from './serviceControls.js';
 import { validateCredentialTemplate } from './credentialTemplate.js';
 import { validateMaxBufferSize } from './stdioOptions.js';
@@ -71,8 +72,11 @@ export const unpackStartOnDemandOptions = (
     return { options: undefined, startOnDemand: undefined, idleTimeoutMs: undefined };
   }
 
-  const { startOnDemand: rawStartOnDemand, idleTimeoutMs: rawIdleTimeoutMs, ...rest } =
-    options as Record<string, unknown>;
+  const {
+    startOnDemand: rawStartOnDemand,
+    idleTimeoutMs: rawIdleTimeoutMs,
+    ...rest
+  } = options as Record<string, unknown>;
 
   return {
     options: Object.keys(rest).length > 0 ? (rest as ServerConfig['options']) : undefined,
@@ -157,7 +161,9 @@ const normalizeOptions = (
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 };
 
-export const normalizeOAuth = (oauth?: ServerConfig['oauth']): ServerConfig['oauth'] | undefined => {
+export const normalizeOAuth = (
+  oauth?: ServerConfig['oauth'],
+): ServerConfig['oauth'] | undefined => {
   if (!oauth) {
     return undefined;
   }
@@ -274,8 +280,17 @@ const inferServerType = (config: ServerConfig): NonNullable<ServerConfig['type']
 };
 
 export const normalizeServerConfigForPersistence = (config: ServerConfig): ServerConfig => {
-  config = { ...config, rateLimit: normalizeServiceRateLimit(config.rateLimit), relay: normalizeFetchRelay(config.relay) };
+  config = {
+    ...config,
+    keyPool: normalizeKeyPool(config.keyPool),
+    rateLimit: normalizeServiceRateLimit(config.rateLimit),
+    relay: normalizeFetchRelay(config.relay),
+  };
   const normalizedType = inferServerType(config);
+  if (config.keyPool?.enabled && (normalizedType !== 'stdio' || config.credentialTemplate?.length))
+    throw new ServerConfigValidationError(
+      'Key pools require an operator-managed stdio MCP without personal credential templates',
+    );
   const description = trimToUndefined(config.description);
   const owner = trimToUndefined(config.owner) ?? config.owner;
   const url = trimToUndefined(config.url);

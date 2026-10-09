@@ -441,6 +441,7 @@ export interface StoredCredentialBinding {
 
 // Configuration details for an individual server
 export interface ServerConfig {
+  keyPool?: import('./keyPool.js').KeyPoolConfig;
   rateLimit?: ServiceRateLimit;
   relay?: FetchRelayConfig;
   credentialTemplate?: CredentialSlot[]; // Metadata only; every slot requires a personal binding.

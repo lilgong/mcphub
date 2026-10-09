@@ -213,6 +213,7 @@ const stripUndefinedDeep = (value: unknown): unknown => {
 // `enabled`, and the tools/prompts/resources per-item overrides) is read-time
 // or access metadata that can be applied without a reconnect.
 const CONNECTION_RELEVANT_CONFIG_FIELDS = [
+  'keyPool',
   'relay',
   'type',
   'url',

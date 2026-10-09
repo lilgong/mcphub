@@ -1505,6 +1505,19 @@
     "failed": "调用日志加载失败",
     "truncated": "当前只展示近期记录，较早的记录仍保留在日志文件中。",
     "unavailable": "日志来源暂不可用",
-    "empty": "没有匹配的记录"
+    "empty": "没有匹配的记录",
+    "key_pool": "Key 池 HTTP",
+    "keyLabel": "Key 名称",
+    "retryAt": "重新参与时间"
+  },
+  "keyPool": {
+    "title": "多 Key 轮询",
+    "description": "支持管理员管理的 stdio Context7 和 TwelveData。请求依次轮询可用 key，额度或认证失败时内部换下一个，每次 HTTP 尝试按 key 名称记录日志。",
+    "enabled": "启用 Key 轮询",
+    "provider": "服务商",
+    "label": "Key 名称",
+    "remove": "移除",
+    "add": "添加 Key",
+    "recovery": "失败的 key 保留配置；优先遵循上游重试时间。明确日/月额度错误默认等到下个 UTC 日/月，其他情况冷却 60 秒后重新参与。Hub 重启会清空运行时冷却状态。"
   }
 }

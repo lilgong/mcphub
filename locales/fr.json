@@ -1501,6 +1501,19 @@
     "failed": "Impossible de charger les appels",
     "truncated": "Seuls les enregistrements récents sont affichés ; les précédents restent dans les fichiers.",
     "unavailable": "Sources indisponibles",
-    "empty": "Aucun enregistrement correspondant"
+    "empty": "Aucun enregistrement correspondant",
+    "key_pool": "HTTP des clés",
+    "keyLabel": "Nom de clé",
+    "retryAt": "Nouvelle tentative"
+  },
+  "keyPool": {
+    "title": "Rotation de clés",
+    "description": "Prend en charge Context7 et TwelveData en stdio, gérés par un administrateur. Les appels alternent entre les clés disponibles et changent de clé après une erreur de quota ou d’authentification. Chaque tentative HTTP est journalisée par nom de clé.",
+    "enabled": "Activer la rotation",
+    "provider": "Fournisseur",
+    "label": "Nom de clé",
+    "remove": "Supprimer",
+    "add": "Ajouter une clé",
+    "recovery": "Les clés restent configurées. Retry-After est respecté ; les quotas journaliers/mensuels attendent le prochain jour/mois UTC, sinon 60 secondes. Les délais sont réinitialisés au redémarrage."
   }
 }

@@ -12,6 +12,8 @@ interface Row {
   category?: string;
   durationMs?: number;
   waitMs?: number;
+  keyLabel?: string;
+  retryAt?: string;
 }
 interface Result {
   rows: Row[];
@@ -126,7 +128,7 @@ export default function CallLogViewer() {
             value={source}
             onChange={(e) => setSource(e.target.value)}
           >
-            {['all', 'tool', 'yibu', 'relay'].map((value) => (
+            {['all', 'tool', 'yibu', 'relay', 'key_pool'].map((value) => (
               <option key={value} value={value}>
                 {t(`callLogs.${value}`)}
               </option>
@@ -177,6 +179,8 @@ export default function CallLogViewer() {
                 'operation',
                 'status',
                 'category',
+                'keyLabel',
+                'retryAt',
                 'wait',
                 'duration',
               ].map((key) => (
@@ -199,6 +203,10 @@ export default function CallLogViewer() {
                   {row.httpStatus ?? t(`callLogs.${row.outcome}`)}
                 </td>
                 <td className="p-2">{row.category || '—'}</td>
+                <td className="p-2">{row.keyLabel || '—'}</td>
+                <td className="whitespace-nowrap p-2">
+                  {row.retryAt ? new Date(row.retryAt).toLocaleString() : '—'}
+                </td>
                 <td className="p-2">
                   {row.waitMs === undefined ? '—' : `${Math.round(row.waitMs)} ms`}
                 </td>

@@ -62,3 +62,32 @@ describe('server configuration environment boundary', () => {
     expect(env.KEY).toBe('literal-${HUB_SECRET}');
   });
 });
+
+describe('managed key pool child boundary', () => {
+  const pool = {
+    enabled: true,
+    provider: 'context7' as const,
+    keys: [{ id: 'one', label: 'one', value: 'private-pool-key' }],
+  };
+  it('passes only a placeholder and a server capability to Context7', async () => {
+    const env = await getServerEnvironment({ owner: 'admin', keyPool: pool }, 'context7');
+    expect(env.CONTEXT7_API_KEY).toBe('ctx7sk-hub-managed');
+    expect(env.MCPHUB_KEY_POOL_URL).toMatch(/127\.0\.0\.1.*key-pool\/context7$/);
+    expect(env.NODE_OPTIONS).toContain('key_pool_fetch_preload.cjs');
+    expect(JSON.stringify(env)).not.toContain('private-pool-key');
+  });
+  it('installs the Python HTTP boundary for TwelveData', async () => {
+    const env = await getServerEnvironment(
+      { owner: 'admin', keyPool: { ...pool, provider: 'twelvedata' } },
+      'twelvedata',
+    );
+    expect(env.PYTHONPATH).toContain('key_pool_python');
+    expect(env.TWELVE_DATA_API_KEY).toBe('hub-managed');
+    expect(JSON.stringify(env)).not.toContain('private-pool-key');
+  });
+  it('fails closed for an untrusted owner', async () => {
+    await expect(
+      getServerEnvironment({ owner: 'member', keyPool: pool }, 'context7'),
+    ).rejects.toThrow('trusted');
+  });
+});

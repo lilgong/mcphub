@@ -1,3 +1,4 @@
+import KeyPoolEditor from './KeyPoolEditor';
 import ServiceControls from './ServiceControls';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -125,6 +126,7 @@ const ServerForm = ({
   );
 
   const [formData, setFormData] = useState<ServerFormData>({
+    keyPool: initialData?.config?.keyPool ?? undefined,
     rateLimit: initialData?.config?.rateLimit ?? undefined,
     relay: initialData?.config?.relay ?? undefined,
     name: (initialData && initialData.name) || '',
@@ -603,7 +605,19 @@ const ServerForm = ({
       )}
 
       <form onSubmit={handleSubmit}>
-        <ServiceControls rateLimit={formData.rateLimit} relay={formData.relay} stdio={serverType === 'stdio'} onChange={(value) => setFormData((previous) => ({ ...previous, ...value }))} />
+        {serverType === 'stdio' && (
+          <KeyPoolEditor
+            serverName={formData.name}
+            value={formData.keyPool}
+            onChange={(keyPool) => setFormData((previous) => ({ ...previous, keyPool }))}
+          />
+        )}
+        <ServiceControls
+          rateLimit={formData.rateLimit}
+          relay={formData.relay}
+          stdio={serverType === 'stdio'}
+          onChange={(value) => setFormData((previous) => ({ ...previous, ...value }))}
+        />
         {/* ─── Section 1: Basic Info ─── */}
         <div className="mb-5">
           <h3 className="text-sm font-semibold text-[var(--hub-ink)] mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
