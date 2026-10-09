@@ -1215,12 +1215,27 @@ export const summarizeServerConnections = (
 };
 
 export const getServerConnectionStats = (): ServerConnectionStats => {
-  // Personal and target definitions have no shared connection to check.
-  return summarizeServerConnections(
-    serverInfos.filter(
-      (info) => !hasCredentialTemplate(info.config) && !info.config?.targets?.length,
-    ),
+  // Fixed targets have resident clients; task callbacks and personal credentials
+  // are intentionally excluded from startup readiness.
+  const infos = serverInfos.filter(
+    (info) => !hasCredentialTemplate(info.config) && !info.config?.targets?.length,
   );
+  const targets = serverInfos.flatMap((info) => {
+    if (info.enabled === false) return [];
+    const instances = targetRuntimes.snapshot(info.name);
+    return (info.config?.targets ?? [])
+      .filter((target) => target.kind === 'static' && target.enabled !== false)
+      .map((target) => {
+        const status = instances.find(
+          (entry) => entry.target === target.path && !entry.draining,
+        )?.status;
+        return {
+          enabled: true,
+          status: status === 'registered' ? ('connected' as const) : (status ?? 'connecting'),
+        };
+      });
+  });
+  return summarizeServerConnections([...infos, ...targets]);
 };
 
 // Returns true if all enabled servers are connected
@@ -2478,6 +2493,38 @@ export const initializeClientsFromSettings = async (
 
   serverInfos = nextServerInfos;
   entriesPublished = true;
+
+  // Fixed targets are operator-configured services: connect before publishing MCP routes
+  // and keep them resident. Task leases remain owned by their registering adapters.
+  for (const previous of existingServerInfos) {
+    if (
+      previous.config?.targets?.length &&
+      !allServers.some((conf) => conf.name === previous.name && conf.targets?.length)
+    )
+      targetRuntimes.invalidate(previous.name);
+  }
+  await Promise.all(
+    allServers
+      .filter((conf) => conf.targets?.length)
+      .map(async (conf) => {
+        const targets =
+          conf.targets?.filter((target) => target.enabled !== false && target.kind === 'static') ??
+          [];
+        const results = await targetRuntimes.reconcile(conf.name, conf, (start) =>
+          connectGate.run(start, () =>
+            serverInfos.some((info) => info.name === conf.name && info.enabled !== false),
+          ),
+        );
+        results.forEach((result, index) => {
+          if (result.status === 'rejected')
+            logger.error('Failed to start fixed MCP target', {
+              serverName: conf.name,
+              target: targets[index]?.path,
+              error: summarizeErrorForLogging(result.reason),
+            });
+        });
+      }),
+  );
 
   // Populate the tool cache for on-demand stdio servers so their tools are
   // visible to agents, then put them back to sleep. Running here (rather than

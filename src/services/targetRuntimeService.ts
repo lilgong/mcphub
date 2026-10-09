@@ -25,7 +25,6 @@ interface Entry {
   startedAt: number;
   promise: Promise<ServerInfo>;
   active: number;
-  timer?: NodeJS.Timeout;
   revision: string;
   server: string;
   target: string;
@@ -96,7 +95,6 @@ export class TargetRuntimeService {
       )
         continue;
       this.entries.delete(key);
-      clearTimeout(entry.timer);
       void entry.promise
         .then((info) => {
           if (!entry.active) this.closeEntry(entry, info);
@@ -104,26 +102,40 @@ export class TargetRuntimeService {
         .catch(() => undefined);
     }
   }
-  async acquire(
+  /** Start enabled operator-configured targets without granting any caller access. */
+  async reconcile(
     server: string,
     definition: ServerConfig,
-    path: string | undefined,
-    principal: RequestPrincipal | null | undefined,
-    keyId?: string,
-  ): Promise<{ info: ServerInfo; release: () => void }> {
-    if (this.loadDefinition) {
-      const current = await this.loadDefinition(server);
-      if (!current || current.enabled === false) throw new Error('Target registration unavailable');
-      definition = current;
-    }
-    if (!validateTargetPath(path)) throw new Error('An explicit X-MCPHub-Target is required');
-    const target = definition.targets?.find((value) => value.path === path);
-    if (!target || !authorizeTarget(target, principal, keyId))
-      throw new Error('Target not available for this caller');
-    if (target.kind !== 'static')
-      throw new Error('Task targets require a registered task connection');
+    run: <T>(start: () => Promise<T>) => Promise<T> = (start) => start(),
+  ): Promise<PromiseSettledResult<ServerInfo | undefined>[]> {
+    this.invalidate(server, definition);
+    if (definition.enabled === false) return [];
+    const targets =
+      definition.targets?.filter(
+        (target) => target.enabled !== false && target.kind === 'static',
+      ) ?? [];
+    return Promise.allSettled(
+      targets.map((target) =>
+        run(async () => {
+          const current = this.loadDefinition ? await this.loadDefinition(server) : definition;
+          const next = current?.targets?.find((entry) => entry.path === target.path);
+          if (
+            !current ||
+            current.enabled === false ||
+            !next ||
+            next.enabled === false ||
+            next.kind !== 'static'
+          )
+            return undefined;
+          return this.ensure(server, current, next).promise;
+        }),
+      ),
+    );
+  }
+
+  private ensure(server: string, definition: ServerConfig, target: TargetConnection): Entry {
     const revision = targetRevision(definition, target);
-    const key = JSON.stringify([server, path]);
+    const key = JSON.stringify([server, target.path]);
     let entry = this.entries.get(key);
     if (entry && (entry.revision !== revision || entry.info?.status === 'disconnected')) {
       this.entries.delete(key);
@@ -145,7 +157,7 @@ export class TargetRuntimeService {
         active: 0,
         revision,
         server,
-        target: path,
+        target: target.path,
         promise: (async () => this.connect(server, await expandServerConfig(resolved)))(),
       };
       this.entries.set(key, entry);
@@ -161,9 +173,31 @@ export class TargetRuntimeService {
         this.liveEntries.delete(created);
       });
     }
-    clearTimeout(entry.timer);
+    return entry;
+  }
+
+  async acquire(
+    server: string,
+    definition: ServerConfig,
+    path: string | undefined,
+    principal: RequestPrincipal | null | undefined,
+    keyId?: string,
+  ): Promise<{ info: ServerInfo; release: () => void }> {
+    if (this.loadDefinition) {
+      const current = await this.loadDefinition(server);
+      if (!current || current.enabled === false) throw new Error('Target registration unavailable');
+      definition = current;
+    }
+    if (!validateTargetPath(path)) throw new Error('An explicit X-MCPHub-Target is required');
+    const target = definition.targets?.find((value) => value.path === path);
+    if (!target || !authorizeTarget(target, principal, keyId))
+      throw new Error('Target not available for this caller');
+    if (target.kind !== 'static')
+      throw new Error('Task targets require a registered task connection');
+    const entry = this.ensure(server, definition, target);
     entry.active++;
     const held = entry;
+    const key = JSON.stringify([server, target.path]);
     let released = false;
     const release = () => {
       if (released) return;
@@ -174,13 +208,6 @@ export class TargetRuntimeService {
           void held.promise.then((info) => this.closeEntry(held, info)).catch(() => undefined);
           return;
         }
-        held.timer = setTimeout(() => {
-          if (this.entries.get(key) === held && !held.active) {
-            this.entries.delete(key);
-            void held.promise.then((info) => this.closeEntry(held, info)).catch(() => undefined);
-          }
-        }, 300000);
-        held.timer.unref?.();
       }
     };
     try {

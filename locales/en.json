@@ -1559,7 +1559,7 @@
     "wrapper": "Wrapper",
     "custom": "Custom",
     "version": "Configured version / revision",
-    "versionHint": "The version is a label. Pin the real version in the command, package path or container image. Enabled targets connect on first use; their clients close after five idle minutes. Once targets exist, callers must select an exact target; the parent connection is not used.",
+    "versionHint": "The version is a label. Pin the real version in the command, package path or image. Enabled static targets connect at Hub startup or configuration save and stay connected while idle. Callers must select an exact target; the parent connection is not used.",
     "duplicate": "Copy target",
     "fromCurrent": "Convert the connection below into the first target (keep credentials)",
     "optionalTitle": "Multiple versions or workspaces (optional)",
@@ -1589,9 +1589,9 @@
     "title": "Runtime connections",
     "running": "{{count}} running now",
     "starting": "Starting {{count}}",
-    "description": "Counts are upstream connections and unexpired task registrations, not Docker containers. Task registrations do not prove the callback is healthy. Declared versions are labels; reported/package versions come from connected MCPs. Targets connect on first use. This inventory refreshes with the server list.",
+    "description": "Counts represent upstream clients and unexpired task registrations, not Docker containers. Task registration is not a health check. Enabled static targets stay connected; inventory refreshes with the server list.",
     "disabled": "Disabled",
-    "idle": "Awaiting request",
+    "idle": "Not connected",
     "target": "Target / task",
     "kind": "Connection kind",
     "implementation": "Implementation",
@@ -1615,10 +1615,7 @@
     "activeCalls": "In flight {{count}}",
     "since": "Created",
     "expires": "Lease expires",
-    "empty": "No running instances. Targets start on request and close after 5 idle minutes; their configuration remains saved.",
-    "multiTarget": "Targets",
-    "configuredTargets": "{{count}} configured targets",
-    "configuredConnection": "1 configured connection",
-    "awaitingTask": "Awaiting task registration"
+    "empty": "No running instances. Static targets are starting, disabled or failed to connect; check runtime logs.",
+    "multiTarget": "Targets"
   }
 }

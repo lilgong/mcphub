@@ -8,11 +8,6 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
     <section aria-label={t('runtime.title')} className="mb-4 space-y-3">
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="font-medium">{t('runtime.title')}</span>
-        {!!runtime.targets.length && (
-          <span className="hub-tag">
-            {t('runtime.configuredTargets', { count: runtime.targets.length })}
-          </span>
-        )}
         <span className="hub-tag">{t('runtime.running', { count: runtime.running })}</span>
         {!!runtime.starting && (
           <span className="hub-tag">{t('runtime.starting', { count: runtime.starting })}</span>
@@ -46,7 +41,7 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
                       ? t('runtime.running', { count: target.running })
                       : target.starting
                         ? t('runtime.starting', { count: target.starting })
-                        : t(target.kind === 'task' ? 'runtime.awaitingTask' : 'runtime.idle')
+                        : t('runtime.idle')
                 }
               />
             </span>

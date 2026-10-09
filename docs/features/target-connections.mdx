@@ -105,8 +105,9 @@ included in the inventory. `targetManaged` is a safe boolean available to all vi
 
 Counts represent connected upstream clients and unexpired task registrations, **not Docker
 containers**. A registered task callback is not a successful health check. Connecting clients
-are counted separately; configured but unused targets count as zero. Static targets connect
-on first use and release their cached client after five idle minutes. Replaced clients still
+are counted separately. Enabled static targets connect when the Hub starts or their configuration
+is saved and remain connected while idle. Disabled targets and task targets are not started
+automatically. Replaced clients still
 serving calls appear separately as draining. Version labels remain distinct from runtime
 versions; unavailable versions are shown as unknown. The inventory refreshes with the server
 list (normally every 30 seconds, or immediately using Refresh).

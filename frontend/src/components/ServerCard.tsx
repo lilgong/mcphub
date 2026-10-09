@@ -689,9 +689,10 @@ const ServerCard = ({
             />
             {server.runtime && (
               <div className="mt-1 text-[11px] hub-sub">
-                {server.targetManaged || server.runtime.targets.length
-                  ? t('runtime.configuredTargets', { count: server.runtime.targets.length })
-                  : t('runtime.configuredConnection')}
+                {t('runtime.running', { count: server.runtime.running })}
+                {!!server.runtime.starting && (
+                  <> · {t('runtime.starting', { count: server.runtime.starting })}</>
+                )}
               </div>
             )}
           </div>

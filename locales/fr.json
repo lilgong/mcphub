@@ -1557,7 +1557,7 @@
     "wrapper": "Wrapper",
     "custom": "Personnalisée",
     "version": "Version / révision configurée",
-    "versionHint": "La version est une étiquette. Fixez la version réelle dans la commande, le chemin du paquet ou l’image du conteneur. Les cibles se connectent au premier appel et ferment leur client après cinq minutes d’inactivité. Une cible explicite est requise ; la connexion parente n’est plus utilisée.",
+    "versionHint": "La version est une étiquette. Fixez la version réelle dans la commande, le paquet ou l’image. Les cibles fixes activées se connectent au démarrage ou à l’enregistrement et restent actives. L’appelant doit sélectionner une cible exacte.",
     "duplicate": "Copier la cible",
     "fromCurrent": "Convertir la connexion en première cible (conserver les identifiants)",
     "optionalTitle": "Plusieurs versions ou espaces (facultatif)",
@@ -1587,9 +1587,9 @@
     "title": "Connexions actives",
     "running": "{{count}} en cours",
     "starting": "Démarrage : {{count}}",
-    "description": "Nombre de connexions amont et d’inscriptions de tâches non expirées, pas de conteneurs Docker. Une inscription ne garantit pas la disponibilité du rappel. Les versions configurées sont des étiquettes ; les versions signalées proviennent du MCP connecté. Les cibles démarrent à la demande. La liste suit le rafraîchissement des serveurs.",
+    "description": "Le nombre représente les connexions et les tâches enregistrées, pas les conteneurs. Un enregistrement de tâche ne valide pas sa connexion. Les cibles fixes activées restent connectées.",
     "disabled": "Désactivée",
-    "idle": "En attente de requête",
+    "idle": "Non connectée",
     "target": "Cible / tâche",
     "kind": "Type de connexion",
     "implementation": "Implémentation",
@@ -1613,10 +1613,7 @@
     "activeCalls": "En cours : {{count}}",
     "since": "Créée",
     "expires": "Expiration du bail",
-    "empty": "Aucune instance en cours. Les cibles démarrent à la demande et se ferment après 5 minutes d’inactivité ; leur configuration reste enregistrée.",
-    "multiTarget": "Cibles",
-    "configuredTargets": "{{count}} cibles configurées",
-    "configuredConnection": "1 connexion configurée",
-    "awaitingTask": "En attente d’enregistrement de tâche"
+    "empty": "Aucune instance active. Les cibles fixes démarrent, sont désactivées ou ont échoué ; consultez les journaux.",
+    "multiTarget": "Cibles"
   }
 }

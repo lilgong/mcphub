@@ -262,3 +262,104 @@ test('task targets retain the generic relay adapter declaration', () => {
     relay: { enabled: false },
   });
 });
+
+test('fixed targets connect before any request and remain resident after five idle minutes', async () => {
+  jest.useFakeTimers();
+  try {
+    const connect = jest.fn(async (_name, config) => child(config));
+    const close = jest.fn();
+    const pool = new TargetRuntimeService(connect, close);
+    const config = structuredClone(definition);
+    config.targets!.push({ path: 'other/task', kind: 'task' });
+    config.targets!.push({
+      path: 'other/disabled',
+      kind: 'static',
+      enabled: false,
+      config: { command: 'never' },
+    });
+    await pool.reconcile('notion', config);
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(pool.snapshot('notion').map((entry) => entry.status)).toEqual([
+      'connected',
+      'connected',
+    ]);
+    // Warming a connection does not bypass the target's caller ACL.
+    await expect(pool.acquire('notion', config, 'other/syn-1', principal, 'key-a')).rejects.toThrow(
+      'not available',
+    );
+    const lease = await pool.acquire('notion', config, 'other/official', principal, 'key-a');
+    lease.release();
+    jest.advanceTimersByTime(6 * 60 * 1000);
+    expect(close).not.toHaveBeenCalled();
+    expect(pool.snapshot('notion')).toHaveLength(2);
+    const next = await pool.acquire('notion', config, 'other/official', principal, 'key-a');
+    expect(next.info).toBe(lease.info);
+    expect(connect).toHaveBeenCalledTimes(2);
+    next.release();
+    pool.invalidate();
+    await Promise.resolve();
+    expect(close).toHaveBeenCalledTimes(2);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('saving a target reconnects it eagerly while preserving siblings; disabling closes it without a request', async () => {
+  const connect = jest.fn(async (_name, config) => child(config));
+  const close = jest.fn();
+  const pool = new TargetRuntimeService(connect, close);
+  const config = structuredClone(definition);
+  await pool.reconcile('notion', config);
+  const original = pool.snapshot('notion');
+  config.targets![0].config!.env = { KEY: 'updated' };
+  await pool.reconcile('notion', config);
+  const updated = pool.snapshot('notion');
+  expect(connect).toHaveBeenCalledTimes(3);
+  expect(updated.find((entry) => entry.target === 'other/syn-1')?.id).toBe(original[1].id);
+  expect(updated.find((entry) => entry.target === 'other/official')?.id).not.toBe(original[0].id);
+  expect(close).toHaveBeenCalledTimes(1);
+  config.targets![0].enabled = false;
+  await pool.reconcile('notion', config);
+  expect(pool.snapshot('notion')).toHaveLength(1);
+  expect(close).toHaveBeenCalledTimes(2);
+  await pool.reconcile('notion', { ...config, enabled: false });
+  await Promise.resolve();
+  expect(pool.snapshot('notion')).toEqual([]);
+  expect(close).toHaveBeenCalledTimes(3);
+});
+
+test('a failed warm connection does not block siblings and can be retried without phantom instances', async () => {
+  const connect = jest.fn(async (_name, config) => {
+    if (config.env?.KEY === 'workspace-a') throw new Error('fixture startup failed');
+    return child(config);
+  });
+  const pool = new TargetRuntimeService(connect, jest.fn());
+  const config = structuredClone(definition);
+  const results = await pool.reconcile('notion', config);
+  expect(results.map((result) => result.status)).toEqual(['rejected', 'fulfilled']);
+  expect(pool.snapshot('notion')).toHaveLength(1);
+  config.targets![0].config!.env = { KEY: 'fixed' };
+  await pool.reconcile('notion', config);
+  expect(pool.snapshot('notion')).toHaveLength(2);
+  pool.invalidate();
+});
+
+test('queued warm targets recheck live configuration before starting a process', async () => {
+  const connect = jest.fn(async (_name, config) => child(config));
+  let current: ServerConfig | undefined = structuredClone(definition);
+  const pool = new TargetRuntimeService(connect, jest.fn(), async () => current);
+  const queued: Array<() => Promise<unknown>> = [];
+  const pending = pool.reconcile(
+    'notion',
+    definition,
+    (start) =>
+      new Promise((resolve, reject) => {
+        queued.push(() => start().then(resolve, reject));
+      }),
+  );
+  current = undefined;
+  await Promise.all(queued.map((start) => start()));
+  await pending;
+  expect(connect).not.toHaveBeenCalled();
+  expect(pool.snapshot('notion')).toEqual([]);
+});

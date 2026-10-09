@@ -1326,9 +1326,15 @@ export const updateServer = async (req: Request, res: Response): Promise<void> =
       // reload. Await it here too: the dashboard refreshes the server list as
       // soon as the PUT responds, and without this the refresh would race ahead
       // of the prime and show an empty tool list until the next 30s poll (or a
-      // manual refresh). Non-on-demand servers keep the existing fire-and-forget
-      // behavior since their connect is already async. See #1032.
-      if (normalizedConfig.startOnDemand === true) {
+      // manual refresh). Fixed targets also await their resident connections so
+      // the refresh reflects their startup result. Other servers retain the
+      // existing asynchronous behavior. See #1032.
+      if (
+        normalizedConfig.startOnDemand === true ||
+        normalizedConfig.targets?.some(
+          (target) => target.kind === 'static' && target.enabled !== false,
+        )
+      ) {
         await notifyToolChanged(finalName);
       } else {
         notifyToolChanged(finalName);

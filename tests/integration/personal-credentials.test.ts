@@ -912,6 +912,12 @@ test('generic static targets isolate real MCP clients and support both user and 
       await getServerDao().update('target-fixture', { targets: config!.targets });
     });
   await initializeClientsFromSettings(false, 'target-fixture');
+  // Fixed targets are ready before any model/client request starts.
+  const ready = await getServersInfo(undefined, undefined, { username: 'admin', isAdmin: true });
+  const targetRuntime = ready.find((server) => server.name === 'target-fixture')?.runtime;
+  expect(targetRuntime?.running).toBe(2);
+  expect(targetRuntime?.instances.every((entry) => entry.status === 'connected')).toBe(true);
+
   const open = async (token: string, target?: string) => {
     const client = new Client({ name: 'target-e2e', version: '1' });
     clients.push(client);
