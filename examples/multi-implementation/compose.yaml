@@ -1,0 +1,25 @@
+# Optional MCP runtimes for the existing shared Hub. No additional host ports.
+# Images must serve MCP over HTTP at /mcp on port 8080; stdio-only images need
+# their own HTTP adapter, or can be launched directly by Hub as stdio targets.
+services:
+  mcp-native:
+    image: '${MCP_NATIVE_IMAGE:?Set an HTTP MCP image with a pinned tag or digest}'
+    container_name: '${MCP_NATIVE_NAME:?Set a unique runtime name, e.g. search-native-v1}'
+    restart: unless-stopped
+    expose:
+      - '8080'
+    networks:
+      - mcp-runtime
+  mcp-wrapper:
+    image: '${MCP_WRAPPER_IMAGE:?Set an HTTP wrapper image with a pinned tag or digest}'
+    container_name: '${MCP_WRAPPER_NAME:?Set a unique runtime name, e.g. search-suite-a-wrapper-v2}'
+    restart: unless-stopped
+    expose:
+      - '8080'
+    networks:
+      - mcp-runtime
+
+networks:
+  mcp-runtime:
+    external: true
+    name: mcphub-runtime

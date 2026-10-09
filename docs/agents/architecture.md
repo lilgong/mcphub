@@ -12,6 +12,13 @@ Read this guide when changing runtime wiring, MCP connections, HTTP routing, aut
 - `src/types/` contains shared configuration and domain types.
 - `frontend/src/` contains the Vite/React dashboard.
 
+Target connections select operator-provided implementations and credentials by an exact
+path. Implementation/version labels never select packages or override commands. Runtime
+inventory counts clients and task leases, not Docker containers, and must contain metadata
+only. Keep target/task inventory within the server configuration authorization boundary;
+shared users must not receive other applications' task IDs or target details. See
+[target connections](../features/target-connections.mdx).
+
 ## Persistence changes
 
 When adding or changing a persisted field, update every applicable layer:

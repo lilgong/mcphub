@@ -1,4 +1,8 @@
 import { TargetRuntimeService } from './targetRuntimeService.js';
+import { taskConnections } from './taskConnectionService.js';
+import { summarizeServerRuntime } from './serverRuntimeSummaryService.js';
+import type { RuntimeInstance } from '../types/serverRuntime.js';
+import { randomUUID } from 'node:crypto';
 import { invocationLabels } from './invocationLabelsService.js';
 import {
   preserveListFreshness,
@@ -2654,6 +2658,12 @@ export const getServersInfo = async (
 
         return {
           name,
+          targetManaged: !!serverConfig?.targets?.length,
+          runtime: summarizeServerRuntime(
+            serverConfig?.targets,
+            getRuntimeInstances(name),
+            enabled,
+          ),
           version,
           instructions,
           owner,
@@ -2705,6 +2715,43 @@ export const getServersInfo = async (
   // Sorting is now handled at DAO layer for consistent pagination results
   return infos;
 };
+
+const runtimeClientIds = new WeakMap<Client, string>();
+function getRuntimeInstances(name: string): RuntimeInstance[] {
+  const global = serverInfos.find((info) => info.name === name);
+  const instances: RuntimeInstance[] = [
+    ...targetRuntimes.snapshot(name),
+    ...taskConnections.snapshot(name),
+    ...principalRuntimes.snapshot(name),
+  ];
+  if (global && (global.client || global.openApiClient || global.spawningPromise)) {
+    instances.push({
+      id: `shared:${global.createTime}`,
+      kind: 'shared',
+      status: global.status,
+      reportedVersion: global.version,
+      packageVersion: global.packageVersion,
+      startedAt: global.createTime,
+      activeCalls: global.activeToolCalls,
+    });
+  }
+  for (const clients of sessionIsolatedClients.values()) {
+    const session = clients.get(name);
+    if (!session) continue;
+    let id = runtimeClientIds.get(session.client);
+    if (!id) {
+      id = randomUUID();
+      runtimeClientIds.set(session.client, id);
+    }
+    instances.push({
+      id,
+      kind: 'session',
+      status: session.client.transport ? 'connected' : 'disconnected',
+      reportedVersion: session.client.getServerVersion()?.version,
+    });
+  }
+  return instances;
+}
 
 // Get server by name
 export const getServerByName = (name: string): ServerInfo | undefined => {
@@ -3018,7 +3065,7 @@ export const addOrUpdateServer = async (
     // If overriding an existing server, close connections and clear keep-alive timers
     if (exists) {
       // Close existing server connections (clears keep-alive intervals as well)
-      closeServer(name);
+      closeServer(name, config);
       // Remove from server infos
       serverInfos = serverInfos.filter((serverInfo) => serverInfo.name !== name);
     }
@@ -3108,8 +3155,8 @@ const closeServerRuntime = (serverInfo: ServerInfo): void => {
 
 // Close server client and transport (keeps the entry in serverInfos; the next
 // initializeClientsFromSettings rebuild drops it if it is no longer configured).
-export function closeServer(name: string) {
-  targetRuntimes.invalidate(name);
+export function closeServer(name: string, nextDefinition?: ServerConfig) {
+  targetRuntimes.invalidate(name, nextDefinition);
   principalRuntimes.invalidate({ serverName: name });
   const serverInfo = serverInfos.find((serverInfo) => serverInfo.name === name);
   if (serverInfo) {

@@ -10,6 +10,9 @@ services:
     restart: unless-stopped
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    networks:
+      - default
+      - mcp-runtime
     ports:
       - '3002:3000'
     env_file:
@@ -50,3 +53,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+networks:
+  mcp-runtime:
+    name: mcphub-runtime
+    driver: bridge

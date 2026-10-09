@@ -333,6 +333,9 @@ export interface OpenAPISecurityConfig {
 // Server types
 export interface Server {
   name: string;
+  version?: string;
+  targetManaged?: boolean;
+  runtime?: import('../../../src/types/serverRuntime').ServerRuntimeSummary;
   owner?: string;
   visibility?: 'private' | 'group' | 'public';
   status: ServerStatus;

@@ -54,6 +54,8 @@ export async function registerTaskConnection(req: Request, res: Response): Promi
       owner: owner(req),
       username: identity.user!.username,
       keyId: identity.bearerKey?.id,
+      implementation: connection.implementation,
+      configuredVersion: connection.version,
       model: labels.model,
       benchmark: labels.benchmark,
       runId: labels.runId,
@@ -220,19 +222,17 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
     res.json(result);
   } catch {
     if (!res.headersSent && !res.destroyed)
-      res
-        .status(abort.signal.aborted ? 504 : 502)
-        .json({
-          content: [
-            {
-              type: 'text',
-              text: abort.signal.aborted
-                ? 'Error: Task request timed out or cancelled'
-                : 'Error: Task request failed',
-            },
-          ],
-          isError: true,
-        });
+      res.status(abort.signal.aborted ? 504 : 502).json({
+        content: [
+          {
+            type: 'text',
+            text: abort.signal.aborted
+              ? 'Error: Task request timed out or cancelled'
+              : 'Error: Task request failed',
+          },
+        ],
+        isError: true,
+      });
   } finally {
     clearTimeout(timeout);
     res.off('close', disconnect);

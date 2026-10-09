@@ -63,19 +63,30 @@ test('registration requires operator and exact target permission; no implicit ta
     .send({ server: 'filesystem', taskId: 'missing', url: 'http://callback', token: 'x' })
     .expect(400);
 });
+test('disabled task targets reject registration and forwarding of existing leases', async () => {
+  const entry = (await register('disable-target').expect(200)).body.data;
+  mockDefinition.targets![0].enabled = false;
+  await register('disabled-new').expect(403);
+  const fetch = jest.spyOn(global, 'fetch');
+  await request(app)
+    .post(`${entry.path}/list-tools`)
+    .set('Authorization', `Bearer ${entry.token}`)
+    .send({})
+    .expect(502);
+  expect(fetch).not.toHaveBeenCalled();
+  taskConnections.remove(entry.id, 'caller-a');
+});
 test('task capabilities route only to their registered clients and never survive teardown or key revocation', async () => {
-  const fetch = jest
-    .spyOn(global, 'fetch')
-    .mockImplementation(
-      async (url) =>
-        new Response(
-          JSON.stringify({
-            content: [{ type: 'text', text: String(url).includes('/task-a/') ? 'A' : 'B' }],
-            isError: false,
-          }),
-          { status: 200 },
-        ),
-    );
+  const fetch = jest.spyOn(global, 'fetch').mockImplementation(
+    async (url) =>
+      new Response(
+        JSON.stringify({
+          content: [{ type: 'text', text: String(url).includes('/task-a/') ? 'A' : 'B' }],
+          isError: false,
+        }),
+        { status: 200 },
+      ),
+  );
   const a = (await register('task-a').expect(200)).body.data;
   const b = (await register('task-b').expect(200)).body.data;
   const call = (entry: { path: string; token: string }, token = entry.token) =>

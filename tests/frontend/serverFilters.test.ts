@@ -1,4 +1,8 @@
-import { filterServers, getServerFilterCounts, selectServerPage } from '../../frontend/src/utils/serverFilters';
+import {
+  filterServers,
+  getServerFilterCounts,
+  selectServerPage,
+} from '../../frontend/src/utils/serverFilters';
 import type { Server, Tool } from '../../frontend/src/types';
 
 const makeTool = (name: string): Tool => ({
@@ -8,6 +12,43 @@ const makeTool = (name: string): Tool => ({
 });
 
 describe('serverFilters', () => {
+  it('finds live target versions in the online filter and searches target/implementation/version metadata', () => {
+    const server: Server = {
+      name: 'search',
+      status: 'disconnected',
+      enabled: true,
+      targetManaged: true,
+      runtime: {
+        running: 1,
+        starting: 0,
+        targets: [
+          {
+            path: 'suite-a/official',
+            kind: 'static',
+            enabled: true,
+            implementation: 'wrapper',
+            configuredVersion: 'revision-abc',
+            running: 1,
+            starting: 0,
+          },
+        ],
+        instances: [
+          {
+            id: 'fixture',
+            kind: 'target',
+            target: 'suite-a/official',
+            status: 'connected',
+            reportedVersion: '2.1.0',
+          },
+        ],
+      },
+    };
+    expect(getServerFilterCounts([server])).toMatchObject({ online: 1, issues: 0 });
+    for (const query of ['suite-a', 'wrapper', 'revision-abc', '2.1.0'])
+      expect(filterServers([server], 'online', query)).toHaveLength(1);
+    server.runtime!.instances[0].status = 'registered';
+    expect(filterServers([server], 'online')).toEqual([]);
+  });
   const servers: Server[] = [
     {
       name: 'online-server',
@@ -64,8 +105,18 @@ describe('serverFilters', () => {
 
 describe('selectServerPage', () => {
   // Build a list where disabled servers do NOT land on page 1 (limit 5).
-  const online = (name: string): Server => ({ name, status: 'connected', enabled: true, tools: [] });
-  const disabled = (name: string): Server => ({ name, status: 'disconnected', enabled: false, tools: [] });
+  const online = (name: string): Server => ({
+    name,
+    status: 'connected',
+    enabled: true,
+    tools: [],
+  });
+  const disabled = (name: string): Server => ({
+    name,
+    status: 'disconnected',
+    enabled: false,
+    tools: [],
+  });
 
   const allServers: Server[] = [
     online('online-1'),

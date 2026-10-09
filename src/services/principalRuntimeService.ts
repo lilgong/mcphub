@@ -4,8 +4,11 @@ import { authorizationService, type RequestPrincipal } from './authorizationServ
 import { CredentialBindingError, hasCredentialTemplate } from '../utils/credentialTemplate.js';
 import { expandServerConfig } from './serverConfigEnvironment.js';
 import type { ServerConfig, ServerInfo } from '../types/index.js';
+import type { RuntimeInstance } from '../types/serverRuntime.js';
+import { randomUUID } from 'node:crypto';
 
 interface RuntimeEntry {
+  id: string;
   serverName: string;
   username: string;
   revision: string;
@@ -25,6 +28,20 @@ export class PrincipalRuntimeService {
     private readonly close: (info: ServerInfo) => void,
   ) {
     credentialBindingEvents.on('invalidate', (filter) => this.invalidate(filter));
+  }
+
+  snapshot(serverName: string): RuntimeInstance[] {
+    return [...this.entries.values()]
+      .filter((entry) => entry.serverName === serverName && entry.valid)
+      .map((entry) => ({
+        id: entry.id,
+        kind: 'personal',
+        status: entry.info?.status ?? 'connecting',
+        reportedVersion: entry.info?.version,
+        packageVersion: entry.info?.packageVersion,
+        startedAt: entry.info?.createTime,
+        activeCalls: entry.active,
+      }));
   }
 
   invalidate(filter: { serverName?: string; username?: string } = {}): void {
@@ -69,6 +86,7 @@ export class PrincipalRuntimeService {
     }
     if (!entry) {
       const created: RuntimeEntry = {
+        id: randomUUID(),
         serverName,
         username: principal.username,
         revision,

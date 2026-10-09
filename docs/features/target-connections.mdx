@@ -35,6 +35,69 @@ Rate settings belong to the logical MCP registration and are shared across its t
 tasks and callers. Compatible stdio wrappers can also consume the managed relay environment.
 Turning on relay does not make an arbitrary MCP wrapper proxy-aware automatically.
 
+## Native implementations, wrappers and versions
+
+Different targets of one logical MCP can run different implementations simultaneously.
+Each target has an independent **enabled** switch, optional **implementation** label
+(`native`, `wrapper`, `custom`) and **version** label (up to 160 characters).
+An omitted enabled flag means enabled. Disabled targets reject both new and existing
+callers, including task registrations; they never fall back to another implementation.
+Other targets keep their own configuration and clients. Editing a target retires its
+changed client; editing shared connection controls can retire clients of all targets.
+In-flight calls can finish on the previous configuration.
+
+The labels do **not** install or select a package version. Pin the executable/package
+in the target's command and arguments, or pin the external runtime image by tag/digest.
+For example, two stdio targets can execute `/opt/mcp/native/v1/server.mjs` and
+`/opt/mcp/wrappers/suite-a/server.mjs` with separate credentials. A third target can use
+`http://mcp-native:8080/mcp`. Tools are discovered from the selected implementation;
+MCPHub does not translate incompatible schemas between versions.
+
+The editor can **create a target from the current connection** for supported ordinary
+stdio/HTTP connections, or **copy a target**. Copies start disabled. Set the exact path
+and verify credentials and the launch command before enabling a copy. Creating the
+first target switches that registration to explicit target routing; the parent connection
+is no longer a default. Connections with automatic OAuth, personal credential templates,
+session isolation or proxy configuration must be configured explicitly rather than copied.
+
+Compatible lightweight MCPs can share Hub's installed runtime, using separate processes
+and pinned paths. Conflicting dependencies or different OS/runtime requirements belong in
+separate containers. The optional Compose example at
+`examples/multi-implementation/compose.yaml` attaches external HTTP runtimes to the
+`mcphub-runtime` network created by this repository's deployment Compose file. Supply
+`MCP_NATIVE_IMAGE` and `MCP_WRAPPER_IMAGE` with operator-built, pinned HTTP MCP images,
+plus globally unique `MCP_NATIVE_NAME` and `MCP_WRAPPER_NAME` container names, then
+run `docker compose -f examples/multi-implementation/compose.yaml up -d`.
+Connect to `http://{MCP_NATIVE_NAME}:8080/mcp` and `http://{MCP_WRAPPER_NAME}:8080/mcp`.
+Use the unique container names rather than generic service aliases when multiple
+Compose projects share this network, so their destinations cannot collide.
+No extra host port is required. Images must actually implement HTTP MCP at those paths;
+the Compose example does not turn an arbitrary stdio image into an HTTP server.
+Hub neither manages Docker containers nor receives the Docker socket.
+
+Saving Hub-owned credentials reconnects the relevant registration for subsequent calls.
+Existing in-flight calls retain their connection. Hub cannot rewrite environment variables
+inside an independently started container; recreate that runtime when its startup secrets
+change. Task runtimes retain their startup snapshot until the adapter creates a new task.
+
+### Runtime inventory
+
+Server management displays each registration's active connection count. Expand a server
+to see configured targets and the live connection inventory: implementation, configured
+version, MCP-reported version, resolved package version where available, connection state,
+task ID and lease expiry. `GET /api/servers` returns this metadata as `runtime` for
+administrators and server owners. Shared users do not receive the inventory or other
+applications' task IDs. No transport URL, command, credentials or capability token is
+included in the inventory. `targetManaged` is a safe boolean available to all visible callers.
+
+Counts represent connected upstream clients and unexpired task registrations, **not Docker
+containers**. A registered task callback is not a successful health check. Connecting clients
+are counted separately; configured but unused targets count as zero. Static targets connect
+on first use and release their cached client after five idle minutes. Replaced clients still
+serving calls appear separately as draining. Version labels remain distinct from runtime
+versions; unavailable versions are shown as unknown. The inventory refreshes with the server
+list (normally every 30 seconds, or immediately using Refresh).
+
 ## Task connections (tool-http-v1)
 
 A task adapter starts its own isolated runtime and publishes two authenticated HTTP callbacks:

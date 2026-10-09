@@ -108,3 +108,113 @@ test('live persisted definitions take precedence over stale runtime snapshots af
   ).rejects.toThrow('unavailable');
   pool.invalidate();
 });
+
+test('runtime snapshots count live versions, retain draining clients and never serialize credentials', async () => {
+  const close = jest.fn();
+  const pool = new TargetRuntimeService(
+    async (_name, config) => ({ ...child(config), version: 'upstream-1' }),
+    close,
+  );
+  const config = structuredClone(definition);
+  Object.assign(config.targets![0], { implementation: 'wrapper', version: 'revision-a' });
+  Object.assign(config.targets![1], { implementation: 'native', version: '2.0' });
+  expect(pool.snapshot('notion')).toEqual([]);
+  const [a, b] = await Promise.all([
+    pool.acquire('notion', config, 'other/official', principal, 'key-a'),
+    pool.acquire('notion', config, 'other/syn-1', principal, 'key-b'),
+  ]);
+  const snapshot = pool.snapshot('notion');
+  expect(snapshot).toHaveLength(2);
+  expect(snapshot[0]).toMatchObject({
+    kind: 'target',
+    implementation: 'wrapper',
+    configuredVersion: 'revision-a',
+    reportedVersion: 'upstream-1',
+    status: 'connected',
+  });
+  expect(JSON.stringify(snapshot)).not.toMatch(/workspace|example.org|Authorization|base-never/);
+  config.targets![0].version = 'revision-b';
+  const replacement = await pool.acquire('notion', config, 'other/official', principal, 'key-a');
+  expect(pool.snapshot('notion')).toHaveLength(3);
+  expect(
+    pool.snapshot('notion').find((entry) => entry.configuredVersion === 'revision-a')?.draining,
+  ).toBe(true);
+  a.release();
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(pool.snapshot('notion')).toHaveLength(2);
+  b.release();
+  replacement.release();
+  pool.invalidate();
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(pool.snapshot('notion')).toEqual([]);
+  expect(close).toHaveBeenCalledTimes(3);
+});
+
+test('disabled targets never spawn and version metadata is validated and round-tripped', async () => {
+  const connect = jest.fn(async (_name, config) => child(config));
+  const pool = new TargetRuntimeService(connect, jest.fn());
+  const config = structuredClone(definition);
+  config.targets![0].enabled = false;
+  await expect(
+    pool.acquire('notion', config, 'other/official', principal, 'key-a'),
+  ).rejects.toThrow('not available');
+  expect(connect).not.toHaveBeenCalled();
+  const target = {
+    path: 'suite/native',
+    kind: 'task',
+    enabled: false,
+    implementation: 'native',
+    version: ' 2.0 ',
+  };
+  expect(normalizeTargetConnections([target])?.[0]).toMatchObject({ ...target, version: '2.0' });
+  for (const bad of [
+    { enabled: 'yes' },
+    { implementation: 'docker' },
+    { version: 'x\ny' },
+    { version: 'x'.repeat(161) },
+  ])
+    expect(() => normalizeTargetConnections([{ ...target, ...bad }])).toThrow();
+});
+
+test('a pending connection is starting, and a failed handshake leaves no phantom instance', async () => {
+  let fail!: (error: Error) => void;
+  const pool = new TargetRuntimeService(
+    () =>
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+    jest.fn(),
+  );
+  const pending = pool.acquire('notion', definition, 'other/official', principal, 'key-a');
+  await Promise.resolve();
+  expect(pool.snapshot('notion')[0]?.status).toBe('connecting');
+  fail(new Error('fixture handshake failed'));
+  await expect(pending).rejects.toThrow('handshake');
+  expect(pool.snapshot('notion')).toEqual([]);
+});
+
+test('editing or disabling one implementation preserves an unchanged sibling client', async () => {
+  const connect = jest.fn(async (_name, config) => child(config));
+  const close = jest.fn();
+  const pool = new TargetRuntimeService(connect, close);
+  const config = structuredClone(definition);
+  const a = await pool.acquire('notion', config, 'other/official', principal, 'key-a');
+  const b = await pool.acquire('notion', config, 'other/syn-1', principal, 'key-b');
+  config.targets![0].enabled = false;
+  pool.invalidate('notion', config);
+  const b2 = await pool.acquire('notion', config, 'other/syn-1', principal, 'key-b');
+  expect(b2.info).toBe(b.info);
+  expect(connect).toHaveBeenCalledTimes(2);
+  expect(pool.snapshot('notion').find((entry) => entry.target === 'other/official')?.draining).toBe(
+    true,
+  );
+  expect(pool.snapshot('notion').find((entry) => entry.target === 'other/syn-1')?.draining).toBe(
+    false,
+  );
+  a.release();
+  b.release();
+  b2.release();
+  pool.invalidate();
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(close).toHaveBeenCalledTimes(2);
+});

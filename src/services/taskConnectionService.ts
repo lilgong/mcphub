@@ -1,5 +1,7 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { InvocationLabels } from '../types/targetConnection.js';
+import type { TargetConnection } from '../types/targetConnection.js';
+import type { RuntimeInstance } from '../types/serverRuntime.js';
 export interface TaskConnection extends InvocationLabels {
   id: string;
   server: string;
@@ -14,6 +16,9 @@ export interface TaskConnection extends InvocationLabels {
   expiresAt: number;
   revoked: boolean;
   controllers: Set<AbortController>;
+  createdAt?: number;
+  implementation?: TargetConnection['implementation'];
+  configuredVersion?: string;
 }
 /** Generic leased callback connections. URLs are accepted only from authenticated operators. */
 export class TaskConnectionRegistry {
@@ -36,6 +41,7 @@ export class TaskConnectionRegistry {
       throw new Error('Task connection already exists');
     const entry = {
       ...input,
+      createdAt: Date.now(),
       id: randomUUID(),
       token: randomBytes(32).toString('hex'),
       expiresAt: Date.now() + ttlSeconds * 1000,
@@ -48,6 +54,23 @@ export class TaskConnectionRegistry {
   private prune() {
     for (const entry of this.entries.values())
       if (entry.expiresAt <= Date.now()) this.remove(entry.id, entry.owner);
+  }
+  snapshot(server: string): RuntimeInstance[] {
+    this.prune();
+    return [...this.entries.values()]
+      .filter((entry) => entry.server === server)
+      .map((entry) => ({
+        id: entry.id,
+        kind: 'task',
+        target: entry.target,
+        implementation: entry.implementation,
+        configuredVersion: entry.configuredVersion,
+        status: 'registered',
+        startedAt: entry.createdAt,
+        taskId: entry.taskId,
+        expiresAt: entry.expiresAt,
+        activeCalls: entry.controllers.size,
+      }));
   }
   acquire(id: string, token: string): TaskConnection | undefined {
     this.prune();

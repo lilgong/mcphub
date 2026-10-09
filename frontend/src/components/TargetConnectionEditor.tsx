@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import type { TargetConnection } from '../../../src/types/targetConnection';
+import type { TargetConnection, TargetConnectionConfig } from '../../../src/types/targetConnection';
 import ServiceControls from './ServiceControls';
 import KeyPoolEditor from './KeyPoolEditor';
 const recordText = (value?: Record<string, string>) =>
@@ -19,9 +19,11 @@ const parseRecord = (value: string) =>
 export default function TargetConnectionEditor({
   value,
   onChange,
+  currentConnection,
 }: {
   value?: TargetConnection[];
   onChange: (value: TargetConnection[]) => void;
+  currentConnection?: TargetConnectionConfig;
 }) {
   const { t } = useTranslation();
   const targets = value || [];
@@ -38,6 +40,14 @@ export default function TargetConnectionEditor({
           className="mb-4 space-y-3 rounded border border-[var(--hub-line)] p-4"
         >
           <div className="grid gap-3 md:grid-cols-2">
+            <label className="flex items-center gap-2 md:col-span-2">
+              <input
+                type="checkbox"
+                checked={target.enabled !== false}
+                onChange={(e) => patch(index, { enabled: e.target.checked })}
+              />
+              {t('targets.enabled')}
+            </label>
             <label>
               {t('targets.path')}
               <input
@@ -46,6 +56,36 @@ export default function TargetConnectionEditor({
                 value={target.path}
                 onChange={(e) => patch(index, { path: e.target.value })}
                 placeholder="project/suite"
+              />
+            </label>
+            <label>
+              {t('targets.implementation')}
+              <select
+                className={input}
+                value={target.implementation ?? ''}
+                onChange={(e) =>
+                  patch(index, {
+                    implementation: (e.target.value ||
+                      undefined) as TargetConnection['implementation'],
+                  })
+                }
+              >
+                <option value="">{t('targets.unspecified')}</option>
+                {(['native', 'wrapper', 'custom'] as const).map((kind) => (
+                  <option key={kind} value={kind}>
+                    {t(`targets.${kind}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t('targets.version')}
+              <input
+                className={input}
+                value={target.version ?? ''}
+                maxLength={160}
+                onChange={(e) => patch(index, { version: e.target.value })}
+                placeholder="1.2.3 / git revision / image tag"
               />
             </label>
             <label>
@@ -153,6 +193,7 @@ export default function TargetConnectionEditor({
                   <label key={field}>
                     {t(`targets.${field}`)}
                     <textarea
+                      key={`${field}-${target.path}`}
                       className={`${input} font-mono text-sm`}
                       rows={3}
                       defaultValue={recordText(target.config?.[field])}
@@ -190,6 +231,21 @@ export default function TargetConnectionEditor({
               onChange={(changes) => patch(index, { config: { relay: changes.relay } })}
             />
           )}
+          <p className="text-xs hub-sub">{t('targets.versionHint')}</p>
+          <button
+            type="button"
+            className="hub-btn mr-2"
+            onClick={() => {
+              let suffix = 1;
+              let path: string;
+              do {
+                path = `${target.path.slice(0, 145)}-copy-${suffix++}`;
+              } while (targets.some((item) => item.path === path));
+              onChange([...targets, { ...structuredClone(target), path, enabled: false }]);
+            }}
+          >
+            {t('targets.duplicate')}
+          </button>
           <button
             type="button"
             className="hub-btn danger"
@@ -208,6 +264,24 @@ export default function TargetConnectionEditor({
       >
         {t('targets.add')}
       </button>
+      {currentConnection && !targets.length && (
+        <button
+          type="button"
+          className="hub-btn ml-2"
+          onClick={() =>
+            onChange([
+              {
+                path: '',
+                kind: 'static',
+                enabled: true,
+                config: structuredClone(currentConnection),
+              },
+            ])
+          }
+        >
+          {t('targets.fromCurrent')}
+        </button>
+      )}
     </details>
   );
 }

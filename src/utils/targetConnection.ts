@@ -23,6 +23,20 @@ export function normalizeTargetConnections(value: unknown): TargetConnection[] |
     )
       throw new ServerConfigValidationError('Target paths must be unique exact paths');
     paths.add(entry.path);
+    if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean')
+      throw new ServerConfigValidationError('Invalid target enabled flag');
+    if (
+      entry.implementation !== undefined &&
+      !['native', 'wrapper', 'custom'].includes(entry.implementation)
+    )
+      throw new ServerConfigValidationError('Invalid target implementation');
+    if (
+      entry.version !== undefined &&
+      (typeof entry.version !== 'string' ||
+        entry.version.length > 160 ||
+        [...entry.version].some((char) => char.charCodeAt(0) < 32))
+    )
+      throw new ServerConfigValidationError('Invalid target version');
     const lists: Pick<TargetConnection, 'allowedKeyIds' | 'allowedUsers'> = {};
     for (const field of ['allowedKeyIds', 'allowedUsers'] as const) {
       if (entry[field] !== undefined) {
@@ -77,6 +91,14 @@ export function normalizeTargetConnections(value: unknown): TargetConnection[] |
     }
     if (entry.kind === 'task' && entry.config?.relay !== undefined)
       config = { relay: normalizeFetchRelay(entry.config.relay) };
-    return { path: entry.path, kind: entry.kind, ...lists, ...(config ? { config } : {}) };
+    return {
+      path: entry.path,
+      kind: entry.kind,
+      ...(entry.enabled !== undefined ? { enabled: entry.enabled } : {}),
+      ...(entry.implementation ? { implementation: entry.implementation } : {}),
+      ...(entry.version?.trim() ? { version: entry.version.trim() } : {}),
+      ...lists,
+      ...(config ? { config } : {}),
+    };
   });
 }

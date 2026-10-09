@@ -35,7 +35,7 @@ import {
   listMyCredentials,
   updateMyCredential,
 } from '../../src/controllers/credentialBindingController.js';
-import { getServerConfig } from '../../src/controllers/serverController.js';
+import { getServerConfig, getAllServers } from '../../src/controllers/serverController.js';
 import {
   handleMcpPostRequest,
   handleSseConnection,
@@ -168,6 +168,7 @@ beforeAll(async () => {
   app.put('/api/credentials/:name', updateMyCredential);
   app.delete('/api/credentials/:name', updateMyCredential);
   app.get('/api/servers/:name', getServerConfig);
+  app.get('/api/servers', getAllServers);
   app.get('/api/groups', getGroups);
   app.get('/api/groups/:id', getGroup);
   app.post('/api/groups', createNewGroup);
@@ -871,6 +872,8 @@ test('generic static targets isolate real MCP clients and support both user and 
       {
         path: 'benchmark/official',
         kind: 'static',
+        implementation: 'wrapper',
+        version: 'wrapper-revision-1',
         allowedKeyIds: ['personal-0', 'target-system'],
         config: {
           type: 'stdio',
@@ -882,6 +885,8 @@ test('generic static targets isolate real MCP clients and support both user and 
       {
         path: 'benchmark/synthetic',
         kind: 'static',
+        implementation: 'native',
+        version: 'native-2.0',
         allowedKeyIds: ['personal-1'],
         config: {
           type: 'stdio',
@@ -941,6 +946,36 @@ test('generic static targets isolate real MCP clients and support both user and 
     'target-a',
   ]);
   expect(parseIdentity(results[0]).pid).not.toBe(parseIdentity(results[1]).pid);
+  const adminInventory = await request(app)
+    .get('/api/servers')
+    .set('x-auth-token', apiToken('admin'));
+  const runtime = adminInventory.body.data.find(
+    (entry: { name: string }) => entry.name === 'target-fixture',
+  ).runtime;
+  expect(runtime.running).toBe(2);
+  expect(runtime.instances).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        target: 'benchmark/official',
+        implementation: 'wrapper',
+        configuredVersion: 'wrapper-revision-1',
+        status: 'connected',
+      }),
+      expect.objectContaining({
+        target: 'benchmark/synthetic',
+        implementation: 'native',
+        configuredVersion: 'native-2.0',
+        status: 'connected',
+      }),
+    ]),
+  );
+  expect(JSON.stringify(runtime)).not.toMatch(/PERSONAL_KEY|target-a|target-b|target-system-token/);
+  const sharedInventory = await request(app)
+    .get('/api/servers')
+    .set('x-auth-token', apiToken(alice));
+  expect(
+    sharedInventory.body.data.find((entry: { name: string }) => entry.name === 'target-fixture'),
+  ).not.toHaveProperty('runtime');
   const wrong = await open(`${alice}-bearer`, 'benchmark/synthetic');
   await expect(wrong.listTools()).rejects.toThrow();
   const missing = await open(`${alice}-bearer`);
@@ -952,4 +987,10 @@ test('generic static targets isolate real MCP clients and support both user and 
     .send({});
   // Explicit ACL applies to dashboard administrators too.
   expect(rest.body.isError).toBe(true);
+  const config = await getServerDao().findById('target-fixture');
+  config!.targets![0].enabled = false;
+  await getServerDao().update('target-fixture', { targets: config!.targets });
+  await expect(a.listTools()).rejects.toThrow();
+  // Disabling one target does not alter the other implementation's routing.
+  expect(parseIdentity(await b.callTool({ name, arguments: {} })).credential).toBe('target-b');
 });

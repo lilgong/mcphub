@@ -601,6 +601,8 @@ export interface OpenAPISecurityConfig {
 // Information about a server's status and tools
 export interface ServerInfo {
   name: string; // Unique name of the server
+  targetManaged?: boolean;
+  runtime?: import('./serverRuntime.js').ServerRuntimeSummary;
   version?: string; // Upstream server version reported during MCP initialization
   // Resolved package version for stdio servers launched via npx/uvx (see #1166).
   // Read from the runner's install cache (npm _npx / uv tool environments),

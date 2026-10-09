@@ -609,6 +609,35 @@ const ServerForm = ({
       <form onSubmit={handleSubmit}>
         <TargetConnectionEditor
           value={formData.targets}
+          currentConnection={
+            serverType !== 'openapi' &&
+            !initialData?.config?.credentialTemplate?.length &&
+            !initialData?.config?.proxy &&
+            !initialData?.config?.perSessionClient &&
+            !initialData?.config?.oauth &&
+            !formData.passthroughHeaders?.trim() &&
+            (serverType === 'stdio' ? !!formData.command : !!formData.url)
+              ? {
+                  type: serverType,
+                  command: serverType === 'stdio' ? formData.command : undefined,
+                  args: serverType === 'stdio' ? formData.args : undefined,
+                  url: serverType !== 'stdio' ? formData.url : undefined,
+                  env: Object.fromEntries(
+                    envVars
+                      .filter((item) => item.key.trim())
+                      .map((item) => [item.key.trim(), item.value]),
+                  ),
+                  headers: Object.fromEntries(
+                    headerVars
+                      .filter((item) => item.key.trim())
+                      .map((item) => [item.key.trim(), item.value]),
+                  ),
+                  options: formData.options,
+                  keyPool: formData.keyPool,
+                  relay: formData.relay,
+                }
+              : undefined
+          }
           onChange={(targets) => setFormData((previous) => ({ ...previous, targets }))}
         />
         {serverType === 'stdio' && !formData.targets?.length && (

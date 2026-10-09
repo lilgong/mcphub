@@ -74,6 +74,23 @@ const buildRawServerConfig = (): Record<string, unknown> => ({
 });
 
 describe('serverConfigPresenter (#1036 Phase 1)', () => {
+  it('withholds runtime targets and other tasks from shared users, while admins and owners can inspect them', () => {
+    const info = {
+      name: 'fixture',
+      owner: 'bob',
+      visibility: 'public' as const,
+      targetManaged: true,
+      runtime: {
+        running: 1,
+        instances: [{ target: 'private-benchmark/workspace', taskId: 'private-task-id' }],
+      },
+    };
+    const shared = presentServerInfoForPrincipal(info, alice);
+    expect(shared).not.toHaveProperty('runtime');
+    expect(shared.targetManaged).toBe(true);
+    expect(presentServerInfoForPrincipal(info, bob)).toEqual(info);
+    expect(presentServerInfoForPrincipal(info, admin)).toEqual(info);
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetCurrentUser.mockReturnValue(null);
@@ -238,10 +255,7 @@ describe('serverConfigPresenter (#1036 Phase 1)', () => {
       const errored = { ...info, status: 'disconnected', error: rawError };
 
       it('replaces the raw error with a generic message for restricted users', () => {
-        const presented = presentServerInfoForPrincipal(errored, alice) as Record<
-          string,
-          unknown
-        >;
+        const presented = presentServerInfoForPrincipal(errored, alice) as Record<string, unknown>;
         // The raw upstream text must not survive heuristic redaction — only
         // the generic placeholder may appear.
         expect(presented.error).toBe('Server connection failed');

@@ -183,4 +183,4 @@ Sous licence [Apache 2.0 License](LICENSE).
 
 Pour les serveurs MCP-Atlas et le transport Hub optionnel, voir [MCP-Atlas integration](docs/features/atlas-integration.mdx).
 
-Connexions cibles, routage des tâches et statistiques : [Target connections](docs/features/target-connections.mdx).
+Versions natives/wrapper simultanées, activation par cible, inventaire des connexions, routage des tâches et statistiques : [Target connections](docs/features/target-connections.mdx).

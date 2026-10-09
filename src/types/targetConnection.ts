@@ -22,6 +22,10 @@ export interface TargetConnectionConfig {
 export interface TargetConnection {
   path: string;
   kind: 'static' | 'task';
+  enabled?: boolean;
+  implementation?: 'native' | 'wrapper' | 'custom';
+  /** Operator-declared version or revision; never used to select an executable. */
+  version?: string;
   allowedKeyIds?: string[];
   allowedUsers?: string[];
   config?: TargetConnectionConfig;

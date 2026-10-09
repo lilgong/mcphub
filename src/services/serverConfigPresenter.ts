@@ -46,16 +46,16 @@ const presentSafeServerConfig = (config: ServerConfigLike): ServerConfigLike => 
     }
   }
   if (Array.isArray(config.credentialTemplate)) {
-    safe.credentialTemplate = config.credentialTemplate.map(({ target, name, label }: CredentialSlot) => ({ target, name, ...(label ? { label } : {}) }));
+    safe.credentialTemplate = config.credentialTemplate.map(
+      ({ target, name, label }: CredentialSlot) => ({ target, name, ...(label ? { label } : {}) }),
+    );
   }
   // Explicit marker so callers (and the dashboard) can tell a restricted view
   // apart from "this server genuinely has no credentials".
   return { ...safe, configRestricted: true };
 };
 
-const presentSafeServerInfoOauth = (
-  oauth: Record<string, unknown>,
-): Record<string, unknown> => {
+const presentSafeServerInfoOauth = (oauth: Record<string, unknown>): Record<string, unknown> => {
   const safeOauth: Record<string, unknown> = {};
   for (const key of SAFE_SERVER_INFO_OAUTH_KEYS) {
     if (oauth[key] !== undefined) {
@@ -107,6 +107,9 @@ export const presentServerInfoForPrincipal = <T extends object>(
   }
 
   const entry = { ...(info as ServerConfigLike) };
+  // Runtime inventory contains other applications' targets and task IDs.
+  // Keep it within the same boundary as connection configuration.
+  delete entry.runtime;
 
   if (entry.oauth && typeof entry.oauth === 'object') {
     entry.oauth = presentSafeServerInfoOauth(entry.oauth as Record<string, unknown>);

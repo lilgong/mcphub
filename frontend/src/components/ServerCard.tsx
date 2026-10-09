@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Server, ServerCost } from '@/types';
+import ServerRuntimeInventory from './ServerRuntimeInventory';
 import { formatTokens } from '@/utils/contextCost';
 import { ServerStatusDot } from '@/components/ui/StatusDot';
 import ToolCard from '@/components/ui/ToolCard';
@@ -674,20 +675,35 @@ const ServerCard = ({
           </div>
 
           {/* Status */}
-          <div className="hub-server-card-status-cell min-w-0">
+          <div
+            className="hub-server-card-status-cell min-w-0"
+            style={server.runtime ? { display: 'block', height: 'auto' } : undefined}
+          >
             <ServerStatusDot
-              targetManaged={!!server.config?.targets?.length}
+              targetManaged={server.targetManaged || !!server.config?.targets?.length}
               status={server.status}
               enabled={server.enabled}
               startOnDemand={server.config?.startOnDemand === true}
               onAuthClick={handleOAuth}
               className="hub-server-card-status"
             />
+            {server.runtime && (
+              <div className="mt-1 text-[11px] hub-sub">
+                {t('runtime.running', { count: server.runtime.running })}
+                {!!server.runtime.starting && (
+                  <> · {t('runtime.starting', { count: server.runtime.starting })}</>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Transport */}
           <div className="hub-server-card-transport-cell min-w-0">
-            {server.config?.type ? (
+            {server.targetManaged ? (
+              <span className="hub-tag hub-server-card-transport-tag">
+                {t('runtime.multiTarget')}
+              </span>
+            ) : server.config?.type ? (
               <span
                 className="hub-tag hub-server-card-transport-tag"
                 title={transportLabel(t, server.config.type) ?? undefined}
@@ -922,6 +938,7 @@ const ServerCard = ({
               padding: '14px 16px 16px 38px',
             }}
           >
+            {server.runtime && <ServerRuntimeInventory runtime={server.runtime} />}
             {/* Capability tabs + endpoint on same row */}
             <div className="flex items-center gap-1 mb-2 flex-wrap">
               {capabilitySummaries.map((tab) => {
