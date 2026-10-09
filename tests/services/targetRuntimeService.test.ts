@@ -7,6 +7,8 @@ jest.mock('../../src/services/serverConfigEnvironment.js', () => ({
 const definition: ServerConfig = {
   type: 'stdio',
   command: 'base-never-run',
+  passthroughHeaders: ['Authorization'],
+  oauth: { accessToken: 'parent-never-used' },
   env: { KEY: 'base-never-used' },
   targets: [
     {
@@ -60,6 +62,8 @@ test('parallel creation coalesces per target, credentials never inherit or cross
   expect(a.info.config?.env?.KEY).toBe('workspace-a');
   expect(b.info.config?.env?.KEY).toBeUndefined();
   expect(b.info.config?.command).toBeUndefined();
+  expect(a.info.config?.passthroughHeaders).toBeUndefined();
+  expect(b.info.config?.oauth).toBeUndefined();
   expect(a.info.config?.url).toBeUndefined();
   const edited = structuredClone(definition);
   edited.targets![0].config!.env = { KEY: 'rotated' };

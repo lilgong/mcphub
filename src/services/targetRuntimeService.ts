@@ -78,21 +78,18 @@ export class TargetRuntimeService {
     }
     if (!entry) {
       const resolved: ServerConfig = {
-        ...definition,
+        // Only the target supplies transport and credentials. Shared controls
+        // and authorization metadata are explicitly inherited from registration.
         ...target.config,
-        openapi: undefined,
-        oauth: undefined,
-        credentialTemplate: undefined,
-        type: target.config?.type,
-        url: target.config?.url,
-        command: target.config?.command,
-        args: target.config?.args,
-        options: target.config?.options,
-        targets: undefined,
+        enabled: definition.enabled,
+        description: definition.description,
+        tools: definition.tools,
+        prompts: definition.prompts,
+        resources: definition.resources,
+        relay: target.config?.relay ?? definition.relay,
+        rateLimit: definition.rateLimit,
         perSessionClient: false,
         env: { ...target.config?.env, MCPHUB_CONNECTION_TARGET: path },
-        headers: target.config?.headers,
-        keyPool: target.config?.keyPool,
         owner: definition.owner,
         visibility: definition.visibility,
         sharedWithUsers: definition.sharedWithUsers,
