@@ -1585,11 +1585,11 @@
   },
   "runtime": {
     "title": "Connexions actives",
-    "running": "Actives : {{count}}",
+    "running": "{{count}} en cours",
     "starting": "Démarrage : {{count}}",
     "description": "Nombre de connexions amont et d’inscriptions de tâches non expirées, pas de conteneurs Docker. Une inscription ne garantit pas la disponibilité du rappel. Les versions configurées sont des étiquettes ; les versions signalées proviennent du MCP connecté. Les cibles démarrent à la demande. La liste suit le rafraîchissement des serveurs.",
     "disabled": "Désactivée",
-    "idle": "Non connectée",
+    "idle": "En attente de requête",
     "target": "Cible / tâche",
     "kind": "Type de connexion",
     "implementation": "Implémentation",
@@ -1613,7 +1613,10 @@
     "activeCalls": "En cours : {{count}}",
     "since": "Créée",
     "expires": "Expiration du bail",
-    "empty": "Aucune connexion active. Configurer ou activer une cible ne la démarre pas immédiatement.",
-    "multiTarget": "Cibles"
+    "empty": "Aucune instance en cours. Les cibles démarrent à la demande et se ferment après 5 minutes d’inactivité ; leur configuration reste enregistrée.",
+    "multiTarget": "Cibles",
+    "configuredTargets": "{{count}} cibles configurées",
+    "configuredConnection": "1 connexion configurée",
+    "awaitingTask": "En attente d’enregistrement de tâche"
   }
 }

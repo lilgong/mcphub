@@ -1587,11 +1587,11 @@
   },
   "runtime": {
     "title": "Runtime connections",
-    "running": "Active {{count}}",
+    "running": "{{count}} running now",
     "starting": "Starting {{count}}",
     "description": "Counts are upstream connections and unexpired task registrations, not Docker containers. Task registrations do not prove the callback is healthy. Declared versions are labels; reported/package versions come from connected MCPs. Targets connect on first use. This inventory refreshes with the server list.",
     "disabled": "Disabled",
-    "idle": "Not connected",
+    "idle": "Awaiting request",
     "target": "Target / task",
     "kind": "Connection kind",
     "implementation": "Implementation",
@@ -1615,7 +1615,10 @@
     "activeCalls": "In flight {{count}}",
     "since": "Created",
     "expires": "Lease expires",
-    "empty": "No runtime connections. Configuring or enabling a target does not start it immediately.",
-    "multiTarget": "Targets"
+    "empty": "No running instances. Targets start on request and close after 5 idle minutes; their configuration remains saved.",
+    "multiTarget": "Targets",
+    "configuredTargets": "{{count}} configured targets",
+    "configuredConnection": "1 configured connection",
+    "awaitingTask": "Awaiting task registration"
   }
 }

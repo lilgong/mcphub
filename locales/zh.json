@@ -1589,11 +1589,11 @@
   },
   "runtime": {
     "title": "运行实例",
-    "running": "活动 {{count}} 个",
+    "running": "当前运行 {{count}} 个",
     "starting": "启动中 {{count}} 个",
     "description": "数量表示上游连接和未过期的任务注册，不是 Docker 容器数；任务已注册不代表回调健康检查通过。配置版本是标记，上游和包版本来自已连接的 MCP。目标按需连接，实例信息随服务器列表刷新。",
     "disabled": "已禁用",
-    "idle": "未连接",
+    "idle": "待调用",
     "target": "目标 / 任务",
     "kind": "连接类型",
     "implementation": "实现",
@@ -1617,7 +1617,10 @@
     "activeCalls": "执行中 {{count}} 个",
     "since": "创建于",
     "expires": "租约到期",
-    "empty": "暂无运行实例。配置或启用目标不会立即启动连接。",
-    "multiTarget": "多目标"
+    "empty": "暂无运行实例。目标在请求到来时启动，空闲 5 分钟后释放；目标配置仍保留。",
+    "multiTarget": "多目标",
+    "configuredTargets": "目标配置 {{count}} 个",
+    "configuredConnection": "连接配置 1 个",
+    "awaitingTask": "待任务注册"
   }
 }

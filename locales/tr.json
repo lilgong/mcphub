@@ -1584,11 +1584,11 @@
   },
   "runtime": {
     "title": "Çalışan bağlantılar",
-    "running": "Etkin {{count}}",
+    "running": "Şu anda {{count}} çalışıyor",
     "starting": "Başlatılıyor {{count}}",
     "description": "Sayılar üst bağlantıları ve süresi dolmamış görev kayıtlarını gösterir, Docker konteynerlerini değil. Görev kaydı geri çağrının sağlıklı olduğunu kanıtlamaz. Yapılandırılan sürümler etikettir; bildirilen sürümler bağlı MCP’den gelir. Hedefler istek üzerine bağlanır. Liste sunucularla birlikte yenilenir.",
     "disabled": "Devre dışı",
-    "idle": "Bağlı değil",
+    "idle": "İstek bekleniyor",
     "target": "Hedef / görev",
     "kind": "Bağlantı türü",
     "implementation": "Uygulama",
@@ -1612,7 +1612,10 @@
     "activeCalls": "Devam eden {{count}}",
     "since": "Oluşturulma",
     "expires": "Kira bitişi",
-    "empty": "Çalışan bağlantı yok. Hedefi yapılandırmak veya etkinleştirmek hemen başlatmaz.",
-    "multiTarget": "Hedefler"
+    "empty": "Çalışan örnek yok. Hedefler istekle başlar ve 5 dakika boşta kaldıktan sonra kapanır; yapılandırmaları korunur.",
+    "multiTarget": "Hedefler",
+    "configuredTargets": "{{count}} yapılandırılmış hedef",
+    "configuredConnection": "1 yapılandırılmış bağlantı",
+    "awaitingTask": "Görev kaydı bekleniyor"
   }
 }
