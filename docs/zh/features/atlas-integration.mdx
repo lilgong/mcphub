@@ -41,6 +41,10 @@ Relay 位于连接内的独立区域，仅对支持 relay 的 wrapper 生效。�
 网页保存凭证会重建相关连接，正在执行的调用可能受影响。普通配置值使用原配置存储；
 需要加密个人凭证时使用 Credentials 绑定。
 
+密钥输入框旁的眼睛按钮仅切换显示 / 隐藏，不会提交或修改值。导入包使用自动生成的
+STDIO 命令与参数。`/app/data/mcp-usage` 与包内 `PYTHONPATH` 均为 Hub 容器内的绝对路径；
+保持默认即可。一步 WeatherAPI 包直接请求一步，不需要启用托管 Relay。
+
 ## Atlas 配置
 
 在 Hub 原有 Bearer Keys 页面创建访问凭证，并授权选中的服务。若使用个人凭证，

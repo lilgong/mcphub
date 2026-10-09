@@ -1,3 +1,4 @@
+import SecretInput from './SecretInput';
 import { getKeyPoolProvider, isPooledCredential } from '../../../src/utils/keyPoolCompatibility';
 import TargetConnectionEditor from './TargetConnectionEditor';
 import KeyPoolEditor from './KeyPoolEditor';
@@ -849,6 +850,7 @@ const ServerForm = ({
                 <label className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]">
                   {t('server.type')}
                 </label>
+                <p className="hub-sub mb-3 text-xs">{t('server.transportHelp')}</p>
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   <div>
                     <input
@@ -1180,8 +1182,7 @@ const ServerForm = ({
                             <label className="block text-xs text-gray-600 mb-1">
                               {t('server.openapi.apiKeyValue')}
                             </label>
-                            <input
-                              type="password"
+                            <SecretInput
                               value={formData.openapi?.apiKeyValue || ''}
                               onChange={(e) =>
                                 setFormData((prev) => ({
@@ -1235,8 +1236,7 @@ const ServerForm = ({
                             <label className="block text-xs text-gray-600 mb-1">
                               {t('server.openapi.httpCredentials')}
                             </label>
-                            <input
-                              type="password"
+                            <SecretInput
                               value={formData.openapi?.httpCredentials || ''}
                               onChange={(e) =>
                                 setFormData((prev) => ({
@@ -1297,8 +1297,7 @@ const ServerForm = ({
                             <label className="block text-xs text-gray-600 mb-1">
                               {t('server.openapi.openIdConnectToken')}
                             </label>
-                            <input
-                              type="password"
+                            <SecretInput
                               value={formData.openapi?.openIdConnectToken || ''}
                               onChange={(e) =>
                                 setFormData((prev) => ({
@@ -1371,8 +1370,7 @@ const ServerForm = ({
                             <label className="block text-xs text-gray-600 mb-1">
                               {t('server.oauth.clientSecret')}
                             </label>
-                            <input
-                              type="password"
+                            <SecretInput
                               value={formData.openapi?.oauth2ClientSecret || ''}
                               onChange={(e) =>
                                 setFormData((prev) => ({
@@ -1392,8 +1390,7 @@ const ServerForm = ({
                             <label className="block text-xs text-gray-600 mb-1">
                               {t('server.openapi.oauth2Token')}
                             </label>
-                            <input
-                              type="password"
+                            <SecretInput
                               value={formData.openapi?.oauth2Token || ''}
                               onChange={(e) =>
                                 setFormData((prev) => ({
@@ -1500,8 +1497,7 @@ const ServerForm = ({
                                 <label className="block text-xs text-gray-600 mb-1">
                                   {t('server.openapi.httpCredentials')}
                                 </label>
-                                <input
-                                  type="password"
+                                <SecretInput
                                   value={formData.openapi?.specHttpCredentials || ''}
                                   onChange={(e) =>
                                     setFormData((prev) => ({
@@ -1578,8 +1574,7 @@ const ServerForm = ({
                                 <label className="block text-xs text-gray-600 mb-1">
                                   {t('server.openapi.apiKeyValue')}
                                 </label>
-                                <input
-                                  type="password"
+                                <SecretInput
                                   value={formData.openapi?.specApiKeyValue || ''}
                                   onChange={(e) =>
                                     setFormData((prev) => ({
@@ -1602,8 +1597,7 @@ const ServerForm = ({
                               <label className="block text-xs text-gray-600 mb-1">
                                 {t('server.openapi.oauth2Token')}
                               </label>
-                              <input
-                                type="password"
+                              <SecretInput
                                 value={formData.openapi?.specOauth2Token || ''}
                                 onChange={(e) =>
                                   setFormData((prev) => ({
@@ -1804,16 +1798,15 @@ const ServerForm = ({
                                 placeholder={t('server.key')}
                               />
                               <span className="flex items-center">:</span>
-                              <input
-                                type={
-                                  /(?:KEY|TOKEN|SECRET|PASSWORD|HEADERS)$/i.test(envVar.key)
-                                    ? 'password'
-                                    : 'text'
-                                }
+                              <SecretInput
+                                sensitive={/(?:KEY|TOKEN|SECRET|PASSWORD|HEADERS)$/i.test(
+                                  envVar.key,
+                                )}
+                                secretLabel={envVar.key}
                                 autoComplete="off"
                                 value={envVar.value}
                                 onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
-                                className="w-1/2 py-2 px-3 form-input"
+                                className="py-2 px-3 form-input"
                                 placeholder={t('server.value')}
                               />
                             </div>
@@ -1832,6 +1825,7 @@ const ServerForm = ({
                 ) : (
                   <>
                     <div className="mb-4">
+                      <p className="hub-sub mb-3 text-xs">{t('server.stdioHelp')}</p>
                       <label
                         className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300"
                         htmlFor="command"
@@ -1933,16 +1927,15 @@ const ServerForm = ({
                                 placeholder={t('server.key')}
                               />
                               <span className="flex items-center">:</span>
-                              <input
-                                type={
-                                  /(?:KEY|TOKEN|SECRET|PASSWORD|HEADERS)$/i.test(envVar.key)
-                                    ? 'password'
-                                    : 'text'
-                                }
+                              <SecretInput
+                                sensitive={/(?:KEY|TOKEN|SECRET|PASSWORD|HEADERS)$/i.test(
+                                  envVar.key,
+                                )}
+                                secretLabel={envVar.key}
                                 autoComplete="off"
                                 value={envVar.value}
                                 onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
-                                className="w-1/2 py-2 px-3 form-input"
+                                className="py-2 px-3 form-input"
                                 placeholder={t('server.value')}
                               />
                             </div>
@@ -2153,8 +2146,7 @@ const ServerForm = ({
                               <label className="block text-xs text-gray-600 mb-1">
                                 {t('server.oauth.clientSecret')}
                               </label>
-                              <input
-                                type="password"
+                              <SecretInput
                                 value={formData.oauth?.clientSecret || ''}
                                 onChange={(e) => handleOAuthChange('clientSecret', e.target.value)}
                                 className="w-full py-2 px-3 form-input"

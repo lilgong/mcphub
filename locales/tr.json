@@ -287,7 +287,11 @@
       "accessToken": "Erişim Tokeni",
       "refreshToken": "Yenileme Tokeni"
     },
-    "connectionEnvHint": "Sol alan MCP değişken adı, sağ alan anahtar veya değerdir. ${AD} Hub ortam değişkenlerini okur, Atlas .env dosyasını okumaz. Yeni bağlantılar kaydedilen değişiklikleri kullanır."
+    "connectionEnvHint": "Sol alan MCP değişken adı, sağ alan anahtar veya değerdir. ${AD} Hub ortam değişkenlerini okur, Atlas .env dosyasını okumaz. Yeni bağlantılar kaydedilen değişiklikleri kullanır.",
+    "showSecret": "{{name}} göster",
+    "hideSecret": "{{name}} gizle",
+    "transportHelp": "MCPB paketleri genellikle STDIO kullanır: Hub programı kendi konteynerinde başlatır. SSE / Akış HTTP başka yerde çalışan MCP’ye bağlanır. OpenAPI HTTP API tanımını araçlara dönüştürür.",
+    "stdioHelp": "İçe aktarılan komut ve parametreleri genellikle değiştirmeyin. node programı, launch.cjs paketi başlatır. /app/... Hub konteynerindeki mutlak yoldur; sunucu veya Atlas yolu değildir."
   },
   "status": {
     "sleeping": "Uykuda",
@@ -1451,7 +1455,7 @@
   },
   "serviceControls": {
     "title": "Çağrı sınırları ve aktarma",
-    "description": "Tüm istemciler bu MCP sunucusunun çağrı kotasını paylaşır. Boş hız ve eşzamanlılık alanları ek sınır koymaz. Çağrı sayısı ve zaman aralığı birlikte ayarlanmalıdır. HTTP isteklerini aktarma denetler. Varsayılan kuyruk bekleme süresi 60 saniyedir.",
+    "description": "Boş alan ilgili sınırı eklemez. Bütün hedefler ve istemciler MCP çağrı kotasını paylaşır. Örnek: dakikada 8 çağrı için 8 ve 60000; gerekirse aralığı ayrıca belirleyin. Bu varsayılan değildir. Bir çağrı birden fazla HTTP isteği gönderebilir. Varsayılan kuyruk süresi 60 saniyedir.",
     "enabled": "Enable tool-call limits",
     "maxCalls": "Calls per window",
     "windowMs": "Window (ms)",
@@ -1467,7 +1471,7 @@
     "relayOn": "Use managed relay",
     "relayOff": "Disable relay",
     "envPrefix": "Wrapper environment prefix",
-    "relayDescription": "For stdio wrappers supporting /v1/fetch only. Manage connection and credentials in Relay settings. Tool-call limits do not replace relay HTTP limits.",
+    "relayDescription": "Relay ayrı bir çıkış IP havuzu hizmetidir, sadece /v1/fetch wrapper’ları destekler. Yibu kullanmak Relay gerektirmez; WeatherAPI Yibu paketi buna ihtiyaç duymaz. Devral mevcut ayarları korur; yönetilen Relay adres ve kimlik bilgilerini ekler; kapalı bu eklemeyi durdurur.",
     "rateTitle": "Araç çağrısı sınırı (bu MCP genelinde ortak)",
     "advanced": "Kuyruk, eşzamanlılık ve hata beklemesi (gelişmiş, isteğe bağlı)"
   },

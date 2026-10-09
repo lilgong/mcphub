@@ -287,7 +287,11 @@
       "accessToken": "Jeton d'accès",
       "refreshToken": "Jeton d'actualisation"
     },
-    "connectionEnvHint": "À gauche : nom de variable du MCP ; à droite : clé ou valeur. ${NOM} lit les variables du Hub, jamais le .env Atlas. Les nouvelles connexions utilisent les modifications enregistrées."
+    "connectionEnvHint": "À gauche : nom de variable du MCP ; à droite : clé ou valeur. ${NOM} lit les variables du Hub, jamais le .env Atlas. Les nouvelles connexions utilisent les modifications enregistrées.",
+    "showSecret": "Afficher {{name}}",
+    "hideSecret": "Masquer {{name}}",
+    "transportHelp": "Les paquets MCPB utilisent généralement STDIO : Hub lance le MCP dans son conteneur. SSE / HTTP streaming connectent un MCP déjà lancé ailleurs. OpenAPI transforme une spécification HTTP API en outils.",
+    "stdioHelp": "Gardez normalement la commande et les arguments générés à l’import. node exécute le programme ; launch.cjs démarre le paquet. /app/... est un chemin absolu dans le conteneur Hub, pas sur l’hôte ou dans Atlas."
   },
   "status": {
     "sleeping": "En veille",
@@ -1452,7 +1456,7 @@
   },
   "serviceControls": {
     "title": "Limites des appels et relais",
-    "description": "Tous les clients partagent le quota de ce serveur MCP. Les limites de débit et de concurrence laissées vides ne sont pas imposées. Configurez ensemble le nombre d’appels et la fenêtre. Le relais contrôle les requêtes HTTP. Le délai d’attente par défaut est de 60 secondes.",
+    "description": "Un champ vide n’ajoute aucune limite correspondante. Toutes les cibles et tous les clients partagent le budget. Exemple : 8 appels par minute = 8 et 60000 ; définissez l’intervalle séparément si nécessaire. Ce n’est pas une valeur par défaut. Un appel peut produire plusieurs requêtes HTTP. Attente maximale par défaut : 60 secondes.",
     "enabled": "Enable tool-call limits",
     "maxCalls": "Calls per window",
     "windowMs": "Window (ms)",
@@ -1468,7 +1472,7 @@
     "relayOn": "Use managed relay",
     "relayOff": "Disable relay",
     "envPrefix": "Wrapper environment prefix",
-    "relayDescription": "For stdio wrappers supporting /v1/fetch only. Manage connection and credentials in Relay settings. Tool-call limits do not replace relay HTTP limits.",
+    "relayDescription": "Relay est un service distinct de pool IP, uniquement pour les wrappers /v1/fetch. Yibu ne nécessite pas Relay : le paquet WeatherAPI Yibu n’en a pas besoin. Hériter conserve les réglages existants ; Relay géré injecte son adresse et ses identifiants ; désactivé arrête cette injection.",
     "rateTitle": "Limite des appels (partagée par ce MCP)",
     "advanced": "File, concurrence et temporisation (avancé, facultatif)"
   },

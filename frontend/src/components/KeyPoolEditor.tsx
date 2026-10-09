@@ -1,3 +1,4 @@
+import SecretInput from './SecretInput';
 import { keySuffix } from '../../../src/utils/keySuffix';
 import { useTranslation } from 'react-i18next';
 import type { KeyPoolConfig } from '../../../src/types/keyPool';
@@ -41,10 +42,9 @@ export default function KeyPoolEditor({
             >
               {keySuffix(entry.value)}
             </span>
-            <input
-              type="password"
+            <SecretInput
               autoComplete="new-password"
-              className="hub-input flex-1 rounded border p-2"
+              className="hub-input rounded border p-2"
               aria-label={`Key ${index + 1}`}
               value={entry.value}
               onChange={(e) =>

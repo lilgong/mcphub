@@ -287,7 +287,11 @@
       "accessToken": "Access Token",
       "refreshToken": "Refresh Token"
     },
-    "connectionEnvHint": "The left field is the MCP variable name; enter the key or value on the right. ${NAME} reads Hub environment variables, never the Atlas .env. New connections use saved changes."
+    "connectionEnvHint": "The left field is the MCP variable name; enter the key or value on the right. ${NAME} reads Hub environment variables, never the Atlas .env. New connections use saved changes.",
+    "showSecret": "Show {{name}}",
+    "hideSecret": "Hide {{name}}",
+    "transportHelp": "Imported MCPB packages normally use STDIO: Hub starts the MCP program in its own container. SSE / Streamable HTTP connect to an MCP already running elsewhere. OpenAPI converts an HTTP API specification into tools.",
+    "stdioHelp": "Imported launch commands and arguments are generated automatically; normally keep them. node runs the program; launch.cjs starts the package. /app/... is an absolute path inside the Hub container, not on the host or in Atlas."
   },
   "status": {
     "sleeping": "Sleeping",
@@ -1454,7 +1458,7 @@
   },
   "serviceControls": {
     "title": "Call limits and relay",
-    "description": "All clients share this MCP tool-call budget. Blank rate and concurrency fields add no limit; calls and window must be set together. A tool can send multiple HTTP requests; its wrapper or relay still manages upstream quotas. Queue waiting defaults to 60 seconds and can be changed.",
+    "description": "Blank fields add no corresponding limit. All targets and clients share this MCP tool-call budget. For example, 8 calls per minute means max calls 8 and window 60000; set the minimum interval separately if needed. Do not copy this example as a default. One tool call may send multiple upstream HTTP requests. Queue timeout defaults to 60 seconds.",
     "enabled": "Enable tool-call limits",
     "maxCalls": "Calls per window",
     "windowMs": "Window (ms)",
@@ -1470,7 +1474,7 @@
     "relayOn": "Use managed relay",
     "relayOff": "Disable relay",
     "envPrefix": "Wrapper environment prefix",
-    "relayDescription": "For stdio wrappers supporting /v1/fetch only. Manage connection and credentials in Relay settings. Tool-call limits do not replace relay HTTP limits.",
+    "relayDescription": "Relay is a separate outbound IP-pool service, supported only by wrappers implementing /v1/fetch. Using Yibu does not require Relay; the WeatherAPI Yibu package does not need it. Inherit preserves existing wrapper / managed settings; managed Relay injects its address and credentials from Relay settings; off stops managed Relay injection.",
     "rateTitle": "Tool rate limit (shared across this MCP)",
     "advanced": "Queue, concurrency and error backoff (advanced, optional)"
   },
