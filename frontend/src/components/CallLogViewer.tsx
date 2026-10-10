@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, FileSearch } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileSearch, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { apiGet } from '../utils/fetchInterceptor';
 interface Row {
@@ -170,10 +170,14 @@ export default function CallLogViewer() {
           {t('callLogs.errorsOnly')}
         </label>
         <button
-          className="rounded border p-2"
+          className="hub-btn"
           disabled={loading}
           onClick={() => setRefresh((value) => value + 1)}
         >
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
+            aria-hidden="true"
+          />
           {t('callLogs.refresh')}
         </button>
       </div>

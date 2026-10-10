@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiGet } from '../utils/fetchInterceptor';
@@ -97,6 +98,7 @@ export default function CallStatistics() {
           />
         </label>
         <button className="hub-btn" onClick={() => setRefresh((n) => n + 1)}>
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
           {t('callLogs.refresh')}
         </button>
       </div>

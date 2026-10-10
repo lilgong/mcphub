@@ -21,13 +21,20 @@ const LogsPage: React.FC = () => {
       <div className="mb-6">
         <h1 className="hub-h1">{t('callLogs.title')}</h1>
       </div>
-      <div className="mb-4 flex flex-wrap gap-3" role="tablist">
+      <div
+        className="mb-4 inline-flex flex-wrap items-center gap-1 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] p-1"
+        role="tablist"
+      >
         {['calls', 'activity', 'runtime'].map((value) => (
           <button
             key={value}
             role="tab"
             aria-selected={tab === value}
-            className={`rounded border px-4 py-2 ${tab === value ? 'font-bold' : ''}`}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-ink-3)] ${
+              tab === value
+                ? 'bg-[var(--hub-surface)] text-[var(--hub-ink)] shadow-sm'
+                : 'text-[var(--hub-ink-2)] hover:bg-[var(--hub-surface-hover)] hover:text-[var(--hub-ink)]'
+            }`}
             onClick={() => setSearch(value === 'calls' ? {} : { view: value })}
           >
             {t(`callLogs.${value}`)}
