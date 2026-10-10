@@ -213,6 +213,15 @@ const ServerCard = ({
   // Reinstall is only available for stdio servers using npx or uvx
   const supportsReinstall = server.config?.command === 'npx' || server.config?.command === 'uvx';
   const supportsOAuthDisconnect = Boolean(server.oauth?.connected && onOAuthDisconnect);
+  const instanceVersions = [...new Set(
+    (server.runtime?.instances ?? [])
+      .filter((instance) => !instance.draining)
+      .map((instance) => instance.packageVersion || instance.reportedVersion)
+      .filter(Boolean),
+  )];
+  const displayVersion = server.packageVersion || server.version ||
+    (instanceVersions.length === 1 ? instanceVersions[0] : undefined);
+  const versionTitle = server.packageVersion ? t('server.packageVersion') : t('runtime.reportedVersion');
 
   const handleToggle = async (nextEnabled: boolean) => {
     if (!canManage || isToggling || !onToggle) return;
@@ -558,13 +567,13 @@ const ServerCard = ({
                 >
                   {server.name}
                 </span>
-                {supportsReinstall && server.packageVersion && (
+                {displayVersion && (
                   <span
                     className="hub-tag flex-shrink-0"
-                    title={t('server.packageVersion')}
+                    title={versionTitle}
                     style={{ fontSize: 11 }}
                   >
-                    v{server.packageVersion}
+                    v{displayVersion}
                   </span>
                 )}
                 {supportsReinstall && server.updateAvailable && server.latestVersion && (

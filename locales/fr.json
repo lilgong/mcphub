@@ -165,7 +165,7 @@
     "deselectAllShareUsers": "Tout désélectionner",
     "noMatchingShareUsers": "Aucun utilisateur ne correspond à votre recherche.",
     "command": "Commande",
-    "packageVersion": "Version du paquet installé (dernière installée dans le cache du runner)",
+    "packageVersion": "Version du paquet MCP installé",
     "updateAvailable": "Une version plus récente est disponible sur le registre",
     "arguments": "Arguments",
     "addArgument": "Ajouter un argument",

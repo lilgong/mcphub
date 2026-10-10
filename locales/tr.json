@@ -165,7 +165,7 @@
     "deselectAllShareUsers": "Tümünün seçimini kaldır",
     "noMatchingShareUsers": "Aramanızla eşleşen kullanıcı yok.",
     "command": "Komut",
-    "packageVersion": "Kurulu paket sürümü (runner önbelleğindeki son kurulum)",
+    "packageVersion": "Yüklü MCP paket sürümü",
     "updateAvailable": "Kayıt defterinde daha yeni bir sürüm mevcut",
     "arguments": "Argümanlar",
     "addArgument": "Argüman ekle",

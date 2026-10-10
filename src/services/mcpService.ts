@@ -1,3 +1,4 @@
+import { resolveMcpbPackageVersion } from '../utils/mcpbVersion.js';
 import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
 import { TargetRuntimeService } from './targetRuntimeService.js';
 import { taskConnections } from './taskConnectionService.js';
@@ -2650,124 +2651,128 @@ export const getServersInfo = async (
     }),
   );
 
-  const infos = presentedInfos
-    .filter((info) => requestedServerNames.has(info.name)) // Only include requested servers
-    .map(
-      ({
-        name,
-        version,
-        packageVersion,
-        latestVersion,
-        updateAvailable,
-        instructions,
-        owner,
-        visibility,
-        status,
-        tools,
-        prompts,
-        resources,
-        createTime,
-        error,
-        oauth,
-      }) => {
-        const serverConfig = allServers.find((server) => server.name === name);
-        const enabled = serverConfig ? serverConfig.enabled !== false : true;
-        const resolvedType = inferServerType(serverConfig);
-        const oauthConnected = Boolean(
-          serverConfig?.oauth?.accessToken || serverConfig?.oauth?.refreshToken,
-        );
-
-        // Add enabled status and custom description to each tool.
-        // toggleTool stores under whatever key the caller passed (prefixed,
-        // as the dashboard sends, or bare, as a direct API call may) with no
-        // normalization — check both so the dashboard reflects a disable set
-        // either way instead of always showing enabled:true for one of them.
-        const toolsWithEnabled = tools.map((tool) => {
-          const bareToolName = normalizeToolNameForServer(name, tool.name);
-          const toolConfig =
-            serverConfig?.tools?.[tool.name] ?? serverConfig?.tools?.[bareToolName];
-          return buildToolWithDescriptionMetadata(tool, toolConfig);
-        });
-
-        const promptsWithEnabled = prompts.map((prompt) => {
-          const promptConfig = serverConfig?.prompts?.[prompt.name];
-          return {
-            ...prompt,
-            description: resolveDescriptionOverride(prompt.description, promptConfig),
-            enabled: promptConfig?.enabled !== false, // Default to true if not explicitly disabled
-          };
-        });
-
-        const resourcesWithEnabled = resources.map((resource) => {
-          const resourceConfig = serverConfig?.resources?.[resource.uri];
-          return {
-            ...resource,
-            description: resolveDescriptionOverride(resource.description, resourceConfig),
-            enabled: resourceConfig?.enabled !== false,
-          };
-        });
-
-        const runtime = summarizeServerRuntime(
-          serverConfig?.targets,
-          getRuntimeInstances(name),
-          enabled,
-        );
-        const presentedStatus = serverConfig?.targets?.length
-          ? summarizeTargetServerStatus(serverConfig.targets, runtime.instances, enabled)
-          : status;
-
-        return {
+  const infos = await Promise.all(
+    presentedInfos
+      .filter((info) => requestedServerNames.has(info.name)) // Only include requested servers
+      .map(
+        async ({
           name,
-          targetManaged: !!serverConfig?.targets?.length,
-          runtime,
           version,
+          packageVersion,
+          latestVersion,
+          updateAvailable,
           instructions,
           owner,
           visibility,
-          status: presentedStatus,
-          error,
-          tools: toolsWithEnabled,
-          prompts: promptsWithEnabled,
-          resources: resourcesWithEnabled,
+          status,
+          tools,
+          prompts,
+          resources,
           createTime,
-          enabled,
-          // Resolved npx/uvx package version + registry update hint (#1166).
-          // Runtime state, kept at the top level like `version` so it can never
-          // be round-tripped into a persisted ServerConfig.
-          ...(packageVersion ? { packageVersion } : {}),
-          ...(latestVersion ? { latestVersion } : {}),
-          ...(updateAvailable !== undefined ? { updateAvailable } : {}),
-          oauth:
-            oauth || oauthConnected
-              ? {
-                  ...(oauth
-                    ? {
-                        authorizationUrl: oauth.authorizationUrl,
-                        state: oauth.state,
-                        ...(oauth.clientIdConfigured ? { clientIdConfigured: true } : {}),
-                        // Don't expose codeVerifier to frontend for security
-                      }
-                    : {}),
-                  ...(oauthConnected ? { connected: true } : {}),
-                }
-              : undefined,
-          config:
-            resolvedType || serverConfig?.description || serverConfig?.command
-              ? {
-                  ...(resolvedType ? { type: resolvedType } : {}),
-                  ...(hasCredentialTemplate(serverConfig)
-                    ? { credentialTemplate: validateCredentialTemplate(serverConfig!) }
-                    : {}),
-                  ...(serverConfig?.description ? { description: serverConfig.description } : {}),
-                  // Expose command so the frontend can determine if reinstall is
-                  // supported (npx/uvx only). This is not a secret — it's the
-                  // runner binary name (e.g. "npx", "uvx").
-                  ...(serverConfig?.command ? { command: serverConfig.command } : {}),
-                }
-              : undefined,
-        };
-      },
-    );
+          error,
+          oauth,
+        }) => {
+          const serverConfig = allServers.find((server) => server.name === name);
+          const installedVersion =
+            packageVersion ?? (await resolveMcpbPackageVersion(serverConfig));
+          const enabled = serverConfig ? serverConfig.enabled !== false : true;
+          const resolvedType = inferServerType(serverConfig);
+          const oauthConnected = Boolean(
+            serverConfig?.oauth?.accessToken || serverConfig?.oauth?.refreshToken,
+          );
+
+          // Add enabled status and custom description to each tool.
+          // toggleTool stores under whatever key the caller passed (prefixed,
+          // as the dashboard sends, or bare, as a direct API call may) with no
+          // normalization — check both so the dashboard reflects a disable set
+          // either way instead of always showing enabled:true for one of them.
+          const toolsWithEnabled = tools.map((tool) => {
+            const bareToolName = normalizeToolNameForServer(name, tool.name);
+            const toolConfig =
+              serverConfig?.tools?.[tool.name] ?? serverConfig?.tools?.[bareToolName];
+            return buildToolWithDescriptionMetadata(tool, toolConfig);
+          });
+
+          const promptsWithEnabled = prompts.map((prompt) => {
+            const promptConfig = serverConfig?.prompts?.[prompt.name];
+            return {
+              ...prompt,
+              description: resolveDescriptionOverride(prompt.description, promptConfig),
+              enabled: promptConfig?.enabled !== false, // Default to true if not explicitly disabled
+            };
+          });
+
+          const resourcesWithEnabled = resources.map((resource) => {
+            const resourceConfig = serverConfig?.resources?.[resource.uri];
+            return {
+              ...resource,
+              description: resolveDescriptionOverride(resource.description, resourceConfig),
+              enabled: resourceConfig?.enabled !== false,
+            };
+          });
+
+          const runtime = summarizeServerRuntime(
+            serverConfig?.targets,
+            getRuntimeInstances(name),
+            enabled,
+          );
+          const presentedStatus = serverConfig?.targets?.length
+            ? summarizeTargetServerStatus(serverConfig.targets, runtime.instances, enabled)
+            : status;
+
+          return {
+            name,
+            targetManaged: !!serverConfig?.targets?.length,
+            runtime,
+            version,
+            instructions,
+            owner,
+            visibility,
+            status: presentedStatus,
+            error,
+            tools: toolsWithEnabled,
+            prompts: promptsWithEnabled,
+            resources: resourcesWithEnabled,
+            createTime,
+            enabled,
+            // Resolved npx/uvx package version + registry update hint (#1166).
+            // Runtime state, kept at the top level like `version` so it can never
+            // be round-tripped into a persisted ServerConfig.
+            ...(installedVersion ? { packageVersion: installedVersion } : {}),
+            ...(latestVersion ? { latestVersion } : {}),
+            ...(updateAvailable !== undefined ? { updateAvailable } : {}),
+            oauth:
+              oauth || oauthConnected
+                ? {
+                    ...(oauth
+                      ? {
+                          authorizationUrl: oauth.authorizationUrl,
+                          state: oauth.state,
+                          ...(oauth.clientIdConfigured ? { clientIdConfigured: true } : {}),
+                          // Don't expose codeVerifier to frontend for security
+                        }
+                      : {}),
+                    ...(oauthConnected ? { connected: true } : {}),
+                  }
+                : undefined,
+            config:
+              resolvedType || serverConfig?.description || serverConfig?.command
+                ? {
+                    ...(resolvedType ? { type: resolvedType } : {}),
+                    ...(hasCredentialTemplate(serverConfig)
+                      ? { credentialTemplate: validateCredentialTemplate(serverConfig!) }
+                      : {}),
+                    ...(serverConfig?.description ? { description: serverConfig.description } : {}),
+                    // Expose command so the frontend can determine if reinstall is
+                    // supported (npx/uvx only). This is not a secret — it's the
+                    // runner binary name (e.g. "npx", "uvx").
+                    ...(serverConfig?.command ? { command: serverConfig.command } : {}),
+                  }
+                : undefined,
+          };
+        },
+      ),
+  );
   // Sorting is now handled at DAO layer for consistent pagination results
   return infos;
 };
@@ -2890,7 +2895,13 @@ const applyResolvedPackageVersion = (
   config: { command?: string; args?: string[] } | undefined,
 ): void => {
   const command = config?.command;
-  if (!command || !supportsCacheRefresh(command)) return;
+  if (!command) return;
+  if (!supportsCacheRefresh(command)) {
+    void resolveMcpbPackageVersion(config).then((version) => {
+      info.packageVersion = version;
+    });
+    return;
+  }
   void (async () => {
     try {
       const args = config.args ?? [];
