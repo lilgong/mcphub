@@ -3,12 +3,12 @@ title: 'User groups and calling Keys'
 description: 'Grant one application access to selected MCP servers and exact targets.'
 ---
 
-Administrators manage accounts and access groups in **Users & groups**. The folder
-list selects a group; the user table manages its members. **MCP routes** is the
-separate connection aggregation feature; it does not grant group access.
+Administrators manage accounts and access groups in **Users & groups**. The contact-style list
+shows users directly under collapsible group headings. **Advanced: MCP aggregation routes** links to the separate connection aggregation
+feature from this page; it does not grant group access.
 
-1. Create or rename a group in the folder list.
-2. Drag a user onto a group, or use the group selector in the user table. Moving
+1. Create or rename a group using the group headings.
+2. Drag a user onto a group, or use the selector on the user row. Moving
    removes previous memberships and assigns the destination in one atomic update.
    Dragging to **Ungrouped** explicitly removes all memberships. Existing multiple
    memberships are retained until the administrator moves that user.
@@ -17,9 +17,9 @@ separate connection aggregation feature; it does not grant group access.
    **Select all** chooses the currently registered servers and targets; newly added
    targets require a separate grant. Legacy API grants with omitted `targets` still
    mean all targets, including future ones.
-4. Generate the group's calling Key and save the complete token shown once. A Key
-   calls all resources allowed by its group. Manage its enabled state or deletion
-   in Settings. Deleting the old Key allows generating a replacement in the group.
+4. Open **Group Key** beside the group heading to generate, enable, disable, or delete
+   its calling Key. Save the complete token shown once. A Key calls all resources
+   allowed by its group. Deleting the old Key allows generating a replacement.
 
 Membership management requires an administrator. `PUT /api/user-groups/membership`
 accepts `{ "username": "alice", "groupId": "destination-group-id" }`; use `null`

@@ -1116,7 +1116,7 @@
     "partialSuccess": "{{total}} gruptan {{count}} tanesi başarıyla içe aktarıldı. Bazı gruplar başarısız oldu:"
   },
   "users": {
-    "add": "Kullanıcı Ekle",
+    "add": "Kullanıcı ekle",
     "addNew": "Yeni Kullanıcı Ekle",
     "edit": "Kullanıcıyı Düzenle",
     "delete": "Kullanıcıyı Sil",
@@ -1662,12 +1662,12 @@
     "keyHint": "Bu anahtarın sunucu ve hedef izinlerini Kullanıcı gruplarında yönetin."
   },
   "userDirectory": {
-    "description": "Kullanıcıları klasörlerde yönetin ve her grubun MCP ve hedef izinlerini seçin.",
+    "description": "Kullanıcıları görmek için grupları açın ve başka gruba sürükleyin.",
     "createGroup": "Yeni grup",
     "groupList": "Gruplar",
     "allUsers": "Tüm kullanıcılar",
     "ungrouped": "Grupsuz",
-    "dragHint": "Kullanıcıyı bir gruba sürükleyin veya listedeki grup seçiciyi kullanın.",
+    "dragHint": "Kullanıcıyı başka gruba sürükleyin veya grup seçicisini kullanın.",
     "permissions": "Grup izinleri",
     "permissionsFor": "İzinler · {{name}}",
     "rename": "Grubu yeniden adlandır",
@@ -1685,6 +1685,17 @@
     "selectAll": "Tümünü seç",
     "clearAll": "Seçimi temizle",
     "targetCount": "{{count}} hedef",
-    "singleConnection": "Tek bağlantı"
+    "singleConnection": "Tek bağlantı",
+    "emptyGroup": "Üye yok. Kullanıcıları buraya sürükleyin.",
+    "keyFor": "Grup anahtarı · {{name}}",
+    "renameFor": "{{name}} grubunu yeniden adlandır",
+    "deleteGroupFor": "{{name}} grubunu sil",
+    "groupKeyButton": "Grup Key",
+    "groupKeyHint": "Bu Key, gruba izin verilen tüm MCP ve hedefleri çağırabilir. Hedefi X-MCPHub-Target ile seçin. Key yalnızca oluşturulduğunda tam gösterilir; kaybolursa silip yeniden oluşturun.",
+    "advancedRoutes": "Gelişmiş: MCP toplama rotaları",
+    "routesHint": "Birden fazla MCP için tek çağrı adresi oluşturun. Yalnızca gerektiğinde yapılandırın; rotalar kullanıcı grubu izni vermez.",
+    "manageRoutes": "Toplama rotalarını yönet",
+    "deleteKeyTitle": "Grup Key sil",
+    "deleteKeyHint": "Bu Key kullanan istemciler erişimini kaybeder. Yeni bir Key oluşturabilirsiniz."
   }
 }

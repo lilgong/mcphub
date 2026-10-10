@@ -1663,12 +1663,12 @@
     "keyHint": "Gérez les serveurs et cibles de cette clé dans Groupes d’utilisateurs."
   },
   "userDirectory": {
-    "description": "Gérez les utilisateurs dans des dossiers et les accès MCP de chaque groupe.",
+    "description": "Dépliez les groupes pour voir les utilisateurs et glissez-les pour les déplacer.",
     "createGroup": "Nouveau groupe",
     "groupList": "Groupes",
     "allUsers": "Tous les utilisateurs",
     "ungrouped": "Sans groupe",
-    "dragHint": "Glissez un utilisateur vers un groupe ou utilisez le sélecteur du tableau.",
+    "dragHint": "Glissez un utilisateur vers un autre groupe ou utilisez son sélecteur de groupe.",
     "permissions": "Permissions du groupe",
     "permissionsFor": "Permissions · {{name}}",
     "rename": "Renommer le groupe",
@@ -1686,6 +1686,17 @@
     "selectAll": "Tout sélectionner",
     "clearAll": "Effacer la sélection",
     "targetCount": "{{count}} cibles",
-    "singleConnection": "Connexion unique"
+    "singleConnection": "Connexion unique",
+    "emptyGroup": "Aucun membre. Glissez les utilisateurs ici.",
+    "keyFor": "Clé du groupe · {{name}}",
+    "renameFor": "Renommer {{name}}",
+    "deleteGroupFor": "Supprimer le groupe {{name}}",
+    "groupKeyButton": "Clé du groupe",
+    "groupKeyHint": "Cette clé peut appeler les MCP et cibles autorisés au groupe. Choisissez la cible avec X-MCPHub-Target. La clé complète apparaît uniquement à sa création ; supprimez-la et recréez-la si elle est perdue.",
+    "advancedRoutes": "Avancé : routes agrégées MCP",
+    "routesHint": "Regroupez plusieurs MCP derrière une adresse. Configurez ces routes si nécessaire ; elles ne donnent aucun droit aux groupes.",
+    "manageRoutes": "Gérer les routes agrégées",
+    "deleteKeyTitle": "Supprimer la clé du groupe",
+    "deleteKeyHint": "Les clients utilisant cette clé perdront leur accès. Vous pourrez créer une nouvelle clé."
   }
 }

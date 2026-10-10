@@ -1118,7 +1118,7 @@
     "partialSuccess": "Imported {{count}} of {{total}} groups successfully. Some groups failed:"
   },
   "users": {
-    "add": "Add User",
+    "add": "Add user",
     "addNew": "Add New User",
     "edit": "Edit User",
     "delete": "Delete User",
@@ -1665,12 +1665,12 @@
     "keyHint": "Manage this key’s server and target permissions in User groups."
   },
   "userDirectory": {
-    "description": "Manage users in folders, then choose each group’s MCP and target permissions.",
+    "description": "Expand groups to see users; drag users to another group to move them.",
     "createGroup": "New group",
     "groupList": "Groups",
     "allUsers": "All users",
     "ungrouped": "Ungrouped",
-    "dragHint": "Drag a user onto a group to move them. Use the group selector on touch screens.",
+    "dragHint": "Drag a user onto another group. The user’s group selector also supports keyboard and touch.",
     "permissions": "Group permissions",
     "permissionsFor": "Permissions · {{name}}",
     "rename": "Rename group",
@@ -1688,6 +1688,17 @@
     "selectAll": "Select all",
     "clearAll": "Clear selection",
     "targetCount": "{{count}} targets",
-    "singleConnection": "Single connection"
+    "singleConnection": "Single connection",
+    "emptyGroup": "No members. Drag users here.",
+    "keyFor": "Group Key · {{name}}",
+    "renameFor": "Rename {{name}}",
+    "deleteGroupFor": "Delete group {{name}}",
+    "groupKeyButton": "Group Key",
+    "groupKeyHint": "This Key can call every MCP and target granted to this group. Select targets with X-MCPHub-Target. The full Key is shown only when generated; delete and regenerate it if lost.",
+    "advancedRoutes": "Advanced: MCP aggregation routes",
+    "routesHint": "Combine several MCPs behind one calling address. Configure only when needed; routes do not grant user-group access.",
+    "manageRoutes": "Manage aggregation routes",
+    "deleteKeyTitle": "Delete group Key",
+    "deleteKeyHint": "Clients using this Key will lose access. You can generate a replacement."
   }
 }

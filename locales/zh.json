@@ -1121,7 +1121,7 @@
     "partialSuccess": "成功导入 {{count}} / {{total}} 个分组。部分分组失败："
   },
   "users": {
-    "add": "添加",
+    "add": "添加用户",
     "addNew": "添加新用户",
     "edit": "编辑用户",
     "delete": "删除用户",
@@ -1667,12 +1667,12 @@
     "keyHint": "该 Key 的服务器与目标权限在“用户分组”中管理。"
   },
   "userDirectory": {
-    "description": "将用户拖入分组，再为组选择可用的 MCP 和目标。",
+    "description": "展开分组查看用户，拖动用户即可移动到其他组。",
     "createGroup": "新建组",
     "groupList": "分组",
     "allUsers": "全部用户",
     "ungrouped": "未分组",
-    "dragHint": "拖动用户到组即可移动；也可以在用户列表中选择分组。",
+    "dragHint": "拖动用户到其他组即可换组，也可以使用用户右侧的分组选择框。",
     "permissions": "组权限",
     "permissionsFor": "组权限 · {{name}}",
     "rename": "重命名组",
@@ -1690,6 +1690,17 @@
     "selectAll": "一键全选",
     "clearAll": "清空选择",
     "targetCount": "{{count}} 个目标",
-    "singleConnection": "单一连接"
+    "singleConnection": "单一连接",
+    "emptyGroup": "暂无成员，可将用户拖到这里。",
+    "keyFor": "组 Key · {{name}}",
+    "renameFor": "重命名 {{name}}",
+    "deleteGroupFor": "删除组 {{name}}",
+    "groupKeyButton": "组 Key",
+    "groupKeyHint": "此 Key 调用该组获准的所有 MCP 和目标；具体目标仍由 X-MCPHub-Target 指定。完整 Key 仅在生成时显示，遗失后请删除并重新生成。",
+    "advancedRoutes": "高级：MCP 聚合路由",
+    "routesHint": "将多个 MCP 聚合到一个调用地址。仅在需要聚合地址时配置，与用户组权限无关。",
+    "manageRoutes": "管理聚合路由",
+    "deleteKeyTitle": "删除组 Key",
+    "deleteKeyHint": "删除后，使用此 Key 的客户端将无法调用。可以重新生成一个 Key。"
   }
 }

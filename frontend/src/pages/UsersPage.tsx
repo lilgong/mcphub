@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import {
   Folder,
-  FolderOpen,
   Users,
-  UserRound,
   Plus,
   RefreshCw,
   ShieldCheck,
@@ -15,6 +14,7 @@ import {
   GripVertical,
   X,
   ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiGet, apiPost, apiPut, apiDelete, type ApiResponse } from '../utils/fetchInterceptor';
@@ -34,7 +34,7 @@ export default function UsersPage() {
   const [servers, setServers] = useState<Server[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [keys, setKeys] = useState<BearerKey[]>([]);
-  const [selected, setSelected] = useState('all');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string>();
   const [query, setQuery] = useState('');
   const [resourceQuery, setResourceQuery] = useState('');
@@ -45,14 +45,16 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User>();
   const [removingUser, setRemovingUser] = useState<User>();
   const [newToken, setNewToken] = useState('');
+  const [keyGroup, setKeyGroup] = useState<UserGroup>();
+  const [removingKey, setRemovingKey] = useState<BearerKey>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const busyRef = useRef(busy);
   busyRef.current = busy;
-  const dialogOpen = !!permissions || !!editingGroup || !!newToken;
+  const dialogOpen = !!permissions || !!editingGroup || !!newToken || !!keyGroup;
   useEffect(() => {
-    if (!dialogOpen) return;
+    if (!dialogOpen || removingKey) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dialog = document.querySelector<HTMLElement>('.hub-directory-dialog');
     if (!dialog) return;
@@ -71,11 +73,12 @@ export default function UsersPage() {
         setPermissions(undefined);
         setEditingGroup(undefined);
         setNewToken('');
+        setKeyGroup(undefined);
       }
       if (event.key === 'Tab') {
         const items = focusable();
         const first = items[0];
-        const last = items.at(-1);
+        const last = items[items.length - 1];
         if (event.shiftKey && document.activeElement === first) {
           event.preventDefault();
           last?.focus();
@@ -91,7 +94,7 @@ export default function UsersPage() {
       document.body.style.overflow = overflow;
       previous?.focus();
     };
-  }, [dialogOpen]);
+  }, [dialogOpen, newToken, keyGroup, removingKey]);
   const load = useCallback(async () => {
     const replies = await Promise.all([
       apiGet<ApiResponse<UserGroup[]>>('/user-groups'),
@@ -112,14 +115,6 @@ export default function UsersPage() {
         .catch(() => setError(t('userGroups.failed')))
         .finally(() => setLoading(false));
   }, [auth.user?.isAdmin, load, t]);
-  useEffect(() => {
-    if (
-      selected !== 'all' &&
-      selected !== 'ungrouped' &&
-      !groups.some((group) => group.id === selected)
-    )
-      setSelected('all');
-  }, [groups, selected]);
   const run = async (operation: () => Promise<void>) => {
     setBusy(true);
     setError('');
@@ -144,6 +139,7 @@ export default function UsersPage() {
     run(async () => {
       const result = await apiPut('/user-groups/membership', { username, groupId });
       if (!result.success) throw new Error(result.message || t('userGroups.failed'));
+      expandGroup(groupId ?? 'ungrouped');
     });
   const drop = (event: DragEvent, groupId: string | null) => {
     event.preventDefault();
@@ -177,17 +173,36 @@ export default function UsersPage() {
     });
   const membership = (username: string) =>
     groups.filter((group) => group.members.includes(username));
-  const activeGroup = groups.find((group) => group.id === selected);
-  const visibleUsers = users.filter(
-    (user) =>
-      (selected === 'all' ||
-        (selected === 'ungrouped'
-          ? membership(user.username).length === 0
-          : activeGroup?.members.includes(user.username))) &&
-      `${user.username} ${user.email ?? ''}`.toLowerCase().includes(query.toLowerCase()),
+  const matchingUsers = users.filter((user) =>
+    `${user.username} ${user.email ?? ''}`.toLowerCase().includes(query.toLowerCase()),
   );
-  const folderClass = (id: string) =>
-    `hub-directory-folder ${selected === id ? 'selected' : ''} ${dropTarget === id ? 'drop-target' : ''}`;
+  const sections = [
+    {
+      id: 'ungrouped',
+      name: t('userDirectory.ungrouped'),
+      group: undefined,
+      users: matchingUsers.filter((user) => !membership(user.username).length),
+    },
+    ...groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      group,
+      users: matchingUsers.filter((user) => group.members.includes(user.username)),
+    })),
+  ];
+  const toggleGroup = (id: string) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const expandGroup = (id: string) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
   const targetsFor = (server: Server) => server.runtime?.targets ?? [];
   const openPermissions = (group: UserGroup) => {
     setError('');
@@ -271,98 +286,12 @@ export default function UsersPage() {
           {error}
         </p>
       )}
-      <section className="hub-card hub-user-directory" aria-busy={busy}>
-        <aside className="hub-directory-tree" aria-label={t('userDirectory.groupList')}>
-          <div className="hub-directory-caption">{t('userDirectory.groupList')}</div>
-          <button className={folderClass('all')} onClick={() => setSelected('all')}>
+      <section className="hub-card hub-contact-list" aria-busy={busy}>
+        <div className="hub-contact-toolbar">
+          <div className="hub-contact-total">
             <Users size={16} />
             <span>{t('userDirectory.allUsers')}</span>
             <small>{users.length}</small>
-          </button>
-          <button
-            className={folderClass('ungrouped')}
-            onClick={() => setSelected('ungrouped')}
-            {...dropProps('ungrouped', null)}
-          >
-            <UserRound size={16} />
-            <span>{t('userDirectory.ungrouped')}</span>
-            <small>{users.filter((user) => !membership(user.username).length).length}</small>
-          </button>
-          <div className="hub-directory-divider" />
-          {groups.map((group) => (
-            <div
-              key={group.id}
-              className={folderClass(group.id)}
-              {...dropProps(group.id, group.id)}
-            >
-              <button className="hub-directory-folder-name" onClick={() => setSelected(group.id)}>
-                {selected === group.id ? <FolderOpen size={16} /> : <Folder size={16} />}
-                <span title={group.name}>{group.name}</span>
-                <small>{group.members.length}</small>
-                {!group.enabled && <span className="hub-dot muted" />}
-              </button>
-              <button
-                className="hub-icon-btn sm"
-                aria-label={t('userDirectory.permissionsFor', { name: group.name })}
-                title={t('userDirectory.permissions')}
-                disabled={busy}
-                onClick={() => {
-                  setResourceQuery('');
-                  openPermissions(group);
-                }}
-              >
-                <ShieldCheck size={14} />
-              </button>
-            </div>
-          ))}
-          {!groups.length && <p className="hub-config-note px-2 py-3">{t('userGroups.empty')}</p>}
-          <p className="hub-config-note hub-directory-hint">{t('userDirectory.dragHint')}</p>
-        </aside>
-        <div className="hub-directory-main">
-          <div className="hub-directory-toolbar">
-            <div className="flex items-center gap-2 min-w-0">
-              <Users size={15} />
-              <ChevronRight size={13} />
-              <strong className="truncate">
-                {activeGroup?.name ??
-                  t(
-                    selected === 'ungrouped' ? 'userDirectory.ungrouped' : 'userDirectory.allUsers',
-                  )}
-              </strong>
-            </div>
-            {activeGroup && (
-              <div className="flex gap-1 flex-shrink-0">
-                <button
-                  className="hub-btn sm"
-                  disabled={busy}
-                  onClick={() => {
-                    setResourceQuery('');
-                    openPermissions(activeGroup);
-                  }}
-                >
-                  <ShieldCheck size={13} />
-                  {t('userDirectory.permissions')}
-                </button>
-                <button
-                  className="hub-icon-btn sm"
-                  title={t('userDirectory.rename')}
-                  aria-label={t('userDirectory.rename')}
-                  disabled={busy}
-                  onClick={() => setEditingGroup(structuredClone(activeGroup))}
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  className="hub-icon-btn sm"
-                  title={t('common.delete')}
-                  aria-label={t('userDirectory.deleteGroup')}
-                  disabled={busy}
-                  onClick={() => setRemovingGroup(activeGroup)}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            )}
           </div>
           <div className="hub-directory-search">
             <Search size={14} />
@@ -373,134 +302,171 @@ export default function UsersPage() {
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
-          {activeGroup && (
-            <div className="hub-directory-summary">
-              <span>{t('userGroups.serverCount', { count: activeGroup.servers.length })}</span>
-              <span>{activeGroup.enabled ? t('common.active') : t('common.inactive')}</span>
-              {keys.some((key) => key.userGroupId === activeGroup.id) ? (
-                <span className="flex items-center gap-2">
-                  <KeyRound size={13} />
-                  {t('userDirectory.keyCreated')}
-                </span>
-              ) : (
-                <button
-                  className="hub-btn ghost sm"
-                  disabled={busy}
-                  onClick={() => void createKey(activeGroup)}
+        </div>
+        {loading ? (
+          <p className="hub-contact-empty">{t('app.loading')}</p>
+        ) : (
+          sections
+            .filter((section) => !query || section.users.length)
+            .map((section) => {
+              const group = section.group;
+              const open = !!query || !collapsed.has(section.id);
+              return (
+                <section
+                  key={section.id}
+                  data-group-id={section.id}
+                  className={`hub-contact-group ${dropTarget === section.id ? 'drop-target' : ''}`}
+                  {...dropProps(section.id, group?.id ?? null)}
                 >
-                  <KeyRound size={13} />
-                  {t('userGroups.createKey')}
-                </button>
-              )}
-            </div>
-          )}
-          <div className="hub-directory-table-wrap">
-            <table className="hub-directory-table">
-              <thead>
-                <tr>
-                  <th>{t('users.username')}</th>
-                  <th>{t('userDirectory.membership')}</th>
-                  <th>{t('users.role')}</th>
-                  <th>
-                    <span className="sr-only">{t('users.actions')}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleUsers.map((user) => (
-                  <tr
-                    key={user.username}
-                    draggable={!busy}
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData(DRAG_TYPE, user.username);
-                      event.dataTransfer.effectAllowed = 'move';
-                    }}
-                  >
-                    <td>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <GripVertical size={13} className="hub-directory-grip" />
-                        <UserRound size={15} />
-                        <div className="min-w-0">
-                          <span className="hub-directory-username">{user.username}</span>
-                          {user.email && <span className="hub-directory-email">{user.email}</span>}
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <select
-                        className="hub-directory-membership"
-                        aria-label={t('userDirectory.moveUser', { name: user.username })}
-                        disabled={busy}
-                        value={
-                          membership(user.username).length === 1
-                            ? membership(user.username)[0].id
-                            : membership(user.username).length > 1
-                              ? 'multiple'
-                              : ''
-                        }
-                        onChange={(event) =>
-                          void moveUser(user.username, event.target.value || null)
-                        }
-                      >
-                        {membership(user.username).length > 1 && (
-                          <option value="multiple" disabled>
-                            {membership(user.username)
-                              .map((group) => group.name)
-                              .join(', ')}
-                          </option>
-                        )}
-                        <option value="">{t('userDirectory.ungrouped')}</option>
-                        {groups.map((group) => (
-                          <option key={group.id} value={group.id}>
-                            {group.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <span className="hub-tag">
-                        {user.isAdmin ? t('users.admin') : t('users.user')}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="flex justify-end gap-1">
+                  <div className="hub-contact-group-header">
+                    <button
+                      className="hub-contact-group-toggle"
+                      aria-expanded={open}
+                      aria-controls={`members-${section.id}`}
+                      onClick={() => toggleGroup(section.id)}
+                    >
+                      {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                      <span>{section.name}</span>
+                      <small>{section.users.length}</small>
+                      {group?.enabled === false && (
+                        <span className="hub-tag">{t('common.inactive')}</span>
+                      )}
+                    </button>
+                    {group && (
+                      <div className="hub-contact-group-actions">
+                        <button
+                          className="hub-btn ghost sm"
+                          disabled={busy}
+                          aria-label={t('userDirectory.permissionsFor', { name: group.name })}
+                          onClick={() => {
+                            setResourceQuery('');
+                            openPermissions(group);
+                          }}
+                        >
+                          <ShieldCheck size={13} />
+                          <span>{t('userDirectory.permissions')}</span>
+                        </button>
+                        <button
+                          className="hub-btn ghost sm"
+                          disabled={busy}
+                          aria-label={t('userDirectory.keyFor', { name: group.name })}
+                          onClick={() => {
+                            setError('');
+                            setKeyGroup(group);
+                          }}
+                        >
+                          <KeyRound size={14} />
+                          <span>{t('userDirectory.groupKeyButton')}</span>
+                        </button>
                         <button
                           className="hub-icon-btn sm"
-                          aria-label={t('userDirectory.editUser', { name: user.username })}
-                          title={t('users.edit')}
                           disabled={busy}
-                          onClick={() => setEditingUser(user)}
+                          title={t('userDirectory.rename')}
+                          aria-label={t('userDirectory.renameFor', { name: group.name })}
+                          onClick={() => setEditingGroup(structuredClone(group))}
                         >
-                          <Pencil size={13} />
+                          <Pencil size={14} />
                         </button>
-                        {user.username !== auth.user?.username && (
-                          <button
-                            className="hub-icon-btn sm"
-                            aria-label={t('userDirectory.deleteUser', { name: user.username })}
-                            title={t('users.delete')}
-                            disabled={busy}
-                            onClick={() => setRemovingUser(user)}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
+                        <button
+                          className="hub-icon-btn sm"
+                          disabled={busy}
+                          title={t('common.delete')}
+                          aria-label={t('userDirectory.deleteGroupFor', { name: group.name })}
+                          onClick={() => setRemovingGroup(group)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {!visibleUsers.length && (
-            <p className="hub-directory-empty">
-              {t(loading ? 'app.loading' : 'userDirectory.noUsers')}
-            </p>
-          )}
-          <div className="hub-directory-footer">
-            {t('userGroups.memberCount', { count: visibleUsers.length })}
-            {activeGroup && <span>{t('userDirectory.membersHint')}</span>}
-          </div>
-        </div>
+                    )}
+                  </div>
+                  {open && (
+                    <div id={`members-${section.id}`} className="hub-contact-members">
+                      {section.users.map((user) => (
+                        <div
+                          className="hub-contact-user"
+                          data-username={user.username}
+                          key={user.username}
+                          draggable={!busy}
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData(DRAG_TYPE, user.username);
+                            event.dataTransfer.effectAllowed = 'move';
+                          }}
+                        >
+                          <GripVertical size={13} className="hub-contact-grip" />
+                          <div className="hub-contact-avatar">
+                            {user.username.slice(0, 1).toUpperCase()}
+                          </div>
+                          <div className="hub-contact-user-name">
+                            <span>{user.username}</span>
+                            {user.email && <small>{user.email}</small>}
+                          </div>
+                          {user.isAdmin && <span className="hub-tag">{t('users.admin')}</span>}
+                          <select
+                            className="hub-contact-move"
+                            aria-label={t('userDirectory.moveUser', { name: user.username })}
+                            disabled={busy}
+                            value={
+                              membership(user.username).length === 1
+                                ? membership(user.username)[0].id
+                                : membership(user.username).length > 1
+                                  ? 'multiple'
+                                  : ''
+                            }
+                            onChange={(event) =>
+                              void moveUser(user.username, event.target.value || null)
+                            }
+                          >
+                            {membership(user.username).length > 1 && (
+                              <option value="multiple" disabled>
+                                {membership(user.username)
+                                  .map((entry) => entry.name)
+                                  .join(', ')}
+                              </option>
+                            )}
+                            <option value="">{t('userDirectory.ungrouped')}</option>
+                            {groups.map((entry) => (
+                              <option value={entry.id} key={entry.id}>
+                                {entry.name}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="hub-contact-user-actions">
+                            <button
+                              className="hub-icon-btn sm"
+                              disabled={busy}
+                              aria-label={t('userDirectory.editUser', { name: user.username })}
+                              title={t('users.edit')}
+                              onClick={() => setEditingUser(user)}
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            {user.username !== auth.user?.username && (
+                              <button
+                                className="hub-icon-btn sm"
+                                disabled={busy}
+                                aria-label={t('userDirectory.deleteUser', { name: user.username })}
+                                title={t('users.delete')}
+                                onClick={() => setRemovingUser(user)}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {!section.users.length && (
+                        <p className="hub-contact-empty">{t('userDirectory.emptyGroup')}</p>
+                      )}
+                    </div>
+                  )}
+                </section>
+              );
+            })
+        )}
+        {!loading && !!query && !matchingUsers.length && (
+          <p className="hub-contact-empty">{t('userDirectory.noUsers')}</p>
+        )}
+        <div className="hub-contact-hint">{t('userDirectory.dragHint')}</div>
       </section>
       <div className="hub-directory-shared">
         <div>
@@ -512,6 +478,95 @@ export default function UsersPage() {
           {t('userGroups.createSharedKey')}
         </button>
       </div>
+      <details className="hub-directory-advanced">
+        <summary>{t('userDirectory.advancedRoutes')}</summary>
+        <p className="hub-config-note">{t('userDirectory.routesHint')}</p>
+        <Link className="hub-btn" to="/groups">
+          {t('userDirectory.manageRoutes')}
+        </Link>
+      </details>
+      {keyGroup && !newToken && !removingKey && (
+        <div className="hub-directory-overlay">
+          <section
+            className="hub-directory-dialog compact"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="group-keys-title"
+          >
+            <div className="hub-directory-dialog-header">
+              <h2 id="group-keys-title" className="hub-card-title">
+                {t('userDirectory.keyFor', { name: keyGroup.name })}
+              </h2>
+              <button
+                className="hub-icon-btn"
+                disabled={busy}
+                aria-label={t('common.close')}
+                onClick={() => setKeyGroup(undefined)}
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="hub-config-note">{t('userDirectory.groupKeyHint')}</p>
+              {error && (
+                <p role="alert" className="text-sm text-[var(--hub-err)]">
+                  {error}
+                </p>
+              )}
+              {keys
+                .filter((key) => key.userGroupId === keyGroup.id)
+                .map((key) => (
+                  <div className="hub-group-key-row" key={key.id}>
+                    <div>
+                      <span>{key.name}</span>
+                      <small className="hub-mono">{key.token}</small>
+                    </div>
+                    <label className="hub-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={key.enabled}
+                        disabled={busy}
+                        onChange={() =>
+                          void run(async () => {
+                            const result = await apiPut(`/auth/keys/${key.id}`, {
+                              enabled: !key.enabled,
+                            });
+                            if (!result.success)
+                              throw new Error(result.message || t('userGroups.failed'));
+                          })
+                        }
+                      />
+                      {t('settings.bearerKeyEnabled')}
+                    </label>
+                    <button
+                      className="hub-icon-btn sm"
+                      disabled={busy}
+                      aria-label={t('common.delete')}
+                      onClick={() => setRemovingKey(key)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              {!keys.some((key) => key.userGroupId === keyGroup.id) && (
+                <button
+                  className="hub-btn primary"
+                  disabled={busy}
+                  onClick={() => void createKey(keyGroup)}
+                >
+                  <KeyRound size={14} />
+                  {t('userGroups.createKey')}
+                </button>
+              )}
+            </div>
+            <div className="hub-directory-dialog-footer">
+              <button className="hub-btn" disabled={busy} onClick={() => setKeyGroup(undefined)}>
+                {t('common.close')}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {permissions && (
         <div
           className="hub-directory-overlay"
@@ -672,7 +727,7 @@ export default function UsersPage() {
               event.preventDefault();
               void run(async () => {
                 const saved = await saveGroup(editingGroup);
-                if (saved) setSelected(saved.id);
+                if (saved) expandGroup(saved.id);
                 setEditingGroup(undefined);
               });
             }}
@@ -799,6 +854,20 @@ export default function UsersPage() {
           onCancel={() => setEditingUser(undefined)}
         />
       )}
+      <DeleteDialog
+        serverName={removingKey?.name ?? ''}
+        isOpen={!!removingKey}
+        title={t('userDirectory.deleteKeyTitle')}
+        message={t('userDirectory.deleteKeyHint')}
+        onClose={() => setRemovingKey(undefined)}
+        onConfirm={() =>
+          void run(async () => {
+            const result = await apiDelete(`/auth/keys/${removingKey!.id}`);
+            if (!result.success) throw new Error(result.message || t('userGroups.failed'));
+            setRemovingKey(undefined);
+          })
+        }
+      />
       <DeleteDialog
         serverName={removingUser?.username ?? ''}
         isOpen={!!removingUser}

@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServerContext } from '@/contexts/ServerContext';
-import { useGroupData } from '@/hooks/useGroupData';
 import { canViewSystemLogs } from '@/utils/navigationPermissions';
 import { usePermissionCheck } from '../PermissionChecker';
 import UserProfileMenu from '@/components/ui/UserProfileMenu';
@@ -36,7 +35,6 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
   const { t } = useTranslation();
   const { auth } = useAuth();
   const { allServers } = useServerContext();
-  const { groups } = useGroupData();
 
   const appVersion = import.meta.env.PACKAGE_VERSION as string;
 
@@ -49,12 +47,6 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
       label: t('nav.servers'),
       icon: <ServerIcon className="h-4 w-4" />,
       badge: allServers.length || undefined,
-    },
-    {
-      path: '/groups',
-      label: t('nav.groups'),
-      icon: <RouteIcon className="h-4 w-4" />,
-      badge: groups.length || undefined,
     },
     { path: '/prompts', label: t('nav.prompts'), icon: <MessageSquare className="h-4 w-4" /> },
     { path: '/resources', label: t('nav.resources'), icon: <FileText className="h-4 w-4" /> },
