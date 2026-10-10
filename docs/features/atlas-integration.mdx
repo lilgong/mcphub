@@ -168,11 +168,11 @@ snapshot when creating new isolated Arxiv/PubMed task containers, opt in:
 
 ```dotenv
 MCPHUB_MANAGE_RELAY=true
-MCPHUB_CONFIG_URL=http://127.0.0.1:3002
+MCPHUB_URL=http://192.168.0.22:3002
 ```
 
-`MCPHUB_CONFIG_URL` is reachable from the completion host; `MCPHUB_URL` is reachable
-from Atlas containers. The existing operator Bearer Key must allow each requested
+`MCPHUB_URL` is the single Hub address used by the completion service and the
+shared runtime. Choose an address reachable from both, such as the Hub host's LAN IP. The existing operator Bearer Key must allow each requested
 Arxiv/PubMed server (or all). Ordinary user keys cannot read the shared token.
 Snapshots contain only relay settings; no Hub token is passed to task containers.
 If opted in, a failed configuration fetch prevents task startup rather than using

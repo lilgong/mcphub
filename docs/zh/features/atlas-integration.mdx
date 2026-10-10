@@ -121,10 +121,10 @@ Relay 区域管理现有 relay 的 URL、加密 Token、HTTP 超时，不另起�
 
 ```dotenv
 MCPHUB_MANAGE_RELAY=true
-MCPHUB_CONFIG_URL=http://127.0.0.1:3002
+MCPHUB_URL=http://192.168.0.22:3002
 ```
 
-`MCPHUB_CONFIG_URL` 供宿主机测评进程访问，`MCPHUB_URL` 供 Atlas 容器访问。
+`MCPHUB_URL` 统一供测评进程和共享 runtime 访问；请使用两边都可达的地址，例如 Hub 宿主机的局域网 IP。
 复用已有管理员/operator Bearer Key，需授权任务使用的 Arxiv/PubMed 服务或全部服务；
 普通用户 key 不能获取全局 relay Token。不会将 Hub Token 传入任务容器。
 选择托管后，获取配置失败会阻止新任务启动；运行中任务保留原快照。
