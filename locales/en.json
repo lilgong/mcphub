@@ -1596,6 +1596,8 @@
     "unavailable": "Enable durable tool auditing to collect statistics."
   },
   "runtime": {
+    "mcpVersion": "MCP version",
+    "versionUnknown": "Unknown",
     "title": "Runtime connections",
     "running": "{{count}} running now",
     "starting": "Starting {{count}}",

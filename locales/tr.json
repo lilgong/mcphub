@@ -1593,6 +1593,8 @@
     "unavailable": "İstatistik toplamak için kalıcı denetimi etkinleştirin."
   },
   "runtime": {
+    "mcpVersion": "MCP sürümü",
+    "versionUnknown": "Bilinmiyor",
     "title": "Çalışan bağlantılar",
     "running": "Şu anda {{count}} çalışıyor",
     "starting": "Başlatılıyor {{count}}",

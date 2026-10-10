@@ -14,7 +14,6 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
         )}
       </div>
       <p className="text-xs hub-sub">{t('runtime.description')}</p>
-      <p className="text-xs hub-sub">{t('runtime.reportedVersionHint')}</p>
       {!!runtime.targets.length && (
         <div className="flex flex-wrap gap-2">
           {runtime.targets.map((target) => (
@@ -24,7 +23,6 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
             >
               <code>{target.path}</code>
               <span>· {t(`targets.${target.implementation ?? 'unspecified'}`)}</span>
-              {target.configuredVersion && <span>· {target.configuredVersion}</span>}
               <StatusDot
                 kind={
                   !target.enabled
@@ -58,9 +56,7 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
                   'target',
                   'kind',
                   'implementation',
-                  'configuredVersion',
-                  'packageVersion',
-                  'reportedVersion',
+                  'mcpVersion',
                   'status',
                   'activity',
                 ].map((field) => (
@@ -87,10 +83,8 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
                   <td className="px-3 py-2">
                     {t(`targets.${instance.implementation ?? 'unspecified'}`)}
                   </td>
-                  <td className="px-3 py-2 font-mono">{instance.configuredVersion ?? '—'}</td>
-                  <td className="px-3 py-2 font-mono break-all">{instance.packageVersion ?? '—'}</td>
-                  <td className="px-3 py-2 font-mono break-all" title={t('runtime.reportedVersionHint')}>
-                    {instance.reportedVersion ?? '—'}
+                  <td className="px-3 py-2 font-mono break-all">
+                    {instance.packageVersion ?? t('runtime.versionUnknown')}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <StatusDot

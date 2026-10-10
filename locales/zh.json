@@ -1598,6 +1598,8 @@
     "unavailable": "请启用持久化工具审计以收集统计。"
   },
   "runtime": {
+    "mcpVersion": "MCP 版本",
+    "versionUnknown": "未识别",
     "title": "运行实例",
     "running": "当前运行 {{count}} 个",
     "starting": "启动中 {{count}} 个",

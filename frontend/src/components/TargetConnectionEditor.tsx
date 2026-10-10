@@ -15,12 +15,10 @@ export default function TargetConnectionEditor({
   value,
   onChange,
   currentConnection,
-  currentVersion,
 }: {
   value?: TargetConnection[];
   onChange: (value: TargetConnection[]) => void;
   currentConnection?: TargetConnectionConfig;
-  currentVersion?: string;
 }) {
   const { t } = useTranslation();
   const targets = value || [];
@@ -82,18 +80,6 @@ export default function TargetConnectionEditor({
               {t('targets.path')}:{' '}
               <code className="hub-mono">{target.path || 'benchmark/category'}</code>
             </p>
-            <label className="sm:col-span-2">
-              {t('targets.version')}
-              <input
-                className={input}
-                aria-label={t('targets.version')}
-                value={target.version ?? ''}
-                maxLength={160}
-                onChange={(e) => patch(index, { version: e.target.value })}
-                placeholder="1.2.3 / git revision / image tag"
-              />
-            </label>
-            <p className="hub-config-note sm:col-span-2">{t('targets.versionHint')}</p>
           </div>
           {target.kind === 'static' && (
             <>
@@ -339,7 +325,6 @@ export default function TargetConnectionEditor({
                 {
                   path: '',
                   kind: 'static',
-                  version: currentVersion,
                   enabled: true,
                   config: structuredClone(currentConnection),
                 },

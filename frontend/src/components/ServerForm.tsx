@@ -820,7 +820,6 @@ const ServerForm = ({
 
         <TargetConnectionEditor
           value={formData.targets}
-          currentVersion={initialData?.packageVersion}
           currentConnection={
             serverType !== 'openapi' &&
             !initialData?.config?.credentialTemplate?.length &&

@@ -55,7 +55,7 @@ embedding credentials. The callback adapter must apply the relay snapshot to its
 
 Different targets of one logical MCP can run different implementations simultaneously.
 Each target has an independent **enabled** switch, optional **implementation** label
-(`native`, `wrapper`, `custom`) and **version** label (up to 160 characters).
+(`native`, `wrapper`, `custom`). The dashboard identifies installed MCP package versions automatically; it does not ask for a manual version label.
 An omitted enabled flag means enabled. Disabled targets reject both new and existing
 callers, including task registrations; they never fall back to another implementation.
 Other targets keep their own configuration and clients. Editing a target retires its
@@ -99,8 +99,7 @@ change. Task runtimes retain their startup snapshot until the adapter creates a 
 ### Runtime inventory
 
 Server management displays each registration's active connection count. Expand a server
-to see configured targets and the live connection inventory: implementation, configured
-version, MCP-reported version, resolved package version where available, connection state,
+to see configured targets and the live connection inventory: implementation, automatically identified MCP package version where available, connection state,
 task ID and lease expiry. `GET /api/servers` returns this metadata as `runtime` for
 administrators and server owners. Shared users do not receive the inventory or other
 applications' task IDs. No transport URL, command, credentials or capability token is
@@ -111,8 +110,7 @@ containers**. A registered task callback is not a successful health check. Conne
 are counted separately. Enabled static targets connect when the Hub starts or their configuration
 is saved and remain connected while idle. Disabled targets and task targets are not started
 automatically. Replaced clients still
-serving calls appear separately as draining. Version labels remain distinct from runtime
-versions; unavailable versions are shown as unknown. The inventory refreshes with the server
+serving calls appear separately as draining. Unavailable package versions are shown as unknown; SDK handshake values are not shown as package versions. The inventory refreshes with the server
 list (normally every 30 seconds, or immediately using Refresh).
 
 ## Task connections (tool-http-v1)
@@ -173,4 +171,4 @@ Arguments, results and full keys are not written to audit logs.
 The editor uses `application/category` paths, for example `atlas/official` or
 `another-benchmark/syn-1`. Both parts are operator-defined. Paths match exactly; slashes
 never imply inheritance. Provider credentials are edited as individual environment rows.
-Version notes describe the configured connection and do not download a package version.
+Pinning a version requires changing the executable or package argument; the version display is read-only.
