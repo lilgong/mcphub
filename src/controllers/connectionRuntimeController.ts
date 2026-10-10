@@ -4,8 +4,9 @@ import { getServerDao } from '../dao/DaoFactory.js';
 import { requireAdmin } from '../utils/requireAdmin.js';
 import { authorizeTargetForCaller } from '../services/targetRuntimeService.js';
 import { supportsFetchRelay } from '../utils/relayCompatibility.js';
+import { expandServerConfig } from '../services/serverConfigEnvironment.js';
 import { getRelayEnvironment } from '../services/atlasConfigService.js';
-/** Credentials for compatible task adapters, never MCP-provider keys. */
+/** Scoped worker setup; provider values require an explicit task-target allowlist. */
 export async function connectionRuntime(req: Request, res: Response): Promise<void> {
   if (!(await requireAdmin(req, res))) return;
   res.setHeader('Cache-Control', 'no-store');
@@ -30,9 +31,20 @@ export async function connectionRuntime(req: Request, res: Response): Promise<vo
     return;
   }
   try {
+    const expanded =
+      target?.kind === 'task' && target.startupEnvKeys?.length
+        ? await expandServerConfig(definition)
+        : undefined;
+    const startupEnv = Object.fromEntries(
+      (target?.kind === 'task' ? (target.startupEnvKeys ?? []) : []).flatMap((name) => {
+        const value = expanded?.env?.[name];
+        return typeof value === 'string' ? [[name, value]] : [];
+      }),
+    );
     res.json({
       success: true,
       data: {
+        ...(target?.kind === 'task' ? { startupEnv } : {}),
         env: await getRelayEnvironment(
           server,
           target?.config?.relay ?? definition.relay,

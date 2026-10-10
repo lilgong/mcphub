@@ -40,6 +40,11 @@ export async function registerTaskConnection(req: Request, res: Response): Promi
       res.status(403).json({ success: false, message: 'Task target not available' });
       return;
     }
+    if (
+      connection.callbackOrigins?.length &&
+      !connection.callbackOrigins.includes(new URL(url).origin)
+    )
+      throw new Error('Callback origin not allowed');
     await assertSafeUrl(url, { allowInternal: true });
     const parsed = new URL(url);
     if (parsed.username || parsed.password || parsed.search || parsed.hash)

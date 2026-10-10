@@ -172,3 +172,28 @@ The editor uses `application/category` paths, for example `atlas/official` or
 `another-benchmark/syn-1`. Both parts are operator-defined. Paths match exactly; slashes
 never imply inheritance. Provider credentials are edited as individual environment rows.
 Pinning a version requires changing the executable or package argument; the version display is read-only.
+
+## Worker startup configuration
+
+For task targets, an administrator may set `startupEnvKeys` to the exact names in
+the parent MCP environment that its authorized worker needs, and `callbackOrigins`
+to the approved worker origins. Example:
+
+```json
+{
+  "path": "project/official",
+  "kind": "task",
+  "startupEnvKeys": ["UPSTREAM_API_KEY"],
+  "callbackOrigins": ["http://host.docker.internal:3500"],
+  "config": { "env": { "MCPHUB_RELAY_ADAPTER": "fetch-v1" } }
+}
+```
+
+`GET /api/servers/{name}/runtime?target=project/official` returns `startupEnv`
+alongside the scoped relay `env`. Only explicitly selected parent environment
+values are published; static connections and other environment values are never
+exported. The response requires live server and target access, and uses
+`Cache-Control: no-store`. Workers pass these values to their isolated processes
+at startup rather than copying them into an environment file. Hub authentication
+variables cannot be included. Changing credentials applies to newly started tasks.
+When `callbackOrigins` is configured, task registration rejects other origins.

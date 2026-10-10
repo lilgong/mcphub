@@ -1047,11 +1047,17 @@ test('user group keys span MCPs, select targets explicitly, and enforce live res
   });
   await serverDao.create({
     name: 'group-task',
+    env: { WORKER_KEY: 'worker-fixture', PRIVATE_KEY: 'never-export' },
     owner: 'admin',
     visibility: 'public',
     enabled: true,
     targets: [
-      { path: 'atlas/official', kind: 'task' },
+      {
+        path: 'atlas/official',
+        kind: 'task',
+        startupEnvKeys: ['WORKER_KEY'],
+        callbackOrigins: [new URL(baseUrl).origin],
+      },
       { path: 'atlas/syn-1', kind: 'task' },
     ],
   });
@@ -1112,6 +1118,18 @@ test('user group keys span MCPs, select targets explicitly, and enforce live res
     await request(app).get('/api/auth/keys').set('x-auth-token', apiToken('admin')).expect(200)
   ).body.data;
   expect(storedKeys.find((entry) => entry.id === key.id).token).not.toBe(key.token);
+  const setup = (
+    await request(app)
+      .get('/api/servers/group-task/runtime?target=atlas/official')
+      .set('Authorization', `Bearer ${key.token}`)
+      .expect(200)
+  ).body.data;
+  expect(setup.startupEnv).toEqual({ WORKER_KEY: 'worker-fixture' });
+  expect(JSON.stringify(setup)).not.toContain('never-export');
+  await request(app)
+    .get('/api/servers/group-task/runtime?target=atlas/syn-1')
+    .set('Authorization', `Bearer ${key.token}`)
+    .expect(403);
   const taskBody = {
     server: 'group-task',
     target: 'atlas/official',
@@ -1119,6 +1137,11 @@ test('user group keys span MCPs, select targets explicitly, and enforce live res
     url: `${baseUrl}/callback`,
     token: 'callback-test',
   };
+  await request(app)
+    .post('/api/task-connections')
+    .set('Authorization', `Bearer ${key.token}`)
+    .send({ ...taskBody, url: 'http://unapproved.example/callback' })
+    .expect(400);
   const lease = (
     await request(app)
       .post('/api/task-connections')

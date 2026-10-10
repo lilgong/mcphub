@@ -376,3 +376,22 @@ test('queued warm targets recheck live configuration before starting a process',
   expect(connect).not.toHaveBeenCalled();
   expect(pool.snapshot('notion')).toEqual([]);
 });
+
+test('task startup credential names and callback origins require explicit valid task configuration', () => {
+  const input = {
+    path: 'suite/official',
+    kind: 'task',
+    startupEnvKeys: ['UPSTREAM_KEY', 'UPSTREAM_KEY'],
+    callbackOrigins: ['http://worker:3500/'],
+  };
+  expect(normalizeTargetConnections([input])?.[0]).toMatchObject({
+    startupEnvKeys: ['UPSTREAM_KEY'],
+    callbackOrigins: ['http://worker:3500'],
+  });
+  expect(() =>
+    normalizeTargetConnections([{ ...input, startupEnvKeys: ['MCPHUB_TOKEN'] }]),
+  ).toThrow();
+  expect(() =>
+    normalizeTargetConnections([{ ...input, callbackOrigins: ['http://user:secret@worker/'] }]),
+  ).toThrow();
+});

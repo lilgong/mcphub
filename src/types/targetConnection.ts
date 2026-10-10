@@ -26,6 +26,10 @@ export interface TargetConnection {
   implementation?: 'native' | 'wrapper' | 'custom';
   /** Operator-declared version or revision; never used to select an executable. */
   version?: string;
+  /** Explicit names in the server environment to deliver to an authorized task worker. */
+  startupEnvKeys?: string[];
+  /** Operator-approved callback origins; these may use private worker addresses. */
+  callbackOrigins?: string[];
   allowedKeyIds?: string[];
   allowedUsers?: string[];
   config?: TargetConnectionConfig;

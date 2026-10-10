@@ -48,6 +48,54 @@ export function normalizeTargetConnections(value: unknown): TargetConnection[] |
         lists[field] = [...new Set(entry[field])];
       }
     }
+    const taskOptions: Pick<TargetConnection, 'startupEnvKeys' | 'callbackOrigins'> = {};
+    if (entry.startupEnvKeys !== undefined) {
+      if (
+        entry.kind !== 'task' ||
+        !Array.isArray(entry.startupEnvKeys) ||
+        entry.startupEnvKeys.length > 100 ||
+        entry.startupEnvKeys.some(
+          (key) =>
+            typeof key !== 'string' ||
+            !/^[A-Za-z_][A-Za-z0-9_]{0,159}$/.test(key) ||
+            key.startsWith('MCPHUB_'),
+        )
+      )
+        throw new ServerConfigValidationError('Invalid task startup environment names');
+      taskOptions.startupEnvKeys = [...new Set(entry.startupEnvKeys)];
+    }
+    if (entry.callbackOrigins !== undefined) {
+      if (
+        entry.kind !== 'task' ||
+        !Array.isArray(entry.callbackOrigins) ||
+        entry.callbackOrigins.length > 100
+      )
+        throw new ServerConfigValidationError('Invalid task callback origins');
+      taskOptions.callbackOrigins = [
+        ...new Set(
+          entry.callbackOrigins.map((value) => {
+            if (typeof value !== 'string')
+              throw new ServerConfigValidationError('Invalid task callback origin');
+            let parsed: URL;
+            try {
+              parsed = new URL(value);
+            } catch {
+              throw new ServerConfigValidationError('Invalid task callback origin');
+            }
+            if (
+              !['http:', 'https:'].includes(parsed.protocol) ||
+              parsed.username ||
+              parsed.password ||
+              parsed.search ||
+              parsed.hash ||
+              parsed.pathname !== '/'
+            )
+              throw new ServerConfigValidationError('Task callbacks require HTTP(S) origins');
+            return parsed.origin;
+          }),
+        ),
+      ];
+    }
     let config: TargetConnection['config'];
     if (entry.kind === 'static') {
       if (!entry.config || typeof entry.config !== 'object' || Array.isArray(entry.config))
@@ -101,6 +149,7 @@ export function normalizeTargetConnections(value: unknown): TargetConnection[] |
       ...(entry.implementation ? { implementation: entry.implementation } : {}),
       ...(entry.version?.trim() ? { version: entry.version.trim() } : {}),
       ...lists,
+      ...taskOptions,
       ...(config ? { config } : {}),
     };
   });
