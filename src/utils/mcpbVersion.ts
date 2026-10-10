@@ -14,6 +14,7 @@ interface Metadata {
   source?: unknown;
   entrypoint?: unknown;
   pythonPackages?: Record<string, unknown>;
+  primaryPackage?: string;
 }
 
 async function json(path: string): Promise<Metadata> {
@@ -22,10 +23,10 @@ async function json(path: string): Promise<Metadata> {
 }
 
 /** Read installed bundle metadata only; never execute a launcher or query a registry. */
-export async function resolveMcpbPackageVersion(config?: {
+export async function resolveMcpbVersions(config?: {
   command?: string;
   args?: string[];
-}): Promise<string | undefined> {
+}): Promise<{ packageVersion?: string; bundleVersion?: string } | undefined> {
   if (!config?.command || basename(config.command) !== 'node' || !config.args?.[0]) return;
   const entry = resolve(config.args[0]);
   let root = dirname(entry);
@@ -45,21 +46,38 @@ export async function resolveMcpbPackageVersion(config?: {
             : source.lastIndexOf('@') > 0
               ? source.slice(0, source.lastIndexOf('@'))
               : source;
-          if (!/^(@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(packageName)) return fallback;
+          if (!/^(@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(packageName))
+            return { bundleVersion: fallback };
           const path = resolve(root, 'server/node_modules', packageName, 'package.json');
-          if (relative(root, path).startsWith('..' + sep)) return fallback;
-          return version((await json(path)).version) ?? fallback;
+          if (relative(root, path).startsWith('..' + sep)) return { bundleVersion: fallback };
+          return { packageVersion: version((await json(path)).version), bundleVersion: fallback };
         }
-        if (runtime.kind === 'python' && typeof runtime.entrypoint === 'string') {
-          const distribution = basename(runtime.entrypoint).toLowerCase().replace(/[_.]+/g, '-');
-          return version(runtime.pythonPackages?.[distribution]) ?? fallback;
+        if (runtime.kind === 'python') {
+          const distribution =
+            runtime.primaryPackage ??
+            (typeof runtime.entrypoint === 'string'
+              ? basename(runtime.entrypoint).toLowerCase().replace(/[_.]+/g, '-')
+              : undefined);
+          return {
+            packageVersion: distribution
+              ? version(runtime.pythonPackages?.[distribution])
+              : undefined,
+            bundleVersion: fallback,
+          };
         }
       } catch {
         // Standard MCPB uploads need not include this optional runtime metadata.
       }
-      return fallback;
+      return { bundleVersion: fallback };
     } catch {
       // Ordinary Node servers need not be MCPB installations.
     }
   }
+}
+
+export async function resolveMcpbPackageVersion(config?: {
+  command?: string;
+  args?: string[];
+}): Promise<string | undefined> {
+  return (await resolveMcpbVersions(config))?.packageVersion;
 }

@@ -14,6 +14,7 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
         )}
       </div>
       <p className="text-xs hub-sub">{t('runtime.description')}</p>
+      <p className="text-xs hub-sub">{t('runtime.reportedVersionHint')}</p>
       {!!runtime.targets.length && (
         <div className="flex flex-wrap gap-2">
           {runtime.targets.map((target) => (
@@ -58,6 +59,7 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
                   'kind',
                   'implementation',
                   'configuredVersion',
+                  'packageVersion',
                   'reportedVersion',
                   'status',
                   'activity',
@@ -86,13 +88,9 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
                     {t(`targets.${instance.implementation ?? 'unspecified'}`)}
                   </td>
                   <td className="px-3 py-2 font-mono">{instance.configuredVersion ?? '—'}</td>
-                  <td className="px-3 py-2 font-mono">
+                  <td className="px-3 py-2 font-mono break-all">{instance.packageVersion ?? '—'}</td>
+                  <td className="px-3 py-2 font-mono break-all" title={t('runtime.reportedVersionHint')}>
                     {instance.reportedVersion ?? '—'}
-                    {instance.packageVersion && (
-                      <div className="mt-1 hub-sub">
-                        {t('runtime.packageVersion')}: {instance.packageVersion}
-                      </div>
-                    )}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <StatusDot

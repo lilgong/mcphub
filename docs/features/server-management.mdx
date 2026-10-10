@@ -26,7 +26,7 @@ MCPHub supports four upstream transports. Pick the one that matches your server 
 
 The server card menu also offers **Duplicate**, which opens the Add Server form prefilled with the source server's configuration under the name `<name>-copy`; OAuth authorization state is not copied.
 
-The collapsed server card displays the installed package version for marketplace runners and uploaded MCPB bundles. For bundles with runtime metadata, MCPHub reads the packaged dependency version; otherwise it uses the bundle manifest version. Remote servers fall back to their MCP-reported version. Existing uploads do not need to be reimported. Showing a version does not enable registry updates for uploaded bundles.
+The collapsed server card displays the installed package version for marketplace runners and uploaded MCPB bundles. For bundles with runtime metadata, MCPHub reads the packaged dependency version; otherwise it displays a separately labeled bundle version. Build metadata is kept in the tooltip, and the badge width is bounded to preserve the server name. Remote servers fall back to their MCP-reported version. The runtime table separates installed package versions from handshake versions, which can be the MCP SDK version. Existing uploads do not need to be reimported. Showing a version does not enable registry updates for uploaded bundles.
 
 ### Via Configuration File
 

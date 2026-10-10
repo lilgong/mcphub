@@ -1,4 +1,4 @@
-import { resolveMcpbPackageVersion } from '../utils/mcpbVersion.js';
+import { resolveMcpbPackageVersion, resolveMcpbVersions } from '../utils/mcpbVersion.js';
 import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
 import { TargetRuntimeService } from './targetRuntimeService.js';
 import { taskConnections } from './taskConnectionService.js';
@@ -2673,8 +2673,8 @@ export const getServersInfo = async (
           oauth,
         }) => {
           const serverConfig = allServers.find((server) => server.name === name);
-          const installedVersion =
-            packageVersion ?? (await resolveMcpbPackageVersion(serverConfig));
+          const bundle = await resolveMcpbVersions(serverConfig);
+          const installedVersion = packageVersion ?? bundle?.packageVersion;
           const enabled = serverConfig ? serverConfig.enabled !== false : true;
           const resolvedType = inferServerType(serverConfig);
           const oauthConnected = Boolean(
@@ -2739,6 +2739,7 @@ export const getServersInfo = async (
             // Runtime state, kept at the top level like `version` so it can never
             // be round-tripped into a persisted ServerConfig.
             ...(installedVersion ? { packageVersion: installedVersion } : {}),
+            ...(bundle?.bundleVersion ? { bundleVersion: bundle.bundleVersion } : {}),
             ...(latestVersion ? { latestVersion } : {}),
             ...(updateAvailable !== undefined ? { updateAvailable } : {}),
             oauth:

@@ -216,12 +216,17 @@ const ServerCard = ({
   const instanceVersions = [...new Set(
     (server.runtime?.instances ?? [])
       .filter((instance) => !instance.draining)
-      .map((instance) => instance.packageVersion || instance.reportedVersion)
+      .map((instance) => instance.packageVersion)
       .filter(Boolean),
   )];
-  const displayVersion = server.packageVersion || server.version ||
+  const installedVersion = server.packageVersion ||
     (instanceVersions.length === 1 ? instanceVersions[0] : undefined);
-  const versionTitle = server.packageVersion ? t('server.packageVersion') : t('runtime.reportedVersion');
+  const displayVersion = installedVersion || server.bundleVersion ||
+    (server.config?.command ? undefined : server.version);
+  const versionTitle = installedVersion ? t('server.packageVersion') :
+    server.bundleVersion ? t('runtime.bundleVersion') : t('runtime.reportedVersion');
+  const compactVersion = displayVersion?.split('+')[0];
+
 
   const handleToggle = async (nextEnabled: boolean) => {
     if (!canManage || isToggling || !onToggle) return;
@@ -556,10 +561,11 @@ const ServerCard = ({
                 flexShrink: 0,
               }}
             />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
                 <span
-                  className="hub-mono truncate"
+                  className="hub-mono min-w-0 flex-1 truncate"
+                  title={server.name}
                   style={{
                     fontSize: 13.5,
                     color: enabled ? 'var(--hub-ink)' : 'var(--hub-ink-3)',
@@ -570,19 +576,19 @@ const ServerCard = ({
                 {displayVersion && (
                   <span
                     className="hub-tag flex-shrink-0"
-                    title={versionTitle}
-                    style={{ fontSize: 11 }}
+                    title={`${versionTitle}: ${displayVersion}`}
+                    style={{ fontSize: 11, maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   >
-                    v{displayVersion}
+                    {!installedVersion && server.bundleVersion ? `${t('runtime.bundleLabel')} ` : ''}v{compactVersion}
                   </span>
                 )}
                 {supportsReinstall && server.updateAvailable && server.latestVersion && (
                   <span
                     className="hub-tag flex-shrink-0"
-                    title={t('server.updateAvailable')}
-                    style={{ fontSize: 11, color: 'var(--hub-warn)' }}
+                    title={`${t('server.updateAvailable')}: ${server.latestVersion}`}
+                    style={{ fontSize: 11, color: 'var(--hub-warn)', maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   >
-                    ↑ {server.latestVersion}
+                    ↑ {server.latestVersion.split('+')[0]}
                   </span>
                 )}
                 {isMcpApp && (

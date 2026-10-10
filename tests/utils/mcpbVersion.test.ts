@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveMcpbPackageVersion } from '../../src/utils/mcpbVersion.js';
+import { resolveMcpbPackageVersion, resolveMcpbVersions } from '../../src/utils/mcpbVersion.js';
 
 describe('installed MCPB versions', () => {
   let root: string;
@@ -44,9 +44,33 @@ describe('installed MCPB versions', () => {
     expect(await resolveMcpbPackageVersion(config(root))).toBe('2025.4.7');
   });
   it('falls back to the standard bundle manifest when runtime metadata is absent or invalid', async () => {
-    expect(await resolveMcpbPackageVersion(config(root))).toBe('0.1.0+delivery');
+    expect(await resolveMcpbPackageVersion(config(root))).toBeUndefined();
+    expect(await resolveMcpbVersions(config(root))).toEqual({ bundleVersion: '0.1.0+delivery' });
     await writeFile(join(root, 'runtime.json'), 'invalid json');
-    expect(await resolveMcpbPackageVersion(config(root))).toBe('0.1.0+delivery');
+    expect(await resolveMcpbPackageVersion(config(root))).toBeUndefined();
+    expect(await resolveMcpbVersions(config(root))).toEqual({ bundleVersion: '0.1.0+delivery' });
+  });
+  it('uses explicit Python package metadata for wrappers without treating the SDK as the package', async () => {
+    await writeFile(
+      join(root, 'runtime.json'),
+      JSON.stringify({
+        kind: 'python',
+        entrypoint: 'compat/wrapper.py',
+        primaryPackage: 'arxiv-mcp-server',
+        pythonPackages: { 'arxiv-mcp-server': '0.6.2', mcp: '1.28.1' },
+      }),
+    );
+    expect(await resolveMcpbPackageVersion(config(root))).toBe('0.6.2');
+  });
+  it('keeps a custom wrapper bundle revision distinct from package and SDK versions', async () => {
+    await writeFile(
+      join(root, 'runtime.json'),
+      JSON.stringify({ kind: 'python', pythonPackages: { mcp: '1.12.1' } }),
+    );
+    expect(await resolveMcpbVersions(config(root))).toEqual({
+      bundleVersion: '0.1.0+delivery',
+      packageVersion: undefined,
+    });
   });
   it('ignores manifests belonging to another entrypoint and ordinary runners', async () => {
     expect(
@@ -61,6 +85,7 @@ describe('installed MCPB versions', () => {
       join(root, 'runtime.json'),
       JSON.stringify({ kind: 'node', source: '../../other@1.0.0' }),
     );
-    expect(await resolveMcpbPackageVersion(config(root))).toBe('0.1.0+delivery');
+    expect(await resolveMcpbPackageVersion(config(root))).toBeUndefined();
+    expect(await resolveMcpbVersions(config(root))).toEqual({ bundleVersion: '0.1.0+delivery' });
   });
 });

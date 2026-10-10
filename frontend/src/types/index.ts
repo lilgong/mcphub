@@ -348,6 +348,7 @@ export interface Server {
   // Resolved npx/uvx package version + registry update hint for stdio servers
   // (#1166). Runtime state at the top level, like `version`.
   packageVersion?: string;
+  bundleVersion?: string;
   latestVersion?: string;
   updateAvailable?: boolean;
   oauth?: {
