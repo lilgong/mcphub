@@ -109,6 +109,8 @@
     "passwordStrengthHint": "Password must be at least 8 characters and contain letters, numbers, and special characters"
   },
   "server": {
+    "sortByName": "Sort by name (A–Z)",
+    "restoreDefaultOrder": "Restore original order",
     "startOnDemand": "Start On Demand",
     "startOnDemandDescription": "Skip startup connect and spawn this server only when a tool call arrives. The process is shut down automatically after the idle timeout, then restarted on the next call. Reduces persistent memory usage for rarely-used servers.",
     "idleTimeoutMs": "Idle shutdown timeout (ms)",

@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Plus, RefreshCw, Search, Upload, FileCode, AlertCircle, X } from 'lucide-react';
+import { Plus, RefreshCw, Search, Upload, FileCode, AlertCircle, X, ArrowDownAZ } from 'lucide-react';
 import { Server } from '@/types';
 import ServerCard from '@/components/ServerCard';
 import AddServerForm from '@/components/AddServerForm';
@@ -53,14 +53,26 @@ const ServersPage: React.FC = () => {
   const [showJsonImport, setShowJsonImport] = useState(false);
   const [filter, setFilter] = useState<ServerFilter>('all');
   const [search, setSearch] = useState('');
+  const [sortByName, setSortByName] = useState(
+    () => localStorage.getItem('mcphub_server_sort') === 'name',
+  );
+  useEffect(() => {
+    localStorage.setItem('mcphub_server_sort', sortByName ? 'name' : 'default');
+  }, [sortByName]);
+  const orderedServers = useMemo(
+    () => sortByName
+      ? [...allServers].sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }))
+      : allServers,
+    [allServers, sortByName],
+  );
 
   const counts = useMemo(() => getServerFilterCounts(allServers), [allServers]);
 
   // Filter against the full list and paginate the filtered result client-side,
   // so status filters reach servers that live on other pagination pages.
   const { servers: visibleServers, pagination: clientPagination } = useMemo(
-    () => selectServerPage(allServers, filter, search, currentPage, serversPerPage),
-    [allServers, filter, search, currentPage, serversPerPage],
+    () => selectServerPage(orderedServers, filter, search, currentPage, serversPerPage),
+    [orderedServers, filter, search, currentPage, serversPerPage],
   );
 
   // Sync currentPage when client-side pagination clamps it (filter/search narrows results).
@@ -268,6 +280,21 @@ const ServersPage: React.FC = () => {
             </button>
           )}
         </div>
+
+        <button
+          type="button"
+          className="hub-icon-btn"
+          title={t(sortByName ? 'server.restoreDefaultOrder' : 'server.sortByName')}
+          aria-label={t('server.sortByName')}
+          aria-pressed={sortByName}
+          style={{ width: 30, height: 30, color: sortByName ? 'var(--hub-accent)' : undefined }}
+          onClick={() => {
+            setSortByName((value) => !value);
+            setCurrentPage(1);
+          }}
+        >
+          <ArrowDownAZ size={16} aria-hidden />
+        </button>
 
         <div className="ml-auto hub-mono text-[12px]" style={{ color: 'var(--hub-ink-3)' }}>
           {clientPagination.total}/{allServers.length}
