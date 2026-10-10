@@ -80,7 +80,7 @@ const cleanupOldMcpbServer = (serverName: string): void => {
     if (fs.existsSync(uploadDir)) {
       const files = fs.readdirSync(uploadDir);
       files.forEach((file) => {
-        if (file.startsWith(serverPattern)) {
+        if (file === serverPattern) {
           const filePath = path.join(uploadDir, file);
           if (fs.statSync(filePath).isDirectory()) {
             fs.rmSync(filePath, { recursive: true, force: true });

@@ -71,6 +71,24 @@ describe('mcpbController - uploadMcpbFile', () => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
+  it('replaces only the exact server directory and preserves servers sharing its prefix', async () => {
+    const uploadDir = path.join(tempRoot, 'data/uploads/mcpb');
+    for (const name of ['weather', 'weather-data', 'weather-1']) {
+      fs.mkdirSync(path.join(uploadDir, `server-${name}`));
+      fs.writeFileSync(path.join(uploadDir, `server-${name}`, 'original.txt'), name);
+    }
+    const { response, json } = createResponse();
+    await uploadMcpbFile(createAdminRequest(createMcpbFile('weather')), response);
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    expect(fs.existsSync(path.join(uploadDir, 'server-weather', 'original.txt'))).toBe(false);
+    expect(fs.existsSync(path.join(uploadDir, 'server-weather', 'server.js'))).toBe(true);
+    for (const name of ['weather-data', 'weather-1']) {
+      expect(fs.readFileSync(path.join(uploadDir, `server-${name}`, 'original.txt'), 'utf8')).toBe(
+        name,
+      );
+    }
+  });
+
   it('rejects manifest names that attempt path traversal', async () => {
     const mcpbFilePath = createMcpbFile('../../../escaped/server');
     const { response, json, status } = createResponse();
@@ -89,7 +107,9 @@ describe('mcpbController - uploadMcpbFile', () => {
     );
     expect(fs.existsSync(escapedDir)).toBe(false);
     expect(fs.existsSync(mcpbFilePath)).toBe(false);
-    expect(fs.readdirSync(uploadDir).filter((file) => file.startsWith('temp-extracted-'))).toHaveLength(0);
+    expect(
+      fs.readdirSync(uploadDir).filter((file) => file.startsWith('temp-extracted-')),
+    ).toHaveLength(0);
   });
 
   it('extracts MCPB files into the upload directory when the manifest name is safe', async () => {
@@ -135,7 +155,9 @@ describe('mcpbController - uploadMcpbFile', () => {
     );
     // The handler must not delete or replace any existing bundle content.
     expect(fs.existsSync(finalExtractDir)).toBe(false);
-    expect(fs.readdirSync(uploadDir).filter((file) => file.startsWith('temp-extracted-'))).toHaveLength(0);
+    expect(
+      fs.readdirSync(uploadDir).filter((file) => file.startsWith('temp-extracted-')),
+    ).toHaveLength(0);
   });
 
   it('rejects uploads when no authenticated identity is present', async () => {
