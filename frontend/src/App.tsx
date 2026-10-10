@@ -16,6 +16,7 @@ const DashboardPage = lazy(() => import('./pages/Dashboard'));
 const CredentialsPage = lazy(() => import('./pages/CredentialsPage'));
 const ServersPage = lazy(() => import('./pages/ServersPage'));
 const GroupsPage = lazy(() => import('./pages/GroupsPage'));
+const UserGroupsPage = lazy(() => import('./pages/UserGroupsPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const MarketPage = lazy(() => import('./pages/MarketPage'));
@@ -78,6 +79,7 @@ function App() {
                       <Route path="/prompts" element={<PromptsPage />} />
                       <Route path="/resources" element={<ResourcesPage />} />
                       <Route path="/users" element={<UsersPage />} />
+                      <Route path="/user-groups" element={<UserGroupsPage />} />
                       <Route path="/market" element={<MarketPage />} />
                       <Route path="/market/:serverName" element={<MarketPage />} />
                       {/* Legacy cloud routes redirect to the local market page */}
@@ -86,7 +88,10 @@ function App() {
                       <Route path="/logs" element={<LogsPage />} />
                       <Route path="/relay" element={<RelayPage />} />
                       <Route path="/atlas" element={<Navigate to="/relay" replace />} />
-                      <Route path="/activity" element={<Navigate to="/logs?view=activity" replace />} />
+                      <Route
+                        path="/activity"
+                        element={<Navigate to="/logs?view=activity" replace />}
+                      />
                       <Route path="/settings" element={<SettingsPage />} />
                     </Route>
                   </Route>

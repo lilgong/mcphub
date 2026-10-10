@@ -11,6 +11,7 @@ import type { ServerConfig } from '../../src/types/index.js';
 let mockDefinition: ServerConfig;
 let mockEnabledKey = true;
 jest.mock('../../src/dao/DaoFactory.js', () => ({
+  getSystemConfigDao: () => ({ get: async () => ({}) }),
   getServerDao: () => ({ findById: async () => mockDefinition }),
   getBearerKeyDao: () => ({
     findById: async () => ({ enabled: mockEnabledKey, kind: 'system', accessType: 'all' }),

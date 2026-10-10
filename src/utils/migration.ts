@@ -165,6 +165,7 @@ export async function migrateToDatabase(seedServersAndGroups = true): Promise<bo
         discovery: settings.systemConfig.discovery || {},
         activityLog: settings.systemConfig.activityLog || {},
         atlas: settings.systemConfig.atlas,
+        userGroups: settings.systemConfig.userGroups,
       };
       await systemConfigRepo.update(systemConfig);
       logger.log('  - System configuration updated');
@@ -182,6 +183,7 @@ export async function migrateToDatabase(seedServersAndGroups = true): Promise<bo
           enabled: key.enabled,
           kind: key.kind ?? 'system',
           owner: key.owner,
+          userGroupId: key.userGroupId,
           accessType: key.accessType,
           allowedGroups: key.allowedGroups ?? [],
           allowedServers: key.allowedServers ?? [],

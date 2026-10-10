@@ -446,7 +446,7 @@
   "nav": {
     "dashboard": "Kontrol Paneli",
     "servers": "Sunucular",
-    "groups": "Gruplar",
+    "groups": "MCP grupları",
     "prompts": "Promptlar",
     "resources": "Kaynaklar",
     "users": "Kullanıcılar",
@@ -1541,7 +1541,7 @@
   },
   "targets": {
     "title": "Hedef bağlantıları",
-    "description": "Her hedefin ayrı sürümü ve kimlik bilgileri vardır. İstemci atlas/official gibi tam yolu belirtmelidir. Otomatik seçim veya geri dönüş yoktur. Tüm hedefler aşağıdaki hız sınırını paylaşır. Erişim listeleri boşsa yalnızca yöneticiler erişebilir.",
+    "description": "Her hedefin bağımsız bağlantısı ve kimlik bilgileri vardır. atlas/official gibi uygulama/kategori yollarını kullanın. İstekler tam yolu belirtmelidir; erişimi Kullanıcı gruplarında yönetin. Tüm hedefler bu MCP’nin hız sınırlarını paylaşır.",
     "path": "Hedef yolu",
     "kind": "Bağlantı türü",
     "static": "Kalıcı MCP bağlantısı",
@@ -1562,8 +1562,8 @@
     "native": "Yerel",
     "wrapper": "Wrapper",
     "custom": "Özel",
-    "version": "Yapılandırılan sürüm / revizyon",
-    "versionHint": "Sürüm bir etikettir. Gerçek sürümü komutta, pakette veya imajda sabitleyin. Etkin sabit hedefler Hub başlarken veya yapılandırma kaydedilirken bağlanır ve boşta da açık kalır. Çağıran tam hedefi seçmelidir.",
+    "version": "Sürüm notu (isteğe bağlı)",
+    "versionHint": "Yalnızca gösterim içindir; sürüm indirmez veya değiştirmez. Gerçek sürümü komut, argümanlar veya uzak hizmet belirler. Örneğin npx argümanı package-name@0.3.0 bu paket sürümünü seçer.",
     "duplicate": "Hedefi kopyala",
     "fromCurrent": "Bağlantıyı ilk hedefe dönüştür (kimlik bilgilerini koru)",
     "optionalTitle": "Birden çok sürüm veya çalışma alanı (isteğe bağlı)",
@@ -1576,7 +1576,10 @@
     "variableName": "Değişken adı",
     "variableValue": "Değişken değeri",
     "removeVariable": "Değişkeni kaldır",
-    "addVariable": "Değişken ekle"
+    "addVariable": "Değişken ekle",
+    "application": "Benchmark / uygulama",
+    "category": "Kategori / çalışma alanı",
+    "accessManagedHint": "Çağrı izinlerini Kullanıcı gruplarında yönetin; hedefi X-MCPHub-Target ile seçin."
   },
   "statistics": {
     "description": "Seçilen ay veya tarih aralığında (UTC) MCP başına tamamlanan araç çağrıları. Her çağrı bir kez sayılır; dahili HTTP denemeleri hariçtir.",
@@ -1621,5 +1624,34 @@
     "expires": "Kira bitişi",
     "empty": "Çalışan örnek yok. Sabit hedefler başlıyor, devre dışı veya bağlantısı başarısız; günlükleri kontrol edin.",
     "multiTarget": "Hedefler"
+  },
+  "userGroups": {
+    "title": "Kullanıcı grupları",
+    "description": "MCP ve hedefleri üyeler ve grup anahtarıyla sınırlandırın. İstekler hedefi X-MCPHub-Target ile seçer.",
+    "add": "Kullanıcı grubu ekle",
+    "name": "Grup adı",
+    "enabled": "Bu grubu etkinleştir",
+    "members": "Üyeler (isteğe bağlı)",
+    "membersHint": "Üyeler kendi kimlik bilgilerini kullanabilir; grup izinleri birleştirilir. Grup anahtarı programlar için bağımsız çalışır. Üyelerin mevcut MCP görünürlük izinlerine de ihtiyacı vardır.",
+    "resources": "İzin verilen sunucular ve hedefler",
+    "resourcesHint": "Kayıtlı MCP’leri seçin. Seçilmeyen sunucular yasaktır. Hedef kısıtlaması açıksa yalnızca seçilen hedeflere izin verilir.",
+    "restrictTargets": "Yalnızca seçilen hedeflere izin ver",
+    "allTargetsHint": "Bu MCP için hedef kısıtlaması yok; X-MCPHub-Target yine gereklidir.",
+    "allTargets": "Tüm hedefler",
+    "noTargets": "Hiçbir hedefe izin verilmedi",
+    "groupKey": "Grup çağrı anahtarı",
+    "sharedKey": "Ortak çağrı anahtarı",
+    "sharedHint": "Gruba bağlı değildir; tüm kullanılabilir MCP’leri çağırır. Hedef başlıkla seçilir. Mevcut ortak anahtarlar kullanılabilir.",
+    "createSharedKey": "Ortak anahtar oluştur",
+    "createKey": "Grup anahtarı oluştur",
+    "tokenOnce": "Tam anahtar yalnızca bir kez gösterilir; kaydedin",
+    "failed": "Yükleme veya kaydetme başarısız. Tekrar deneyin.",
+    "noServers": "Kayıtlı MCP yok. Önce sunucu ekleyin.",
+    "empty": "Grup tanımlı değil; mevcut izinler değişmez.",
+    "memberCount": "{{count}} üye",
+    "serverCount": "{{count}} MCP",
+    "deleteTitle": "Grubu sil",
+    "deleteHint": "Silinen grubun anahtarı çalışmaz; ortak anahtara dönüşmez.",
+    "keyHint": "Bu anahtarın sunucu ve hedef izinlerini Kullanıcı gruplarında yönetin."
   }
 }

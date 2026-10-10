@@ -1,7 +1,8 @@
+import { getUserGroupPolicy, userGroupAllows } from '../services/userGroupService.js';
 import type { Request, Response } from 'express';
 import { getServerDao, getBearerKeyDao } from '../dao/DaoFactory.js';
 import { taskConnections } from '../services/taskConnectionService.js';
-import { authorizeTarget } from '../services/targetRuntimeService.js';
+import { authorizeTargetForCaller } from '../services/targetRuntimeService.js';
 import { assertSafeUrl } from '../utils/ssrf.js';
 import { requireAdmin } from '../utils/requireAdmin.js';
 import { withToolAudit } from '../services/toolAuditService.js';
@@ -34,7 +35,7 @@ export async function registerTaskConnection(req: Request, res: Response): Promi
       !definition ||
       definition.enabled === false ||
       !connection ||
-      !authorizeTarget(connection, identity.user, identity.bearerKey?.id)
+      !(await authorizeTargetForCaller(server, connection, identity.user, identity.bearerKey?.id))
     ) {
       res.status(403).json({ success: false, message: 'Task target not available' });
       return;
@@ -73,6 +74,13 @@ export async function registerTaskConnection(req: Request, res: Response): Promi
 }
 export async function renewTaskConnection(req: Request, res: Response): Promise<void> {
   if (!(await requireAdmin(req, res))) return;
+  const resource = taskConnections.getOwnedResource(String(req.params.id), owner(req));
+  const keyId = (req as Request & { bearerKey?: { id: string } }).bearerKey?.id;
+  const policy = await getUserGroupPolicy(null, keyId);
+  if (!resource || !userGroupAllows(policy, resource.server, resource.target)) {
+    res.status(403).json({ success: false, message: 'Task target not available' });
+    return;
+  }
   const success = taskConnections.renew(String(req.params.id), owner(req));
   res.status(success ? 200 : 404).json({ success });
 }
@@ -111,7 +119,12 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
       !definition ||
       definition.enabled === false ||
       !target ||
-      !authorizeTarget(target, { username: entry.username, isAdmin: true }, entry.keyId) ||
+      !(await authorizeTargetForCaller(
+        entry.server,
+        target,
+        { username: entry.username, isAdmin: true },
+        entry.keyId,
+      )) ||
       (entry.keyId &&
         (!key?.enabled || (key.kind ?? 'system') !== 'system' || key.accessType !== 'all'))
     )

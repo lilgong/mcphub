@@ -1,3 +1,4 @@
+import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
 import type { ServerConfig, ServerInfo } from '../types/index.js';
 import type { RequestPrincipal } from './authorizationService.js';
 import type { TargetConnection } from '../types/targetConnection.js';
@@ -17,6 +18,19 @@ export function authorizeTarget(
       target.allowedUsers?.includes(principal.username)
     );
   return principal.isAdmin === true;
+}
+/** Group permissions constrain every target acquisition, including resident clients. */
+export async function authorizeTargetForCaller(
+  server: string,
+  target: TargetConnection,
+  principal: RequestPrincipal | null | undefined,
+  keyId?: string,
+): Promise<boolean> {
+  const policy = await getUserGroupPolicy(principal ?? null, keyId);
+  if (!userGroupAllows(policy, server, target.path) || target.enabled === false) return false;
+  if (policy.restricted && !target.allowedKeyIds?.length && !target.allowedUsers?.length)
+    return true;
+  return authorizeTarget(target, principal, keyId);
 }
 interface Entry {
   id: string;
@@ -190,7 +204,7 @@ export class TargetRuntimeService {
     }
     if (!validateTargetPath(path)) throw new Error('An explicit X-MCPHub-Target is required');
     const target = definition.targets?.find((value) => value.path === path);
-    if (!target || !authorizeTarget(target, principal, keyId))
+    if (!target || !(await authorizeTargetForCaller(server, target, principal, keyId)))
       throw new Error('Target not available for this caller');
     if (target.kind !== 'static')
       throw new Error('Task targets require a registered task connection');

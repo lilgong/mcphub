@@ -152,6 +152,7 @@ jest.mock('../../src/services/requestContextService.js', () => ({
   RequestContextService: {
     getInstance: jest.fn(() => ({
       getHostedAuthContext: jest.fn(() => null),
+      getHeaders: jest.fn(() => ({})),
       getBearerKeyContext: jest.fn(() => ({})),
       getGroupContext: jest.fn(),
       getUsernameContext: jest.fn(),

@@ -25,6 +25,7 @@
               "features/per-user-credentials",
               "features/target-connections",
               "features/group-management",
+              "features/user-groups",
               "features/smart-routing",
               "features/mcp-apps",
               "features/oauth",

@@ -445,7 +445,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "servers": "Servers",
-    "groups": "Groups",
+    "groups": "MCP groups",
     "prompts": "Prompts",
     "resources": "Resources",
     "users": "Users",
@@ -1544,7 +1544,7 @@
   },
   "targets": {
     "title": "Target connections",
-    "description": "Each target has its own MCP version and credentials. Callers must supply its exact path, e.g. atlas/official; there is no automatic selection or fallback. All targets share the rate limit below. Empty access lists allow administrators only.",
+    "description": "Each target has independent connection settings and credentials. Use application/category paths, such as atlas/official. Requests must specify the exact path; configure access in User groups. All targets share this MCP’s rate limits.",
     "path": "Target path",
     "kind": "Connection kind",
     "static": "Persistent MCP connection",
@@ -1565,8 +1565,8 @@
     "native": "Native",
     "wrapper": "Wrapper",
     "custom": "Custom",
-    "version": "Configured version / revision",
-    "versionHint": "The version is a label. Pin the real version in the command, package path or image. Enabled static targets connect at Hub startup or configuration save and stay connected while idle. Callers must select an exact target; the parent connection is not used.",
+    "version": "Version note (optional)",
+    "versionHint": "Display only; this does not download or switch versions. The command, arguments or remote service determine the actual version. For example, the npx argument package-name@0.3.0 selects that package version.",
     "duplicate": "Copy target",
     "fromCurrent": "Convert the connection below into the first target (keep credentials)",
     "optionalTitle": "Multiple versions or workspaces (optional)",
@@ -1579,7 +1579,10 @@
     "variableName": "Variable name",
     "variableValue": "Variable value",
     "removeVariable": "Remove variable",
-    "addVariable": "Add variable"
+    "addVariable": "Add variable",
+    "application": "Benchmark / application",
+    "category": "Category / workspace",
+    "accessManagedHint": "Manage invocation permissions in User groups; select this target with X-MCPHub-Target."
   },
   "statistics": {
     "description": "Completed tool calls per MCP for the selected month or date range (UTC). Each call counts once; internal HTTP attempts such as key retries are excluded.",
@@ -1624,5 +1627,34 @@
     "expires": "Lease expires",
     "empty": "No running instances. Static targets are starting, disabled or failed to connect; check runtime logs.",
     "multiTarget": "Targets"
+  },
+  "userGroups": {
+    "title": "User groups",
+    "description": "Limit MCPs and targets by members and a group calling key. Requests still select targets through X-MCPHub-Target.",
+    "add": "Add user group",
+    "name": "User group name",
+    "enabled": "Enable this user group",
+    "members": "Members (optional)",
+    "membersHint": "Members may use their own user credentials; permissions from multiple groups are combined. The group calling key works independently for benchmark programs. Members also need existing MCP visibility permissions.",
+    "resources": "Allowed servers and targets",
+    "resourcesHint": "Select registered MCPs. Unselected servers are forbidden. When target restrictions are enabled, only checked targets are allowed.",
+    "restrictTargets": "Allow selected targets only",
+    "allTargetsHint": "No target restriction for this MCP; requests must still supply X-MCPHub-Target.",
+    "allTargets": "All targets",
+    "noTargets": "No targets authorized",
+    "groupKey": "User group calling key",
+    "sharedKey": "Shared calling key",
+    "sharedHint": "Unbound to user groups; calls all available MCPs. The request header still selects the target. Existing shared keys remain usable.",
+    "createSharedKey": "Create shared key",
+    "createKey": "Generate group calling key",
+    "tokenOnce": "The full new key is shown only once; save it now",
+    "failed": "Unable to load or save. Please retry.",
+    "noServers": "No registered MCPs. Add a server first.",
+    "empty": "No user groups configured; existing permissions remain unchanged.",
+    "memberCount": "{{count}} members",
+    "serverCount": "{{count}} MCPs",
+    "deleteTitle": "Delete user group",
+    "deleteHint": "The group key stops working after deletion; it never becomes a shared key.",
+    "keyHint": "Manage this key’s server and target permissions in User groups."
   }
 }

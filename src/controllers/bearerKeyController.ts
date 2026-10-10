@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Request, Response } from 'express';
 import { ApiResponse, BearerKey, BearerKeyAccessType, BearerKeyKind } from '../types/index.js';
-import { getBearerKeyDao, getUserDao } from '../dao/index.js';
+import { getBearerKeyDao, getUserDao, getSystemConfigDao } from '../dao/index.js';
 import { logger } from '../utils/logger.js';
 
 const VALID_ACCESS_TYPES: BearerKeyAccessType[] = ['all', 'groups', 'servers', 'custom'];
@@ -58,7 +58,7 @@ export const getBearerKeys = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-export const createBearerKey = async (req: Request, res: Response): Promise<void> => {
+const createBearerKeyCore = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = getAuthenticatedUser(req);
     if (!user?.username) {
@@ -74,6 +74,7 @@ export const createBearerKey = async (req: Request, res: Response): Promise<void
       accessType,
       allowedGroups,
       allowedServers,
+      userGroupId,
     } = req.body as Partial<BearerKey>;
 
     if (!name || typeof name !== 'string') {
@@ -104,8 +105,30 @@ export const createBearerKey = async (req: Request, res: Response): Promise<void
       return;
     }
 
+    if (
+      userGroupId !== undefined &&
+      (!user.isAdmin ||
+        kind !== 'system' ||
+        typeof userGroupId !== 'string' ||
+        !(await getSystemConfigDao().get()).userGroups?.some((group) => group.id === userGroupId))
+    ) {
+      res.status(400).json({ success: false, message: 'Invalid user group' });
+      return;
+    }
+
+    if (
+      userGroupId &&
+      (await getBearerKeyDao().findAll()).some((key) => key.userGroupId === userGroupId)
+    ) {
+      res
+        .status(409)
+        .json({ success: false, message: 'This user group already has a calling key' });
+      return;
+    }
+
     const key = await getBearerKeyDao().create({
       name: name.trim(),
+      userGroupId,
       token: `mcphub_${randomBytes(32).toString('hex')}`,
       enabled: enabled ?? true,
       kind,
@@ -200,4 +223,14 @@ export const deleteBearerKey = async (req: Request, res: Response): Promise<void
     logger.error('Failed to delete bearer key:', error);
     res.status(500).json({ success: false, message: 'Failed to delete bearer key' });
   }
+};
+
+let groupKeyMutations: Promise<unknown> = Promise.resolve();
+export const createBearerKey = async (req: Request, res: Response): Promise<void> => {
+  if (!req.body?.userGroupId) return createBearerKeyCore(req, res);
+  const operation = groupKeyMutations
+    .catch(() => undefined)
+    .then(() => createBearerKeyCore(req, res));
+  groupKeyMutations = operation;
+  await operation;
 };

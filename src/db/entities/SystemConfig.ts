@@ -48,6 +48,9 @@ export class SystemConfig {
   @Column({ type: 'simple-json', nullable: true })
   activityLog?: Record<string, any>;
 
+  @Column({ type: 'simple-json', nullable: true })
+  userGroups?: import('../../types/userGroup.js').UserGroup[];
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

@@ -1,6 +1,13 @@
 import { TargetRuntimeService } from '../../src/services/targetRuntimeService.js';
 import { normalizeTargetConnections } from '../../src/utils/targetConnection.js';
 import type { ServerInfo, ServerConfig } from '../../src/types/index.js';
+jest.mock('../../src/dao/index.js', () => ({
+  getSystemConfigDao: () => ({ get: async () => ({}) }),
+  getBearerKeyDao: () => ({
+    findById: async (id: string) =>
+      ['key-a', 'key-b'].includes(id) ? { id, kind: 'system', enabled: true } : undefined,
+  }),
+}));
 jest.mock('../../src/services/serverConfigEnvironment.js', () => ({
   expandServerConfig: async (value: unknown) => value,
 }));
@@ -178,15 +185,21 @@ test('disabled targets never spawn and version metadata is validated and round-t
 
 test('a pending connection is starting, and a failed handshake leaves no phantom instance', async () => {
   let fail!: (error: Error) => void;
+  let started!: () => void;
+  const connectionStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
   const pool = new TargetRuntimeService(
     () =>
       new Promise((_resolve, reject) => {
         fail = reject;
+        started();
       }),
     jest.fn(),
   );
   const pending = pool.acquire('notion', definition, 'other/official', principal, 'key-a');
-  await Promise.resolve();
+  // Wait for authorization and config expansion to complete before rejecting the handshake.
+  await connectionStarted;
   expect(pool.snapshot('notion')[0]?.status).toBe('connecting');
   fail(new Error('fixture handshake failed'));
   await expect(pending).rejects.toThrow('handshake');

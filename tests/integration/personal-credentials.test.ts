@@ -1,3 +1,10 @@
+import {
+  registerTaskConnection,
+  renewTaskConnection,
+} from '../../src/controllers/taskConnectionController.js';
+import { connectionRuntime } from '../../src/controllers/connectionRuntimeController.js';
+import { getUserGroups, saveUserGroup } from '../../src/controllers/userGroupController.js';
+import { getBearerKeys, createBearerKey } from '../../src/controllers/bearerKeyController.js';
 import { RequestContextService } from '../../src/services/requestContextService.js';
 import { logger } from '../../src/utils/logger.js';
 import {
@@ -169,6 +176,15 @@ beforeAll(async () => {
   app.delete('/api/credentials/:name', updateMyCredential);
   app.get('/api/servers/:name', getServerConfig);
   app.get('/api/servers', getAllServers);
+  app.post('/api/task-connections', registerTaskConnection);
+  app.put('/api/task-connections/:id', renewTaskConnection);
+  app.get('/api/servers/:name/runtime', connectionRuntime);
+  app.get('/api/user-groups', getUserGroups);
+  app.post('/api/user-groups', saveUserGroup);
+  app.put('/api/user-groups/:id', saveUserGroup);
+  app.delete('/api/user-groups/:id', saveUserGroup);
+  app.get('/api/auth/keys', getBearerKeys);
+  app.post('/api/auth/keys', createBearerKey);
   app.get('/api/groups', getGroups);
   app.get('/api/groups/:id', getGroup);
   app.post('/api/groups', createNewGroup);
@@ -1000,3 +1016,195 @@ test('generic static targets isolate real MCP clients and support both user and 
   // Disabling one target does not alter the other implementation's routing.
   expect(parseIdentity(await b.callTool({ name, arguments: {} })).credential).toBe('target-b');
 });
+
+test('user group keys span MCPs, select targets explicitly, and enforce live restrictions over HTTP', async () => {
+  const serverDao = getServerDao();
+  await serverDao.create({
+    name: 'group-targeted',
+    owner: 'admin',
+    visibility: 'public',
+    enabled: true,
+    targets: ['official', 'syn-1'].map((category) => ({
+      path: `atlas/${category}`,
+      kind: 'static' as const,
+      config: {
+        type: 'stdio' as const,
+        command: process.execPath,
+        args: [fixture],
+        env: { PERSONAL_KEY: category },
+      },
+    })),
+  });
+  await serverDao.create({
+    name: 'group-ordinary',
+    owner: 'admin',
+    visibility: 'public',
+    enabled: true,
+    type: 'stdio',
+    command: process.execPath,
+    args: [fixture],
+    env: { PERSONAL_KEY: 'ordinary' },
+  });
+  await serverDao.create({
+    name: 'group-task',
+    owner: 'admin',
+    visibility: 'public',
+    enabled: true,
+    targets: [
+      { path: 'atlas/official', kind: 'task' },
+      { path: 'atlas/syn-1', kind: 'task' },
+    ],
+  });
+  await initializeClientsFromSettings(true);
+  const combo = await getGroupDao().create({
+    name: 'group-combo',
+    servers: ['group-targeted', 'group-ordinary'],
+    visibility: 'public',
+  });
+  const body = {
+    name: 'Atlas access',
+    enabled: true,
+    members: [alice],
+    servers: [
+      { name: 'group-targeted', targets: ['atlas/official'] },
+      { name: 'group-ordinary' },
+      { name: 'group-task', targets: ['atlas/official'] },
+    ],
+  };
+  await request(app)
+    .post('/api/user-groups')
+    .set('x-auth-token', apiToken(alice))
+    .send(body)
+    .expect(403);
+  await request(app)
+    .post('/api/user-groups')
+    .set('x-auth-token', apiToken('admin'))
+    .send({ ...body, servers: [{ name: 'group-targeted', targets: ['unknown/default'] }] })
+    .expect(400);
+  const group = (
+    await request(app)
+      .post('/api/user-groups')
+      .set('x-auth-token', apiToken('admin'))
+      .send(body)
+      .expect(201)
+  ).body.data;
+  const keyBody = {
+    name: 'Atlas calling key',
+    kind: 'system',
+    accessType: 'all',
+    enabled: true,
+    userGroupId: group.id,
+  };
+  const key = (
+    await request(app)
+      .post('/api/auth/keys')
+      .set('x-auth-token', apiToken('admin'))
+      .send(keyBody)
+      .expect(201)
+  ).body.data;
+  await request(app)
+    .post('/api/auth/keys')
+    .set('x-auth-token', apiToken('admin'))
+    .send(keyBody)
+    .expect(409);
+  await request(app).get('/api/servers').set('Authorization', `Bearer ${key.token}`).expect(401);
+  const storedKeys = (
+    await request(app).get('/api/auth/keys').set('x-auth-token', apiToken('admin')).expect(200)
+  ).body.data;
+  expect(storedKeys.find((entry) => entry.id === key.id).token).not.toBe(key.token);
+  const taskBody = {
+    server: 'group-task',
+    target: 'atlas/official',
+    taskId: 'atlas-task',
+    url: `${baseUrl}/callback`,
+    token: 'callback-test',
+  };
+  const lease = (
+    await request(app)
+      .post('/api/task-connections')
+      .set('Authorization', `Bearer ${key.token}`)
+      .send(taskBody)
+      .expect(200)
+  ).body.data;
+  await request(app)
+    .post('/api/task-connections')
+    .set('Authorization', `Bearer ${key.token}`)
+    .send({ ...taskBody, taskId: 'wrong-task', target: 'atlas/syn-1' })
+    .expect(403);
+  await request(app)
+    .put(`/api/task-connections/${lease.id}`)
+    .set('Authorization', `Bearer ${key.token}`)
+    .expect(200);
+  await request(app)
+    .get('/api/servers/shared/runtime')
+    .set('Authorization', `Bearer ${key.token}`)
+    .expect(403);
+  const connectKey = async (token: string, route: string, target?: string) => {
+    const client = new Client({ name: 'group-access-e2e', version: '1' });
+    clients.push(client);
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp/${route}`), {
+        requestInit: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(target ? { 'X-MCPHub-Target': target } : {}),
+          },
+        },
+      }),
+    );
+    return client;
+  };
+  const client = await connectKey(key.token, combo.name, 'atlas/official');
+  const tools = (await client.listTools()).tools;
+  const targeted = tools.find((tool) => tool.name.startsWith('group-targeted'))!;
+  const ordinary = tools.find((tool) => tool.name.startsWith('group-ordinary'))!;
+  expect(targeted).toBeDefined();
+  expect(ordinary).toBeDefined();
+  expect(
+    parseIdentity(await client.callTool({ name: targeted.name, arguments: {} })).credential,
+  ).toBe('official');
+  expect(
+    parseIdentity(await client.callTool({ name: ordinary.name, arguments: {} })).credential,
+  ).toBe('ordinary');
+  await expect(connectKey(key.token, 'group-targeted', 'atlas/syn-1')).rejects.toThrow();
+  await expect(connectKey(key.token, 'shared', 'atlas/official')).rejects.toThrow();
+  const sharedKey = await getBearerKeyDao().create({
+    name: 'common',
+    token: 'group-e2e-common',
+    kind: 'system',
+    enabled: true,
+    accessType: 'all',
+  });
+  const unrestricted = await connectKey(sharedKey.token, 'group-targeted', 'atlas/syn-1');
+  const sharedTool = (await unrestricted.listTools()).tools[0];
+  expect(
+    parseIdentity(await unrestricted.callTool({ name: sharedTool.name, arguments: {} })).credential,
+  ).toBe('syn-1');
+  await request(app)
+    .put(`/api/user-groups/${group.id}`)
+    .set('x-auth-token', apiToken('admin'))
+    .send({ ...body, enabled: false })
+    .expect(200);
+  await expect(client.callTool({ name: ordinary.name, arguments: {} })).rejects.toThrow();
+  await request(app)
+    .put(`/api/user-groups/${group.id}`)
+    .set('x-auth-token', apiToken('admin'))
+    .send(body)
+    .expect(200);
+  // A group edit revokes an existing session before another upstream call.
+  await request(app)
+    .put(`/api/user-groups/${group.id}`)
+    .set('x-auth-token', apiToken('admin'))
+    .send({ ...body, servers: [{ name: 'group-ordinary' }] })
+    .expect(200);
+  await expect(client.callTool({ name: targeted.name, arguments: {} })).rejects.toThrow();
+  await request(app)
+    .put(`/api/task-connections/${lease.id}`)
+    .set('Authorization', `Bearer ${key.token}`)
+    .expect(403);
+  await request(app)
+    .delete(`/api/user-groups/${group.id}`)
+    .set('x-auth-token', apiToken('admin'))
+    .expect(200);
+  await expect(connectKey(key.token, 'group-ordinary')).rejects.toThrow();
+}, 30000);

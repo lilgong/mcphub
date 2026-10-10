@@ -4,7 +4,7 @@ import {
   supportsFetchRelay,
   isRelayEnvironmentVariable,
 } from '../../../src/utils/relayCompatibility';
-import { Layers, Plus } from 'lucide-react';
+import { Layers, Plus, X } from 'lucide-react';
 import ConfigurationSection from './ConfigurationSection';
 import { getKeyPoolProvider, isPooledCredential } from '../../../src/utils/keyPoolCompatibility';
 import { useTranslation } from 'react-i18next';
@@ -49,97 +49,60 @@ export default function TargetConnectionEditor({
               />
             </label>
             <label>
-              {t('targets.path')}
+              {t('targets.application')}
               <input
-                aria-label={`${t('targets.path')} ${index + 1}`}
                 className={input}
-                value={target.path}
-                onChange={(e) => patch(index, { path: e.target.value })}
-                placeholder="atlas / atlas/official / other-benchmark"
+                aria-label={`${t('targets.application')} ${index + 1}`}
+                value={target.path.split('/')[0] ?? ''}
+                placeholder="atlas"
+                pattern="[A-Za-z0-9_-]+"
+                required
+                onChange={(e) =>
+                  patch(index, {
+                    path: `${e.target.value}/${target.path.split('/').slice(1).join('/')}`,
+                  })
+                }
               />
             </label>
             <label>
+              {t('targets.category')}
+              <input
+                className={input}
+                aria-label={`${t('targets.category')} ${index + 1}`}
+                value={target.path.split('/').slice(1).join('/')}
+                placeholder="official / syn-1 / default"
+                pattern="[A-Za-z0-9_-]+"
+                required
+                onChange={(e) =>
+                  patch(index, { path: `${target.path.split('/')[0] ?? ''}/${e.target.value}` })
+                }
+              />
+            </label>
+            <p className="hub-config-note sm:col-span-2">
+              {t('targets.path')}:{' '}
+              <code className="hub-mono">{target.path || 'benchmark/category'}</code>
+            </p>
+            <label className="sm:col-span-2">
               {t('targets.version')}
               <input
                 className={input}
+                aria-label={t('targets.version')}
                 value={target.version ?? ''}
                 maxLength={160}
                 onChange={(e) => patch(index, { version: e.target.value })}
                 placeholder="1.2.3 / git revision / image tag"
               />
             </label>
-            <details className="hub-config-advanced sm:col-span-2">
-              <summary>{t('targets.accessAdvanced')}</summary>
-              <p className="hub-config-note">{t('targets.accessHint')}</p>
-              <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
-                <label>
-                  {t('targets.kind')}
-                  <select
-                    className={input}
-                    value={target.kind}
-                    onChange={(e) => {
-                      const kind = e.target.value as TargetConnection['kind'];
-                      patch(index, {
-                        kind,
-                        ...(kind === 'task' &&
-                        (supportsFetchRelay(target.config ?? {}) ||
-                          supportsFetchRelay(currentConnection ?? {}))
-                          ? {
-                              config: {
-                                ...target.config,
-                                env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' },
-                              },
-                            }
-                          : {}),
-                      });
-                    }}
-                  >
-                    <option value="static">{t('targets.static')}</option>
-                    <option value="task">{t('targets.task')}</option>
-                  </select>
-                </label>
-                <label>
-                  {t('targets.allowedKeys')}
-                  <textarea
-                    className={input}
-                    value={target.allowedKeyIds?.join('\n') || ''}
-                    onChange={(e) =>
-                      patch(index, {
-                        allowedKeyIds: e.target.value
-                          .split('\n')
-                          .map((v) => v.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  {t('targets.allowedUsers')}
-                  <textarea
-                    className={input}
-                    value={target.allowedUsers?.join('\n') || ''}
-                    onChange={(e) =>
-                      patch(index, {
-                        allowedUsers: e.target.value
-                          .split('\n')
-                          .map((v) => v.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                  />
-                </label>
-              </div>
-            </details>
+            <p className="hub-config-note sm:col-span-2">{t('targets.versionHint')}</p>
           </div>
           {target.kind === 'static' && (
             <>
-              <details className="hub-config-advanced">
-                <summary>{t('targets.connectionAdvanced')}</summary>
-                <p className="hub-config-note">{t('targets.connectionHint')}</p>
-                <label className="block text-xs text-[var(--hub-ink-2)]">
-                  {t('targets.transport')}
+              <div className="space-y-4">
+                <label className="hub-field">
+                  <span className="hub-label">{t('server.type')}</span>
                   <select
-                    className={`${input} mt-1.5`}
+                    className={input}
+                    aria-label={t('server.type')}
                     value={target.config?.type || 'streamable-http'}
                     onChange={(e) =>
                       patch(index, {
@@ -150,15 +113,15 @@ export default function TargetConnectionEditor({
                       })
                     }
                   >
-                    <option value="streamable-http">HTTP MCP</option>
-                    <option value="sse">SSE MCP</option>
-                    <option value="stdio">stdio MCP</option>
+                    <option value="stdio">{t('server.typeStdio')}</option>
+                    <option value="sse">{t('server.typeSse')}</option>
+                    <option value="streamable-http">{t('server.typeStreamableHttp')}</option>
                   </select>
                 </label>
                 {target.config?.type === 'stdio' ? (
-                  <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
-                    <label>
-                      {t('targets.command')}
+                  <>
+                    <label className="hub-field">
+                      <span className="hub-label">{t('server.command')}</span>
                       <input
                         className={input}
                         value={target.config.command || ''}
@@ -167,22 +130,65 @@ export default function TargetConnectionEditor({
                         }
                       />
                     </label>
-                    <label>
-                      {t('targets.args')}
-                      <textarea
-                        className={input}
-                        value={target.config.args?.join('\n') || ''}
-                        onChange={(e) =>
-                          patch(index, {
-                            config: { ...target.config, args: e.target.value.split('\n') },
-                          })
-                        }
-                      />
-                    </label>
-                  </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="hub-label">{t('server.arguments')}</span>
+                        <button
+                          type="button"
+                          className="hub-btn sm"
+                          onClick={() =>
+                            patch(index, {
+                              config: {
+                                ...target.config,
+                                args: [...(target.config?.args ?? []), ''],
+                              },
+                            })
+                          }
+                        >
+                          <Plus size={14} aria-hidden />
+                          {t('server.addArgument')}
+                        </button>
+                      </div>
+                      <p className="hub-config-note">{t('server.argumentsHint')}</p>
+                      {(target.config.args ?? []).map((arg, argumentIndex) => (
+                        <div key={argumentIndex} className="flex items-center gap-2">
+                          <input
+                            className={input}
+                            aria-label={t('server.argumentLabel', { index: argumentIndex + 1 })}
+                            value={arg}
+                            onChange={(e) =>
+                              patch(index, {
+                                config: {
+                                  ...target.config,
+                                  args: target.config?.args?.map((value, i) =>
+                                    i === argumentIndex ? e.target.value : value,
+                                  ),
+                                },
+                              })
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="hub-icon-btn shrink-0"
+                            aria-label={t('server.removeArgument', { index: argumentIndex + 1 })}
+                            onClick={() =>
+                              patch(index, {
+                                config: {
+                                  ...target.config,
+                                  args: target.config?.args?.filter((_, i) => i !== argumentIndex),
+                                },
+                              })
+                            }
+                          >
+                            <X size={16} aria-hidden />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 ) : (
-                  <label className="block text-xs text-[var(--hub-ink-2)]">
-                    URL
+                  <label className="hub-field">
+                    <span className="hub-label">URL</span>
                     <input
                       className={input}
                       value={target.config?.url || ''}
@@ -192,7 +198,7 @@ export default function TargetConnectionEditor({
                     />
                   </label>
                 )}
-              </details>
+              </div>
               {target.config?.type === 'stdio' && (
                 <KeyPoolEditor
                   provider={getKeyPoolProvider(target.config ?? {})}
@@ -205,8 +211,10 @@ export default function TargetConnectionEditor({
                   ? (['env'] as const)
                   : (['headers'] as const)
                 ).map((field) => (
-                  <label key={field} className="sm:col-span-2">
-                    {t(`targets.${field}`)}
+                  <div key={field} className="hub-field sm:col-span-2">
+                    <span className="hub-label">
+                      {t(field === 'env' ? 'server.envVars' : 'server.headers')}
+                    </span>
                     <p className="hub-sub text-xs">
                       {t(field === 'env' ? 'server.connectionEnvHint' : 'targets.headersHint')}
                     </p>
@@ -248,7 +256,7 @@ export default function TargetConnectionEditor({
                         })
                       }
                     />
-                  </label>
+                  </div>
                 ))}
               </div>
               <ServiceControls
@@ -276,7 +284,8 @@ export default function TargetConnectionEditor({
               }
             />
           )}
-          <p className="hub-config-note">{t('targets.versionHint')}</p>
+          <p className="hub-config-note">{t('targets.accessManagedHint')}</p>
+
           <button
             type="button"
             className="hub-btn mr-2 mb-2"
@@ -363,9 +372,12 @@ function ConnectionVariables({
   return (
     <div className="space-y-2">
       {rows.map(([key, val], index) => (
-        <div key={index} className="flex items-center gap-2">
+        <div
+          key={index}
+          className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_30px] items-center gap-2"
+        >
           <input
-            className="hub-input min-w-0 !w-1/2"
+            className="hub-input min-w-0"
             aria-label={`${t('targets.variableName')} ${index + 1}`}
             value={key}
             placeholder="NAME"
@@ -386,11 +398,11 @@ function ConnectionVariables({
           />
           <button
             type="button"
-            className="hub-btn danger"
+            className="hub-icon-btn shrink-0"
             aria-label={`${t('targets.removeVariable')} ${index + 1}`}
             onClick={() => update(rows.filter((_, i) => i !== index))}
           >
-            −
+            <X size={16} aria-hidden />
           </button>
         </div>
       ))}

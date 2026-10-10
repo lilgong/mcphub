@@ -1,0 +1,46 @@
+---
+title: 'User groups and calling Keys'
+description: 'Grant one application access to selected MCP servers and exact targets.'
+---
+
+Administrators manage **User groups** in the dashboard. These are access-control groups,
+separate from **MCP groups**, which aggregate servers and tools behind one MCP route.
+
+1. Add a user group and choose its registered MCP servers.
+2. Optionally restrict a server to selected configured targets. Without a target restriction,
+   all of that server's targets are allowed; an empty restricted selection allows none.
+3. Optionally select dashboard users. A member's user-level Key receives the union of their
+   enabled groups, subject to existing server visibility and credential rules.
+4. Generate the group's calling Key and save the complete token shown once. One group has
+   one Key; it can call all selected servers. Manage its name, enabled state, or deletion in
+   Settings. Delete the old Key before creating a replacement.
+
+A group Key uses only its own group's permissions, regardless of user memberships.
+An unbound system Key with all-access scope remains a shared/operator Key; User groups
+also offers an explicit button to create one. Existing scoped Keys keep their restrictions.
+
+For target-managed servers, include the exact target on every MCP request:
+
+```http
+POST /mcp/slack
+Authorization: Bearer MCPHUB_GROUP_KEY
+X-MCPHub-Target: atlas/official
+Content-Type: application/json
+```
+
+Target selection is independent of the calling Key. The editor uses
+`application/category`: `atlas/official`, `atlas/syn-1`, `other-benchmark/default`.
+The Hub does not interpret these labels or route to another target when a target is
+missing, unknown, disabled, or forbidden. Ordinary single connections do not require this
+header. Provider API Keys belong to the MCP connection; group Keys authenticate Hub clients.
+
+Permissions are checked against live configuration, including established sessions.
+Removing access or disabling a group blocks subsequent requests. Deleting a group leaves
+its Key bound to the deleted group and denied; it never becomes a shared Key. Disabled
+membership groups also deny access until enabled or the membership is explicitly removed.
+Administrator identities retain management access. Legacy explicit target access lists
+remain additional restrictions.
+
+Group Keys cannot access general dashboard management APIs. They can register task
+callbacks for allowed resources, renew/remove their own leases, and read the scoped relay
+runtime snapshot. See [Target connections](/features/target-connections).

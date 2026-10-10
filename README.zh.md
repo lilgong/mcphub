@@ -42,6 +42,7 @@ MCPHub 是 AI 客户端与 MCP 服务器之间的统一控制点。一次连接�
 - **OAuth 2.0 支持** ⭐ - 客户端和服务端模式，实现安全认证 ([了解更多](https://docs.mcphub.app/zh/features/oauth))
 - **社交一键登录** - 通过 Better Auth 集成支持 GitHub 和 Google 快捷登录（需启用数据库模式）
 - **服务器与分组管理** - 组织服务器分组，管理可见性，并控制 Tool、Prompt 与 Resource 的暴露范围
+- **用户分组与目标权限** - 一个调用 Key 可访问组内选定的 MCP 和目标，通过 `X-MCPHub-Target` 指定目标。详见[用户分组](docs/features/user-groups.mdx)。
 
 ### 稳定运行
 

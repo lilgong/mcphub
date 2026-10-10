@@ -1,3 +1,5 @@
+import type { UserGroup } from './userGroup.js';
+export type { UserGroup, UserGroupResource } from './userGroup.js';
 import type { ServiceRateLimit, FetchRelayConfig } from './serviceControls.js';
 import type { AtlasConfig } from './atlas.js';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
@@ -254,6 +256,7 @@ export interface ToolResultCompressionConfig {
 }
 
 export interface SystemConfig {
+  userGroups?: UserGroup[];
   atlas?: AtlasConfig;
   routing?: {
     enableGlobalRoute?: boolean; // Controls whether the /sse endpoint without group is enabled
@@ -383,6 +386,8 @@ export type BearerKeyAccessType = 'all' | 'groups' | 'servers' | 'custom';
 export type BearerKeyKind = 'system' | 'user';
 
 export interface BearerKey {
+  /** An optional user group limits this key on every MCP request. */
+  userGroupId?: string;
   id: string; // Unique identifier for the key
   name: string; // Human readable key name
   token: string; // Bearer token value

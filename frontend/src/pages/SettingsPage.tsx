@@ -74,7 +74,7 @@ const BearerKeyRow: React.FC<BearerKeyRowProps> = ({
   }, [keyData, isEditing]);
 
   const { showToast } = useToast();
-  const isSystemKey = (keyData.kind ?? 'system') === 'system';
+  const isSystemKey = (keyData.kind ?? 'system') === 'system' && !keyData.userGroupId;
 
   const handleSave = async () => {
     if (isSystemKey && accessType === 'groups' && selectedGroups.length === 0) {
@@ -128,6 +128,7 @@ const BearerKeyRow: React.FC<BearerKeyRowProps> = ({
 
   // Helper function to format access type display text
   const formatAccessTypeDisplay = (key: BearerKey): string => {
+    if (key.userGroupId) return t('userGroups.groupKey');
     if ((key.kind ?? 'system') === 'user') {
       return `${t('settings.bearerKeyAccessUserVisibility') || 'User visibility'}${key.owner ? ` · ${key.owner}` : ''}`;
     }

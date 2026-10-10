@@ -19,9 +19,12 @@ may resolve a configured Hub environment variable.
 
 Supply `X-MCPHub-Target: project/official` on **every** MCP request, including
 initialization and tool discovery. Missing, unknown and unauthorized targets are rejected.
-Targets can allow specific Bearer Key **IDs** or usernames; empty access lists permit
-administrators only. Parent-server visibility and ordinary Bearer Key scope still apply.
-An explicit access list also applies to administrators. Target routing does not rename tools. Target connections use their explicitly configured
+Administrators configure access in **User groups**: choose registered MCPs, optionally
+restrict their targets, and generate one calling Key for the entire group. The Key grants
+access; `X-MCPHub-Target` chooses the destination. A group Key does not select a target.
+Parent-server visibility and ordinary Bearer Key scope still apply. Legacy explicit target
+Key-ID or username lists remain additional restrictions; unrestricted targets accept an
+authorized group Key or group member. See [User groups](/features/user-groups). Target routing does not rename tools. Target connections use their explicitly configured
 credentials; automatic upstream OAuth enrollment is disabled for targets to prevent
 sharing one logical server's OAuth state across workspaces. Configure a target-specific
 Authorization header when the upstream requires an access token.
@@ -121,7 +124,9 @@ A task adapter starts its own isolated runtime and publishes two authenticated H
   → `{ "content": [...], "isError": false }` (or `isError: true` for tool errors).
 
 Configure a target with `kind: "task"`. An operator with a system all-access Bearer Key
-or dashboard administrator identity registers the callback:
+or dashboard administrator identity registers the callback. A user-group Key may also
+register callbacks for its allowed MCPs and targets, renew or remove its own leases, and
+read the scoped relay runtime snapshot. It cannot manage servers or Hub settings:
 
 ```http
 POST /api/task-connections
@@ -165,8 +170,7 @@ Target paths and task IDs still identify connections in logs and runtime invento
 Enable `MCPHUB_AUDIT_LOG_DIR` to persist the tool records used for these statistics.
 Arguments, results and full keys are not written to audit logs.
 
-Target names may be a single identifier (`atlas`) or an exact slash-separated name
-(`atlas/official`, `other/suite/workspace`). Slashes are optional and never imply
-inheritance. Creating another workspace copies the existing MCP launch settings;
-provider credentials are edited as individual environment-variable rows.
-Hub client access IDs are separate from provider credentials and live in advanced settings.
+The editor uses `application/category` paths, for example `atlas/official` or
+`another-benchmark/syn-1`. Both parts are operator-defined. Paths match exactly; slashes
+never imply inheritance. Provider credentials are edited as individual environment rows.
+Version notes describe the configured connection and do not download a package version.

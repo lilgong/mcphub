@@ -446,7 +446,7 @@
   "nav": {
     "dashboard": "Tableau de bord",
     "servers": "Serveurs",
-    "groups": "Groupes",
+    "groups": "Groupes MCP",
     "prompts": "Prompts",
     "resources": "Ressources",
     "users": "Utilisateurs",
@@ -1542,7 +1542,7 @@
   },
   "targets": {
     "title": "Connexions cibles",
-    "description": "Chaque cible possède sa version et ses identifiants. Le client doit fournir le chemin exact, par exemple atlas/official. Aucun choix ou repli automatique. Toutes les cibles partagent la limite ci-dessous. Listes vides : administrateurs uniquement.",
+    "description": "Chaque cible possède sa connexion et ses identifiants. Utilisez un chemin application/catégorie, par exemple atlas/official. Chaque requête doit préciser le chemin exact ; les groupes d’utilisateurs contrôlent l’accès. Toutes les cibles partagent les limites de ce MCP.",
     "path": "Chemin cible",
     "kind": "Type de connexion",
     "static": "Connexion MCP permanente",
@@ -1563,8 +1563,8 @@
     "native": "Native",
     "wrapper": "Wrapper",
     "custom": "Personnalisée",
-    "version": "Version / révision configurée",
-    "versionHint": "La version est une étiquette. Fixez la version réelle dans la commande, le paquet ou l’image. Les cibles fixes activées se connectent au démarrage ou à l’enregistrement et restent actives. L’appelant doit sélectionner une cible exacte.",
+    "version": "Note de version (facultatif)",
+    "versionHint": "Affichage uniquement : ne télécharge ni ne change la version. La commande, les arguments ou le service distant déterminent la version réelle. Par exemple, l’argument npx package-name@0.3.0 sélectionne cette version du paquet.",
     "duplicate": "Copier la cible",
     "fromCurrent": "Convertir la connexion en première cible (conserver les identifiants)",
     "optionalTitle": "Plusieurs versions ou espaces (facultatif)",
@@ -1577,7 +1577,10 @@
     "variableName": "Nom de variable",
     "variableValue": "Valeur de variable",
     "removeVariable": "Supprimer la variable",
-    "addVariable": "Ajouter une variable"
+    "addVariable": "Ajouter une variable",
+    "application": "Benchmark / application",
+    "category": "Catégorie / espace de travail",
+    "accessManagedHint": "Gérez les droits dans Groupes d’utilisateurs ; X-MCPHub-Target choisit cette cible."
   },
   "statistics": {
     "description": "Appels d’outils terminés par MCP pour le mois ou la période sélectionnée (UTC). Chaque appel compte une fois ; les tentatives HTTP internes sont exclues.",
@@ -1622,5 +1625,34 @@
     "expires": "Expiration du bail",
     "empty": "Aucune instance active. Les cibles fixes démarrent, sont désactivées ou ont échoué ; consultez les journaux.",
     "multiTarget": "Cibles"
+  },
+  "userGroups": {
+    "title": "Groupes d’utilisateurs",
+    "description": "Limitez les MCP et les cibles par membres et clé du groupe. X-MCPHub-Target choisit toujours la cible.",
+    "add": "Ajouter un groupe",
+    "name": "Nom du groupe",
+    "enabled": "Activer ce groupe",
+    "members": "Membres (facultatif)",
+    "membersHint": "Les membres peuvent utiliser leurs propres identifiants ; les droits de leurs groupes sont cumulés. La clé du groupe fonctionne indépendamment. Les permissions de visibilité du MCP restent nécessaires.",
+    "resources": "Serveurs et cibles autorisés",
+    "resourcesHint": "Choisissez les MCP enregistrés. Les serveurs non cochés sont interdits. Si la restriction des cibles est activée, seules les cibles cochées sont autorisées.",
+    "restrictTargets": "Autoriser seulement les cibles choisies",
+    "allTargetsHint": "Aucune restriction de cible pour ce MCP ; X-MCPHub-Target reste obligatoire.",
+    "allTargets": "Toutes les cibles",
+    "noTargets": "Aucune cible autorisée",
+    "groupKey": "Clé d’appel du groupe",
+    "sharedKey": "Clé d’appel partagée",
+    "sharedHint": "Sans groupe : accès à tous les MCP disponibles. L’en-tête choisit la cible. Les clés partagées existantes restent utilisables.",
+    "createSharedKey": "Créer une clé partagée",
+    "createKey": "Générer la clé du groupe",
+    "tokenOnce": "La clé complète ne s’affiche qu’une fois ; enregistrez-la",
+    "failed": "Échec du chargement ou de l’enregistrement. Réessayez.",
+    "noServers": "Aucun MCP enregistré. Ajoutez un serveur.",
+    "empty": "Aucun groupe configuré ; les permissions existantes sont conservées.",
+    "memberCount": "{{count}} membres",
+    "serverCount": "{{count}} MCP",
+    "deleteTitle": "Supprimer le groupe",
+    "deleteHint": "La clé du groupe cesse de fonctionner après suppression ; elle ne devient jamais partagée.",
+    "keyHint": "Gérez les serveurs et cibles de cette clé dans Groupes d’utilisateurs."
   }
 }

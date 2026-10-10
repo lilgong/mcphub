@@ -35,6 +35,7 @@ export class SystemConfigDaoDbImpl implements SystemConfigDao {
       discovery: config.discovery as any,
       activityLog: config.activityLog as any,
       atlas: config.atlas as any,
+      userGroups: config.userGroups ?? undefined,
     };
   }
 
@@ -54,6 +55,7 @@ export class SystemConfigDaoDbImpl implements SystemConfigDao {
       discovery: updated.discovery as any,
       activityLog: updated.activityLog as any,
       atlas: updated.atlas as any,
+      userGroups: updated.userGroups ?? undefined,
     };
   }
 
@@ -73,6 +75,7 @@ export class SystemConfigDaoDbImpl implements SystemConfigDao {
       discovery: config.discovery as any,
       activityLog: config.activityLog as any,
       atlas: config.atlas as any,
+      userGroups: config.userGroups ?? undefined,
     };
   }
 

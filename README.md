@@ -42,6 +42,7 @@ Custom MCP implementations and dependencies can be imported as independent MCPB 
 - **OAuth 2.0 Support** ⭐ - Both client and server modes for secure authentication ([Learn more](https://docs.mcphub.app/features/oauth))
 - **Social Login** - Seamless GitHub and Google login support with Better Auth integration (requires Database Mode)
 - **Server and Group Management** - Organize servers into groups, manage visibility, and control Tool, Prompt, and Resource exposure
+- **User Groups and Target Access** - Grant one calling Key access to selected MCPs and exact targets; select the destination with `X-MCPHub-Target`. See [User groups](docs/features/user-groups.mdx).
 
 ### Operate with confidence
 

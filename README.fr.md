@@ -40,6 +40,7 @@ Les MCP personnalisés et leurs dépendances sont importés via des paquets MCPB
 - **Support OAuth 2.0** ⭐ - Modes client et serveur pour une authentification sécurisée ([En savoir plus](https://docs.mcphub.app/features/oauth))
 - **Connexion sociale** - Support de connexion GitHub et Google via Better Auth (nécessite le mode Base de données)
 - **Gestion des serveurs et des groupes** - Organisez les serveurs en groupes, gérez leur visibilité et contrôlez l'exposition des Tools, Prompts et Resources
+- **Groupes d’utilisateurs et accès aux cibles** - Une clé donne accès aux MCP et cibles sélectionnés ; `X-MCPHub-Target` choisit la destination. Voir [Groupes d’utilisateurs](docs/features/user-groups.mdx).
 
 ### Exploiter en confiance
 

@@ -1,3 +1,4 @@
+import { getUserGroupPolicy } from '../services/userGroupService.js';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import defaultConfig from '../config/index.js';
@@ -56,10 +57,22 @@ const validateBearerAuth = async (
     return null;
   }
 
+  // Scoped group keys may register their own task callbacks, but never manage the Hub.
+  const apiPath = req.originalUrl.split('?')[0];
+  const taskApi =
+    (req.method === 'POST' && /\/api\/task-connections$/.test(apiPath)) ||
+    (['PUT', 'DELETE'].includes(req.method) &&
+      /\/api\/task-connections\/[a-zA-Z0-9-]+$/.test(apiPath)) ||
+    (req.method === 'GET' && /\/api\/servers\/[^/]+\/runtime$/.test(apiPath));
+  if (matchingKey.userGroupId && matchingKey.kind !== 'user' && taskApi) {
+    const policy = await getUserGroupPolicy(null, matchingKey.id);
+    return policy.groups.length ? matchingKey : null;
+  }
+
   // Dashboard/API bearer authentication grants access to non-MCP management routes.
   // Scoped keys are enforced on MCP routes in sseService.ts and must not bypass
   // dashboard API authorization.
-  if (matchingKey.kind === 'user' || matchingKey.accessType !== 'all') {
+  if (matchingKey.kind === 'user' || matchingKey.userGroupId || matchingKey.accessType !== 'all') {
     logger.warn(
       `Bearer auth denied for dashboard API: key id=${matchingKey.id}, name=${matchingKey.name} is not a system-level all-access key`,
     );

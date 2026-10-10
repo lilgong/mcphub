@@ -1,3 +1,4 @@
+import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
 import { TargetRuntimeService } from './targetRuntimeService.js';
 import { taskConnections } from './taskConnectionService.js';
 import {
@@ -5546,9 +5547,19 @@ export const getFilteredServerInfosForGroup = async (
     serverConfigs.map((serverConfig) => [serverConfig.name, serverConfig] as const),
   );
 
+  const userGroupPolicy = await getUserGroupPolicy();
+  const requestedTarget = invocationLabels().target;
   const filteredServerInfos: ServerInfo[] = [];
   for (const serverInfo of getVisibleServerInfos()) {
     if (serverInfo.enabled === false) continue;
+    if (
+      !userGroupAllows(
+        userGroupPolicy,
+        serverInfo.name,
+        serverInfo.config?.targets?.length ? requestedTarget : undefined,
+      )
+    )
+      continue;
     if (options?.requireClient && !serverInfo.client) continue;
 
     if (!group) {

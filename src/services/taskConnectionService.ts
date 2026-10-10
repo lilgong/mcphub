@@ -84,6 +84,13 @@ export class TaskConnectionRegistry {
       return undefined;
     return entry;
   }
+  getOwnedResource(id: string, owner: string): { server: string; target: string } | undefined {
+    this.prune();
+    const entry = this.entries.get(id);
+    return entry && entry.owner === owner
+      ? { server: entry.server, target: entry.target }
+      : undefined;
+  }
   renew(id: string, owner: string, ttlSeconds = 300): boolean {
     this.prune();
     const entry = this.entries.get(id);

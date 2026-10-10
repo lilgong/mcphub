@@ -1,3 +1,4 @@
+import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
 import { Request, Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { canAccessGroupRoute } from '../utils/groupAccess.js';
@@ -243,6 +244,27 @@ const groupRouteReferencesMatch = async (
 };
 
 const isBearerKeyAllowedForRequest = async (req: Request, key: BearerKey): Promise<boolean> => {
+  if (key.userGroupId) {
+    const policy = await getUserGroupPolicy(null, key.id);
+    if (!policy.groups.length) return false;
+    const route = normalizeBearerScopeParam((req.params as any)?.group as string | undefined);
+    const target =
+      typeof req.headers['x-mcphub-target'] === 'string'
+        ? req.headers['x-mcphub-target'].trim()
+        : undefined;
+    if (route) {
+      const group = await resolveGroupRouteReference(route);
+      const names = group
+        ? group.servers.map((server) => (typeof server === 'string' ? server : server.name))
+        : [route];
+      for (const name of names) {
+        const server = await getServerDao().findById(name);
+        if (!server || !userGroupAllows(policy, name, server.targets?.length ? target : undefined))
+          return false;
+      }
+      if (!names.length) return false;
+    }
+  }
   if (key.kind === 'user') {
     return true;
   }
@@ -459,6 +481,15 @@ const validateBearerAuth = async (req: Request): Promise<BearerAuthResult> => {
     };
   }
 
+  if (!enableBearerAuth && presentedToken) {
+    const boundKey = await bearerKeyDao.findByToken?.(presentedToken);
+    if (boundKey?.userGroupId) {
+      if (!boundKey.enabled || !(await isBearerKeyAllowedForRequest(req, boundKey)))
+        return { valid: false, reason: 'forbidden' };
+      return resolveUserLevelKeyUser(req, boundKey);
+    }
+  }
+
   if (!enableBearerAuth) {
     if (!hasBearerHeader) {
       return { valid: true };
@@ -531,7 +562,7 @@ const validateBearerAuth = async (req: Request): Promise<BearerAuthResult> => {
       logger.warn(
         `Bearer key rejected due to scope restrictions: id=${matchingKey.id}, name=${matchingKey.name}, accessType=${matchingKey.accessType}`,
       );
-      return { valid: false, reason: 'invalid' };
+      return { valid: false, reason: matchingKey.userGroupId ? 'forbidden' : 'invalid' };
     }
 
     logger.log(

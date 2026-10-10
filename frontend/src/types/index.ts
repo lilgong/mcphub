@@ -510,6 +510,7 @@ export type BearerKeyAccessType = 'all' | 'groups' | 'servers' | 'custom';
 export type BearerKeyKind = 'system' | 'user';
 
 export interface BearerKey {
+  userGroupId?: string;
   id: string;
   name: string;
   token: string;

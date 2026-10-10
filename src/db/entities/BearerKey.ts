@@ -39,6 +39,9 @@ export class BearerKey {
   @Column({ type: 'simple-json', nullable: true })
   allowedServers?: string[];
 
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  userGroupId?: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
