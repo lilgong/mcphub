@@ -1522,7 +1522,14 @@
     "details": "Details",
     "target": "Target",
     "taskId": "Task ID",
-    "requestId": "Request ID"
+    "requestId": "Request ID",
+    "emptyErrorsHint": "No error records match these filters. View all calls or change the date and filters.",
+    "emptyHint": "Change the date or filters. New call records appear automatically.",
+    "showAllCalls": "View all calls",
+    "pagination": "Call log pagination",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "pageOf": "Page {{page}} of {{pages}}"
   },
   "keyPool": {
     "title": "Multi-key rotation",

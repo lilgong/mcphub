@@ -1519,7 +1519,14 @@
     "details": "Ayrıntılar",
     "target": "Hedef",
     "taskId": "Görev kimliği",
-    "requestId": "İstek kimliği"
+    "requestId": "İstek kimliği",
+    "emptyErrorsHint": "Bu filtrelere uyan hata kaydı yok. Tüm çağrıları görüntüleyin veya tarih ve filtreleri değiştirin.",
+    "emptyHint": "Tarihi veya filtreleri değiştirin. Yeni çağrı kayıtları otomatik görünür.",
+    "showAllCalls": "Tüm çağrıları göster",
+    "pagination": "Çağrı günlüğü sayfalama",
+    "previousPage": "Önceki sayfa",
+    "nextPage": "Sonraki sayfa",
+    "pageOf": "Sayfa {{page}} / {{pages}}"
   },
   "keyPool": {
     "title": "Çoklu anahtar dönüşümü",

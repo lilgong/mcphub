@@ -1520,7 +1520,14 @@
     "details": "Détails",
     "target": "Cible",
     "taskId": "ID tâche",
-    "requestId": "ID requête"
+    "requestId": "ID requête",
+    "emptyErrorsHint": "Aucune erreur ne correspond aux filtres. Affichez tous les appels ou modifiez la date et les filtres.",
+    "emptyHint": "Modifiez la date ou les filtres. Les nouveaux appels apparaissent automatiquement.",
+    "showAllCalls": "Voir tous les appels",
+    "pagination": "Pagination des appels",
+    "previousPage": "Page précédente",
+    "nextPage": "Page suivante",
+    "pageOf": "Page {{page}} sur {{pages}}"
   },
   "keyPool": {
     "title": "Rotation de clés",

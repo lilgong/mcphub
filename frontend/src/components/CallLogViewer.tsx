@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight, FileSearch } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { apiGet } from '../utils/fetchInterceptor';
 interface Row {
@@ -184,102 +185,141 @@ export default function CallLogViewer() {
           {data.unavailableSources.map((value) => t(`callLogs.${value}`)).join(', ')}
         </p>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr>
-              {['time', 'server', 'operation', 'status', 'duration', 'details'].map((key) => (
-                <th className="bg-[var(--hub-bg)] p-3 text-xs font-medium hub-sub" key={key}>
-                  {t(`callLogs.${key}`)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data?.rows.map((row, index) => (
-              <tr
-                className="border-t border-[var(--hub-line)] hover:bg-[var(--hub-bg)]"
-                key={`${row.source}-${row.id}-${index}`}
-                title={row.id}
-              >
-                <td className="whitespace-nowrap p-2">
-                  {new Date(row.timestamp).toLocaleString()}
-                </td>
-                <td className="p-2">{row.server}</td>
-                <td className="max-w-xs break-all p-2">{row.operation}</td>
-                <td className="whitespace-nowrap p-3">
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(row)}`}
-                  >
-                    <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
-                    <span
-                      className={
-                        row.httpStatus === undefined ? undefined : 'font-mono tabular-nums'
-                      }
-                    >
-                      {row.httpStatus ?? t(`callLogs.${row.outcome}`)}
-                    </span>
-                  </span>
-                </td>
-                <td className="p-2">
-                  {row.durationMs === undefined ? '—' : `${Math.round(row.durationMs)} ms`}
-                </td>
-                <td className="p-3">
-                  <details className="min-w-40">
-                    <summary className="cursor-pointer hub-sub">{t('callLogs.details')}</summary>
-                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                      {(
-                        [
-                          ['source', t(`callLogs.${row.source}`)],
-                          ['category', row.category],
-                          ['keyLabel', row.keyLabel],
-                          ['target', row.target],
-                          ['taskId', row.taskId],
-                          [
-                            'wait',
-                            row.waitMs === undefined ? undefined : `${Math.round(row.waitMs)} ms`,
-                          ],
-                          [
-                            'retryAt',
-                            row.retryAt ? new Date(row.retryAt).toLocaleString() : undefined,
-                          ],
-                          ['requestId', row.id],
-                        ] as const
-                      )
-                        .filter(([, value]) => value)
-                        .map(([field, value]) => (
-                          <div className="col-span-2 grid grid-cols-2 gap-3" key={field}>
-                            <dt className="hub-sub">{t(`callLogs.${field}`)}</dt>
-                            <dd className="break-all">{value}</dd>
-                          </div>
-                        ))}
-                    </dl>
-                  </details>
-                </td>
+      <div className="overflow-hidden rounded-xl border border-[var(--hub-line)]">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr>
+                {['time', 'server', 'operation', 'status', 'duration', 'details'].map((key) => (
+                  <th className="bg-[var(--hub-bg)] p-3 text-xs font-medium hub-sub" key={key}>
+                    {t(`callLogs.${key}`)}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {data?.rows.length === 0 && <p>{t('callLogs.empty')}</p>}
-      <div className="flex items-center gap-3">
-        <button
-          className="rounded border p-2"
-          disabled={page <= 1}
-          onClick={() => setPage((value) => value - 1)}
-        >
-          ←
-        </button>
-        <span>
-          {page} / {Math.max(1, Math.ceil((data?.total || 0) / 50))} · {data?.total || 0}
-        </span>
-        <button
-          className="rounded border p-2"
-          disabled={!data || page * 50 >= data.total}
-          onClick={() => setPage((value) => value + 1)}
-        >
-          →
-        </button>
+            </thead>
+            <tbody>
+              {data?.rows.length === 0 && !error && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-14 text-center">
+                    <div
+                      className="mx-auto flex max-w-sm flex-col items-center gap-3"
+                      role="status"
+                    >
+                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--hub-bg)] hub-sub">
+                        <FileSearch className="h-5 w-5" aria-hidden="true" />
+                      </span>
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">{t('callLogs.empty')}</p>
+                        <p className="text-xs leading-5 hub-sub">
+                          {t(errorsOnly ? 'callLogs.emptyErrorsHint' : 'callLogs.emptyHint')}
+                        </p>
+                      </div>
+                      {errorsOnly && (
+                        <button className="hub-btn sm mt-1" onClick={() => setErrorsOnly(false)}>
+                          {t('callLogs.showAllCalls')}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {data?.rows.map((row, index) => (
+                <tr
+                  className="border-t border-[var(--hub-line)] hover:bg-[var(--hub-bg)]"
+                  key={`${row.source}-${row.id}-${index}`}
+                  title={row.id}
+                >
+                  <td className="whitespace-nowrap p-2">
+                    {new Date(row.timestamp).toLocaleString()}
+                  </td>
+                  <td className="p-2">{row.server}</td>
+                  <td className="max-w-xs break-all p-2">{row.operation}</td>
+                  <td className="whitespace-nowrap p-3">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(row)}`}
+                    >
+                      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
+                      <span
+                        className={
+                          row.httpStatus === undefined ? undefined : 'font-mono tabular-nums'
+                        }
+                      >
+                        {row.httpStatus ?? t(`callLogs.${row.outcome}`)}
+                      </span>
+                    </span>
+                  </td>
+                  <td className="p-2">
+                    {row.durationMs === undefined ? '—' : `${Math.round(row.durationMs)} ms`}
+                  </td>
+                  <td className="p-3">
+                    <details className="min-w-40">
+                      <summary className="cursor-pointer hub-sub">{t('callLogs.details')}</summary>
+                      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                        {(
+                          [
+                            ['source', t(`callLogs.${row.source}`)],
+                            ['category', row.category],
+                            ['keyLabel', row.keyLabel],
+                            ['target', row.target],
+                            ['taskId', row.taskId],
+                            [
+                              'wait',
+                              row.waitMs === undefined ? undefined : `${Math.round(row.waitMs)} ms`,
+                            ],
+                            [
+                              'retryAt',
+                              row.retryAt ? new Date(row.retryAt).toLocaleString() : undefined,
+                            ],
+                            ['requestId', row.id],
+                          ] as const
+                        )
+                          .filter(([, value]) => value)
+                          .map(([field, value]) => (
+                            <div className="col-span-2 grid grid-cols-2 gap-3" key={field}>
+                              <dt className="hub-sub">{t(`callLogs.${field}`)}</dt>
+                              <dd className="break-all">{value}</dd>
+                            </div>
+                          ))}
+                      </dl>
+                    </details>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!!data?.total && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--hub-line)] px-4 py-3 text-xs hub-sub">
+            <span>
+              {t('pagination.showing', {
+                from: (page - 1) * 50 + 1,
+                to: Math.min(page * 50, data.total),
+                total: data.total,
+              })}
+            </span>
+            <nav aria-label={t('callLogs.pagination')} className="flex items-center gap-3">
+              <button
+                className="hub-btn sm"
+                aria-label={t('callLogs.previousPage')}
+                disabled={loading || page <= 1}
+                onClick={() => setPage((value) => value - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <span className="tabular-nums">
+                {t('callLogs.pageOf', { page, pages: Math.ceil(data.total / 50) })}
+              </span>
+              <button
+                className="hub-btn sm"
+                aria-label={t('callLogs.nextPage')}
+                disabled={loading || page * 50 >= data.total}
+                onClick={() => setPage((value) => value + 1)}
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </nav>
+          </div>
+        )}
       </div>
     </section>
   );

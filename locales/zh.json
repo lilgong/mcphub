@@ -1524,7 +1524,14 @@
     "details": "详情",
     "target": "目标",
     "taskId": "任务 ID",
-    "requestId": "请求 ID"
+    "requestId": "请求 ID",
+    "emptyErrorsHint": "当前筛选条件下没有错误记录，可查看全部调用或调整日期与筛选条件。",
+    "emptyHint": "请调整日期或筛选条件；新的调用记录会自动显示。",
+    "showAllCalls": "查看全部调用",
+    "pagination": "调用日志分页",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "pageOf": "第 {{page}} / {{pages}} 页"
   },
   "keyPool": {
     "title": "多 Key 轮询",
