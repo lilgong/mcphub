@@ -93,8 +93,8 @@ export default function CallLogViewer() {
     <section className="space-y-4 p-4">
       <p className="text-sm text-[var(--hub-ink-2)]">{t('callLogs.description')}</p>
       <div className="flex flex-wrap items-end gap-3">
-        <label>
-          {t('callLogs.date')}
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium hub-sub">{t('callLogs.date')}</span>
           <input
             aria-label={t('callLogs.date')}
             type="date"
@@ -103,8 +103,8 @@ export default function CallLogViewer() {
             onChange={(e) => setDate(e.target.value)}
           />
         </label>
-        <label>
-          {t('callLogs.status')}
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium hub-sub">{t('callLogs.status')}</span>
           <select
             aria-label={t('callLogs.status')}
             className={`${inputClass} block`}
@@ -137,8 +137,8 @@ export default function CallLogViewer() {
             ))}
           </select>
         </label>
-        <label>
-          {t('callLogs.source')}
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium hub-sub">{t('callLogs.source')}</span>
           <select
             aria-label={t('callLogs.source')}
             className={`${inputClass} block`}
@@ -152,8 +152,8 @@ export default function CallLogViewer() {
             ))}
           </select>
         </label>
-        <label>
-          {t('callLogs.server')}
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium hub-sub">{t('callLogs.server')}</span>
           <input
             aria-label={t('callLogs.server')}
             className={`${inputClass} block`}
@@ -161,12 +161,12 @@ export default function CallLogViewer() {
             onChange={(e) => setServer(e.target.value)}
           />
         </label>
-        <label className="p-2">
+        <label className="flex h-[30px] items-center gap-2 px-1 text-sm hub-sub">
           <input
             type="checkbox"
             checked={errorsOnly}
             onChange={(e) => setErrorsOnly(e.target.checked)}
-          />{' '}
+          />
           {t('callLogs.errorsOnly')}
         </label>
         <button
