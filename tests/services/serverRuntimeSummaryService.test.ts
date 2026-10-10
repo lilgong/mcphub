@@ -1,5 +1,68 @@
-import { summarizeServerRuntime } from '../../src/services/serverRuntimeSummaryService.js';
+import {
+  summarizeServerRuntime,
+  summarizeTargetServerStatus,
+} from '../../src/services/serverRuntimeSummaryService.js';
+import type { RuntimeInstance } from '../../src/types/serverRuntime.js';
 import { TaskConnectionRegistry } from '../../src/services/taskConnectionService.js';
+
+test('target-managed MCP status counts a ready target independently of the unused shared client', () => {
+  const targets = [
+    { path: 'atlas/official', kind: 'static' as const },
+    { path: 'other', kind: 'static' as const },
+  ];
+  const instances: RuntimeInstance[] = [
+    { id: 'shared', kind: 'shared', status: 'disconnected' },
+    { id: 'slack', kind: 'target', target: 'atlas/official', status: 'connected' },
+    { id: 'other', kind: 'target', target: 'other', status: 'disconnected' },
+  ];
+  expect(summarizeTargetServerStatus(targets, instances)).toBe('connected');
+  expect(summarizeTargetServerStatus(targets, instances, false)).toBe('disconnected');
+  expect(summarizeTargetServerStatus([{ ...targets[0], enabled: false }], instances)).toBe(
+    'disconnected',
+  );
+  expect(
+    summarizeTargetServerStatus(
+      targets,
+      instances.map((entry) => ({
+        ...entry,
+        draining: true,
+      })),
+    ),
+  ).toBe('connecting');
+  expect(summarizeTargetServerStatus(targets, [])).toBe('connecting');
+  expect(
+    summarizeTargetServerStatus(
+      targets,
+      instances.map((entry) => ({
+        ...entry,
+        status: 'disconnected',
+      })),
+    ),
+  ).toBe('disconnected');
+  expect(
+    summarizeTargetServerStatus(
+      [targets[0]],
+      [
+        {
+          ...instances[1],
+          status: 'oauth_required',
+        },
+      ],
+    ),
+  ).toBe('oauth_required');
+  const task = [{ path: 'task', kind: 'task' as const }];
+  expect(summarizeTargetServerStatus(task, [])).toBe('disconnected');
+  expect(
+    summarizeTargetServerStatus(task, [
+      {
+        id: 'task',
+        kind: 'task',
+        target: 'task',
+        status: 'registered',
+      },
+    ]),
+  ).toBe('connected');
+});
 
 test('configured targets are not running instances, and starting clients count separately', () => {
   const targets = [

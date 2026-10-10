@@ -1,6 +1,9 @@
 import { TargetRuntimeService } from './targetRuntimeService.js';
 import { taskConnections } from './taskConnectionService.js';
-import { summarizeServerRuntime } from './serverRuntimeSummaryService.js';
+import {
+  summarizeServerRuntime,
+  summarizeTargetServerStatus,
+} from './serverRuntimeSummaryService.js';
 import type { RuntimeInstance } from '../types/serverRuntime.js';
 import { randomUUID } from 'node:crypto';
 import { invocationLabels } from './invocationLabelsService.js';
@@ -2703,19 +2706,24 @@ export const getServersInfo = async (
           };
         });
 
+        const runtime = summarizeServerRuntime(
+          serverConfig?.targets,
+          getRuntimeInstances(name),
+          enabled,
+        );
+        const presentedStatus = serverConfig?.targets?.length
+          ? summarizeTargetServerStatus(serverConfig.targets, runtime.instances, enabled)
+          : status;
+
         return {
           name,
           targetManaged: !!serverConfig?.targets?.length,
-          runtime: summarizeServerRuntime(
-            serverConfig?.targets,
-            getRuntimeInstances(name),
-            enabled,
-          ),
+          runtime,
           version,
           instructions,
           owner,
           visibility,
-          status,
+          status: presentedStatus,
           error,
           tools: toolsWithEnabled,
           prompts: promptsWithEnabled,

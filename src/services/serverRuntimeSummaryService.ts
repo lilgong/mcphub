@@ -1,8 +1,39 @@
 import type { TargetConnection } from '../types/targetConnection.js';
 import type { RuntimeInstance, ServerRuntimeSummary } from '../types/serverRuntime.js';
+import type { ServerInfo } from '../types/index.js';
 
 const running = (instance: RuntimeInstance) =>
   instance.status === 'connected' || instance.status === 'registered';
+
+/** A logical MCP is online when at least one enabled target is ready. */
+export function summarizeTargetServerStatus(
+  targets: TargetConnection[],
+  instances: RuntimeInstance[],
+  enabled = true,
+): ServerInfo['status'] {
+  if (!enabled) return 'disconnected';
+  const activeTargets = targets.filter((target) => target.enabled !== false);
+  const current = instances.filter(
+    (entry) =>
+      !entry.draining &&
+      activeTargets.some(
+        (target) =>
+          target.path === entry.target &&
+          entry.kind === (target.kind === 'task' ? 'task' : 'target'),
+      ),
+  );
+  if (current.some(running)) return 'connected';
+  if (
+    current.some((entry) => entry.status === 'connecting') ||
+    activeTargets.some(
+      (target) =>
+        target.kind === 'static' && !current.some((entry) => entry.target === target.path),
+    )
+  )
+    return 'connecting';
+  if (current.some((entry) => entry.status === 'oauth_required')) return 'oauth_required';
+  return 'disconnected';
+}
 
 /** Counting connections is deliberately independent of processes and Docker containers. */
 export function summarizeServerRuntime(
