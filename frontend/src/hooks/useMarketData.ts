@@ -278,8 +278,9 @@ export const useMarketData = () => {
         const serverConfig = {
           name: server.name,
           config:
-            customConfig.type === 'stdio'
+            customConfig.type === 'stdio' && !customConfig.targets?.length
               ? {
+                  ...customConfig,
                   command: customConfig.command || installation.command || '',
                   args: customConfig.args || installation.args || [],
                   env: { ...installation.env, ...customConfig.env },

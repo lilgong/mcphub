@@ -1,7 +1,55 @@
 import type { ServerFormData } from '../../frontend/src/types';
 import { buildServerPayload } from '../../frontend/src/utils/serverFormPayload';
+import { detectVariables } from '../../frontend/src/utils/variableDetection';
 
 describe('buildServerPayload', () => {
+  it('submits target credentials without hidden marketplace placeholders', () => {
+    const formData: ServerFormData = {
+      name: 'airtable',
+      url: '',
+      command: 'npx',
+      arguments: '',
+      args: ['airtable-mcp-server', '${UNUSED_ARGUMENT}'],
+      env: [],
+      headers: [],
+      targets: [
+        {
+          path: 'atlas/official',
+          kind: 'static',
+          version: '0.3.0',
+          enabled: true,
+          config: {
+            type: 'stdio',
+            command: 'npx',
+            args: ['airtable-mcp-server'],
+            env: { AIRTABLE_API_KEY: 'test-key' },
+          },
+        },
+      ],
+    };
+    const input = {
+      formData,
+      serverType: 'stdio' as const,
+      envVars: [{ key: 'AIRTABLE_API_KEY', value: '${AIRTABLE_API_KEY}' }],
+      headerVars: [{ key: 'Authorization', value: '${UNUSED_HEADER}' }],
+    };
+    const payload = buildServerPayload(input);
+    expect(payload.config.targets).toEqual(formData.targets);
+    expect(payload.config).not.toHaveProperty('env');
+    expect(payload.config).not.toHaveProperty('command');
+    expect(payload.config).not.toHaveProperty('args');
+    expect(payload.config).not.toHaveProperty('headers');
+    expect(detectVariables(payload)).toEqual([]);
+
+    formData.targets![0].config!.env!.AIRTABLE_API_KEY = '${TARGET_KEY}';
+    expect(detectVariables(buildServerPayload(input))).toEqual(['TARGET_KEY']);
+
+    formData.targets = [];
+    expect(buildServerPayload(input).config.env).toEqual({
+      AIRTABLE_API_KEY: '${AIRTABLE_API_KEY}',
+    });
+  });
+
   it('preserves stdio argument boundaries, empty values, and literal shell syntax', () => {
     const args = [
       '-c',

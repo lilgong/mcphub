@@ -264,6 +264,12 @@ export const buildServerPayload = ({
     proxy: formData.proxy,
   };
 
+  // Target connections own their transport and credentials. The hidden base
+  // form may still contain marketplace placeholders after conversion.
+  if (formData.targets?.length) {
+    return { name: formData.name.trim(), config };
+  }
+
   if (serverType === 'openapi') {
     config.headers = headers;
     config.openapi = buildOpenApiConfig(formData);
