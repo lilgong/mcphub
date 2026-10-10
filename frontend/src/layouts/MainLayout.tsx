@@ -23,7 +23,10 @@ const MainLayout: React.FC = () => {
 
   return (
     <EmbeddingSyncProvider>
-      <div className="flex h-screen" style={{ background: 'var(--hub-bg)', color: 'var(--hub-ink)' }}>
+      <div
+        className="hub-dashboard flex h-screen"
+        style={{ background: 'var(--hub-bg)', color: 'var(--hub-ink)' }}
+      >
         <Sidebar collapsed={sidebarCollapsed} />
         <div className="flex flex-1 flex-col min-w-0 min-h-0">
           <Header onToggleSidebar={toggleSidebar} />

@@ -23,27 +23,25 @@ export default function RelayLimits() {
     }
   };
   return (
-    <section className="space-y-3 rounded-lg border border-[var(--hub-line)] p-5">
-      <h2 className="font-semibold">{t('relayLimits.title')}</h2>
+    <section className="hub-card space-y-4 p-5">
+      <h2 className="hub-card-title">{t('relayLimits.title')}</h2>
       <p className="text-sm text-[var(--hub-ink-2)]">{t('relayLimits.description')}</p>
-      <button
-        type="button"
-        disabled={busy}
-        className="rounded border px-3 py-2"
-        onClick={() => request(false)}
-      >
+      <button type="button" disabled={busy} className="hub-btn" onClick={() => request(false)}>
         {t('relayLimits.load')}
       </button>
       {limits && (
         <>
           {Object.entries(limits).map(([name, value]) => (
-            <div key={name} className="grid grid-cols-3 items-end gap-3">
-              <span>{name}</span>
-              <label className="text-sm">
-                {t('serviceControls.minIntervalMs')}
+            <div
+              key={name}
+              className="grid grid-cols-1 items-end gap-3 border-t border-[var(--hub-line-2)] pt-4 sm:grid-cols-3"
+            >
+              <code className="text-xs text-[var(--hub-ink-2)] sm:self-center">{name}</code>
+              <label className="hub-field">
+                <span className="hub-label">{t('serviceControls.minIntervalMs')}</span>
                 <input
                   aria-label={`${name} ${t('serviceControls.minIntervalMs')}`}
-                  className="hub-input w-full rounded border p-2"
+                  className="hub-input"
                   type="number"
                   min="0"
                   max="600000"
@@ -56,11 +54,11 @@ export default function RelayLimits() {
                   }
                 />
               </label>
-              <label className="text-sm">
-                {t('serviceControls.concurrency')}
+              <label className="hub-field">
+                <span className="hub-label">{t('serviceControls.concurrency')}</span>
                 <input
                   aria-label={`${name} ${t('serviceControls.concurrency')}`}
-                  className="hub-input w-full rounded border p-2"
+                  className="hub-input"
                   type="number"
                   min="1"
                   max="1000"
@@ -79,12 +77,7 @@ export default function RelayLimits() {
               </label>
             </div>
           ))}
-          <button
-            type="button"
-            disabled={busy}
-            className="rounded border px-3 py-2"
-            onClick={() => request(true)}
-          >
+          <button type="button" disabled={busy} className="hub-btn" onClick={() => request(true)}>
             {t('relayLimits.save')}
           </button>
         </>

@@ -73,6 +73,14 @@
 .hub-card-title { font-size: 13px; font-weight: 500; margin: 0; color: var(--hub-ink); }
 .hub-server-form p.hub-sub { margin-top: 8px; margin-bottom: 12px; line-height: 1.75; }
 
+/* Shared field labels used by filters and configuration panels. */
+.hub-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.hub-label { margin: 0; color: var(--hub-ink-3); font-size: 13px; font-weight: 500; line-height: 20px; }
+.hub-checkbox-label { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; color: var(--hub-ink-2); font-size: 13px; line-height: 20px; }
+.hub-checkbox-label input { width: 14px; height: 14px; accent-color: var(--hub-accent); }
+.hub-dashboard label { font-size: 13px; line-height: 20px; }
+.hub-dashboard label:not(:has(input[type="checkbox"], input[type="radio"])) { color: var(--hub-ink-3); font-weight: 500; }
+
 /* Optional server settings share the dashboard's surfaces and control density. */
 .hub-config-section {
   margin-bottom: 16px;
@@ -245,6 +253,7 @@
 .hub-btn.primary { background: var(--hub-ink); color: var(--hub-bg); border-color: var(--hub-ink); }
 .hub-btn.primary:hover { background: oklch(0.28 0.01 250); }
 .dark .hub-btn.primary { color: oklch(0.18 0.005 250); }
+.dark .hub-btn.primary:hover { background: oklch(0.92 0.005 250); }
 .hub-btn.ghost { border-color: transparent; }
 .hub-btn.ghost:hover { background: var(--hub-surface-hover); border-color: var(--hub-line); }
 .hub-btn.danger { color: var(--hub-err); }
@@ -753,6 +762,7 @@
 
 /* Form inputs */
 .form-input,
+.form-select,
 input.form-input,
 select.form-input,
 textarea.form-input {
@@ -762,8 +772,10 @@ textarea.form-input {
   color: var(--hub-ink) !important;
   box-shadow: none !important;
   transition: border-color 0.15s ease !important;
+  font-size: 13px !important;
 }
 .form-input:focus,
+.form-select:focus,
 input.form-input:focus,
 select.form-input:focus,
 textarea.form-input:focus {
@@ -772,6 +784,7 @@ textarea.form-input:focus {
   outline: none !important;
 }
 .dark .form-input,
+.dark .form-select,
 .dark input.form-input,
 .dark select.form-input,
 .dark textarea.form-input {
@@ -1191,65 +1204,6 @@ tbody tr:hover {
   color: rgba(129, 199, 132, 0.9) !important;
 }
 
-.btn-primary {
-  background-color: #60a5fa !important;
-  color: #ffffff !important;
-  border: none;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(96, 165, 250, 0.2);
-}
-
-.btn-primary:hover {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-/* Enhanced button styles for dark theme */
-.dark .btn-primary {
-  background-color: rgba(59, 130, 246, 0.15) !important;
-  color: rgba(96, 165, 250, 0.9) !important;
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  transition: all 0.3s ease;
-}
-
-.dark .btn-primary:hover {
-  background-color: rgba(59, 130, 246, 0.25) !important;
-  color: rgba(96, 165, 250, 1) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
-}
-
-.btn-secondary {
-  background-color: #f9fafb !important;
-  color: #374151 !important;
-  border: 1px solid #d1d5db !important;
-  border-radius: 8px;
-  font-size: 0.875rem;
-}
-
-.btn-secondary:hover {
-  background-color: #e5e7eb !important;
-  color: #374151 !important;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.dark .btn-secondary {
-  background-color: rgba(107, 114, 128, 0.15) !important;
-  color: rgba(156, 163, 175, 0.9) !important;
-  border: 1px solid rgba(107, 114, 128, 0.3) !important;
-  transition: all 0.3s ease;
-}
-
-.dark .btn-secondary:hover {
-  background-color: rgba(107, 114, 128, 0.25) !important;
-  color: rgba(156, 163, 175, 1) !important;
-  transform: translateY(-1px);
-}
-
 .btn-warning {
   background-color: var(--color-yellow-100) !important;
   color: var(--color-yellow-800) !important;
@@ -1301,36 +1255,6 @@ tbody tr:hover {
   color: rgba(239, 154, 154, 1) !important;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(244, 67, 54, 0.2);
-}
-
-.form-input {
-  background-color: #f9fafb !important;
-  border-color: #d1d5db !important;
-  color: #374151 !important;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-}
-
-.form-input:focus {
-  border-color: rgba(184, 193, 207, 0.5);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-/* Form input enhancements for dark theme */
-.dark .form-input {
-  background-color: #1f2937 !important;
-  border-color: #2f3b4c !important;
-  color: #e5e7eb !important;
-  border-radius: 8px;
-}
-
-.dark .form-input:focus {
-  border-color: rgba(59, 130, 246, 0.5) !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
-}
-
-.dark .form-input::placeholder {
-  color: #9ca3af !important;
 }
 
 /* Card spacing and layout improvements */
@@ -1472,3 +1396,22 @@ button.text-white.is-loading::after {
 @keyframes button-spinner {
   to { transform: rotate(360deg); }
 }
+
+/* Dashboard controls share surfaces across modern panels and legacy forms. */
+.hub-dashboard :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]), select, textarea) {
+  border-color: var(--hub-line) !important;
+  border-radius: 7px !important;
+  background-color: var(--hub-surface) !important;
+  color: var(--hub-ink) !important;
+  font-size: 13px !important;
+  font-weight: 400;
+  box-shadow: none !important;
+}
+.hub-dashboard :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select, textarea):focus {
+  border-color: var(--hub-ink-2) !important;
+  outline: 2px solid var(--hub-accent-soft);
+  outline-offset: 1px;
+  box-shadow: none !important;
+}
+.hub-dashboard :is(input, select, textarea)::placeholder { color: var(--hub-ink-3) !important; }
+.hub-dashboard :is(input, select, textarea):disabled { background-color: var(--hub-bg-2) !important; }

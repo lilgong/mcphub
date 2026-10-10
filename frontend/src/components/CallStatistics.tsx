@@ -46,13 +46,13 @@ export default function CallStatistics() {
       active = false;
     };
   }, [server, start, end, refresh]);
-  const input = 'hub-input rounded border p-2';
+  const input = 'hub-input';
   return (
     <section className="space-y-5">
       <p className="hub-sub">{t('statistics.description')}</p>
       <div className="hub-card flex flex-wrap items-end gap-3 p-4">
-        <label>
-          {t('statistics.month')}
+        <label className="hub-field">
+          <span className="hub-label">{t('statistics.month')}</span>
           <input
             className={`${input} block`}
             type="month"
@@ -68,8 +68,8 @@ export default function CallStatistics() {
             }}
           />
         </label>
-        <label>
-          {t('statistics.start')}
+        <label className="hub-field">
+          <span className="hub-label">{t('statistics.start')}</span>
           <input
             aria-label={t('statistics.start')}
             className={`${input} block`}
@@ -78,8 +78,8 @@ export default function CallStatistics() {
             onChange={(e) => setStart(e.target.value)}
           />
         </label>
-        <label>
-          {t('statistics.end')}
+        <label className="hub-field">
+          <span className="hub-label">{t('statistics.end')}</span>
           <input
             aria-label={t('statistics.end')}
             className={`${input} block`}
@@ -88,8 +88,8 @@ export default function CallStatistics() {
             onChange={(e) => setEnd(e.target.value)}
           />
         </label>
-        <label>
-          {t('statistics.server')}
+        <label className="hub-field">
+          <span className="hub-label">{t('statistics.server')}</span>
           <input
             aria-label={t('statistics.server')}
             className={`${input} block w-40`}
@@ -104,7 +104,7 @@ export default function CallStatistics() {
       </div>
       {error && <p role="alert">{t('callLogs.failed')}</p>}
       {data?.available === false && <p>{t('statistics.unavailable')}</p>}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {(['total', 'success', 'errors'] as const).map((field) => (
           <div className="hub-card p-5" key={field}>
             <p className="hub-sub">{t(`statistics.${field}`)}</p>
@@ -117,7 +117,7 @@ export default function CallStatistics() {
           <thead>
             <tr>
               {['server', 'total', 'success', 'errors'].map((field) => (
-                <th className="p-4" key={field}>
+                <th className="bg-[var(--hub-bg)] p-4 text-xs font-medium hub-sub" key={field}>
                   {t(`statistics.${field}`)}
                 </th>
               ))}

@@ -88,13 +88,13 @@ export default function CallLogViewer() {
       clearInterval(timer);
     };
   }, [date, status, source, server, errorsOnly, page, refresh]);
-  const inputClass = 'hub-input rounded border p-2';
+  const inputClass = 'hub-input';
   return (
     <section className="space-y-4 p-4">
       <p className="text-sm text-[var(--hub-ink-2)]">{t('callLogs.description')}</p>
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium hub-sub">{t('callLogs.date')}</span>
+        <label className="hub-field">
+          <span className="hub-label">{t('callLogs.date')}</span>
           <input
             aria-label={t('callLogs.date')}
             type="date"
@@ -103,8 +103,8 @@ export default function CallLogViewer() {
             onChange={(e) => setDate(e.target.value)}
           />
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium hub-sub">{t('callLogs.status')}</span>
+        <label className="hub-field">
+          <span className="hub-label">{t('callLogs.status')}</span>
           <select
             aria-label={t('callLogs.status')}
             className={`${inputClass} block`}
@@ -137,8 +137,8 @@ export default function CallLogViewer() {
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium hub-sub">{t('callLogs.source')}</span>
+        <label className="hub-field">
+          <span className="hub-label">{t('callLogs.source')}</span>
           <select
             aria-label={t('callLogs.source')}
             className={`${inputClass} block`}
@@ -152,8 +152,8 @@ export default function CallLogViewer() {
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium hub-sub">{t('callLogs.server')}</span>
+        <label className="hub-field">
+          <span className="hub-label">{t('callLogs.server')}</span>
           <input
             aria-label={t('callLogs.server')}
             className={`${inputClass} block`}

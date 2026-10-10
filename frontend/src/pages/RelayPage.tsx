@@ -11,8 +11,7 @@ type Settings = AtlasConfig & {
   servers: string[];
   stats: Record<string, { active: number; queued: number; cooldownMs: number }>;
 };
-const inputClass =
-  'hub-input w-full rounded border border-[var(--hub-line)] bg-[var(--hub-surface)] p-2';
+const inputClass = 'hub-input';
 
 export default function RelayPage() {
   const { t } = useTranslation();
@@ -80,15 +79,15 @@ export default function RelayPage() {
     }
   };
   return (
-    <div className="space-y-6 text-[var(--hub-ink)]">
+    <div className="max-w-4xl space-y-6 text-[var(--hub-ink)]">
       <div>
-        <h1 className="text-2xl font-semibold">{t('atlas.title')}</h1>
+        <h1 className="hub-h1">{t('atlas.title')}</h1>
         <p className="mt-2 text-sm text-[var(--hub-ink-2)]">{t('atlas.description')}</p>
       </div>
-      <section className="space-y-4 rounded-lg border border-[var(--hub-line)] p-5">
-        <h2 className="font-semibold">{t('atlas.relay')}</h2>
+      <section className="hub-card space-y-4 p-5">
+        <h2 className="hub-card-title">{t('atlas.relay')}</h2>
         <p className="text-sm text-[var(--hub-ink-2)]">{t('atlas.relayDescription')}</p>
-        <label className="flex gap-2">
+        <label className="hub-checkbox-label">
           <input
             type="checkbox"
             checked={config.relay.enabled}
@@ -96,8 +95,8 @@ export default function RelayPage() {
           />
           {t('atlas.relayEnabled')}
         </label>
-        <label className="block">
-          {t('atlas.relayUrl')}
+        <label className="hub-field">
+          <span className="hub-label">{t('atlas.relayUrl')}</span>
           <input
             className={inputClass}
             value={config.relay.url}
@@ -105,8 +104,8 @@ export default function RelayPage() {
             onChange={(e) => changeRelay({ url: e.target.value })}
           />
         </label>
-        <label className="block">
-          {t('atlas.relayToken')}
+        <label className="hub-field">
+          <span className="hub-label">{t('atlas.relayToken')}</span>
           <input
             className={inputClass}
             type="password"
@@ -116,7 +115,7 @@ export default function RelayPage() {
             onChange={(e) => setToken(e.target.value)}
           />
         </label>
-        <label className="flex gap-2">
+        <label className="hub-checkbox-label">
           <input
             type="checkbox"
             checked={clearToken}
@@ -124,8 +123,8 @@ export default function RelayPage() {
           />
           {t('atlas.clearToken')}
         </label>
-        <label className="block">
-          {t('atlas.relayTimeout')}
+        <label className="hub-field max-w-xs">
+          <span className="hub-label">{t('atlas.relayTimeout')}</span>
           <input
             className={inputClass}
             type="number"
@@ -135,16 +134,12 @@ export default function RelayPage() {
             onChange={(e) => changeRelay({ timeoutSeconds: Number(e.target.value) })}
           />
         </label>
-        <button className="rounded border border-[var(--hub-line)] px-4 py-2" onClick={checkRelay}>
+        <button className="hub-btn" onClick={checkRelay}>
           {t('atlas.checkRelay')}
         </button>
       </section>
       <RelayLimits />
-      <button
-        disabled={saving}
-        onClick={save}
-        className="rounded bg-[var(--hub-accent)] px-4 py-2 text-white disabled:opacity-50"
-      >
+      <button disabled={saving} onClick={save} className="hub-btn primary">
         {t('common.save')}
       </button>
       {message && <p role="status">{message}</p>}
