@@ -204,3 +204,5 @@ pnpm dev
 托管改造版 Atlas MCP 和配置可选 Hub 模式，参见 [接入 MCP-Atlas](docs/zh/features/atlas-integration.mdx)。
 
 目标连接支持原生／wrapper 多版本同时接入、独立启停和运行实例展示；通用临时任务路由和调用统计参见 [Target connections](docs/features/target-connections.mdx).
+
+管理员可在 Relay 设置中启动、停止内置 IP 池服务并重置 Token；参数见 `.env.example`，无需安装 MCP-Atlas。

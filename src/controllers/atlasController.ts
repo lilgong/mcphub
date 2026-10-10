@@ -12,6 +12,7 @@ import {
 import { toolCallScheduler } from '../services/toolCallSchedulerService.js';
 import { closeServer, initializeClientsFromSettings } from '../services/mcpService.js';
 import { assertSafeUrl } from '../utils/ssrf.js';
+import { relayRuntimeService } from '../services/relayRuntimeService.js';
 import { supportsFetchRelay } from '../utils/relayCompatibility.js';
 
 export async function getAtlasSettings(req: Request, res: Response): Promise<void> {
@@ -33,6 +34,13 @@ export async function getAtlasSettings(req: Request, res: Response): Promise<voi
 export async function updateAtlasSettings(req: Request, res: Response): Promise<void> {
   if (!(await requireAdmin(req, res))) return;
   const old = await getAtlasConfig();
+  if (
+    (req.body.relayToken || req.body.clearRelayToken) &&
+    (await relayRuntimeService.status()).state === 'running'
+  ) {
+    res.status(409).json({ success: false, message: 'Use Reset Token for a running Hub relay' });
+    return;
+  }
   try {
     await saveAtlasConfig(req.body.config, req.body.relayToken, req.body.clearRelayToken === true);
   } catch {
@@ -42,30 +50,33 @@ export async function updateAtlasSettings(req: Request, res: Response): Promise<
     });
     return;
   }
-  const failed: string[] = [];
-  // Reconnect compatible Hub-owned implementations; task snapshots remain unchanged.
   const current = await getAtlasConfig();
   const relayChanged =
     JSON.stringify(old.relay) !== JSON.stringify(current.relay) ||
     Boolean(req.body.relayToken) ||
     req.body.clearRelayToken === true;
-  const servers = relayChanged ? await getServerDao().findAll() : [];
-  for (const server of servers) {
+  const failed = relayChanged ? await reconnectRelayServers() : [];
+  res.json({ success: true, data: { reconnectFailed: failed } });
+}
+
+/** Only Hub-owned static connections reload; active task workers retain their snapshots. */
+export async function reconnectRelayServers(): Promise<string[]> {
+  const failed: string[] = [];
+  for (const server of await getServerDao().findAll()) {
     const compatible = server.targets?.length
       ? server.targets.some(
           (target) => target.kind === 'static' && supportsFetchRelay(target.config ?? {}),
         )
       : supportsFetchRelay(server);
     if (server.enabled === false || !compatible) continue;
-    const name = server.name;
     try {
-      closeServer(name);
-      await initializeClientsFromSettings(false, name);
+      closeServer(server.name);
+      await initializeClientsFromSettings(false, server.name);
     } catch {
-      failed.push(name);
+      failed.push(server.name);
     }
   }
-  res.json({ success: true, data: { reconnectFailed: failed } });
+  return failed;
 }
 
 export async function checkAtlasRelay(req: Request, res: Response): Promise<void> {

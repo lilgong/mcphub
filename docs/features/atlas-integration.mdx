@@ -269,3 +269,34 @@ Supported MCP connections expose a single enable switch; unsupported connections
 cannot enable it. Arxiv, PubMed, OSM and Wikipedia delivery packages use the generic
 `MCP_RELAY_*` convention and declare their `fetch-v1` adapter. Only canonical variable
 names are used; existing local installations have been migrated along with their wrappers.
+
+
+## Run Relay inside MCPHub
+
+MCPHub ships its own Python 3 egress relay in `relay/egress_relay.py`; it does not
+import Atlas code or require its dependencies. Fill the relay and IPWO settings
+in `.env` using `.env.example`. On **Relay settings → Relay runtime**, administrators
+can start and stop the process and reset its access token. Startup is manual,
+including after restarting Hub. Stop affects only the child started by this Hub.
+An external relay is shown separately and cannot be stopped or rekeyed here.
+
+The current bootstrap `MCP_RELAY_TOKEN` is used until a saved dashboard token
+exists. Reset generates a new token, updates the running relay without restarting
+it, saves the encrypted credential, and reloads compatible persistent MCPs. Old
+tokens become invalid immediately; finish evaluations before resetting because
+already-created task workers retain their startup token. The new token appears
+only in the reset response and can be revealed in the dashboard. It is never
+returned by status/config endpoints or written to audit logs.
+
+`compose.local.yaml` reads the optional Hub `.env`, exposes relay port 3985, and
+mounts `data/relay` at `/app/data/relay` read/write. Request logs and HTTP rate
+settings survive process/container replacement; the existing call-log page reads
+the same `usage.jsonl`. Other deployments must publish the relay port and persist
+that directory too. `MCP_RELAY_URL` must be reachable from MCP/task workers, so use
+the Hub host's LAN address rather than the container's loopback address.
+
+During migration, keep the Atlas relay running and prepare the new image without
+replacing the active Hub. Once evaluations finish: stop the old relay manually,
+replace the Hub container with the new image, then start Relay in the dashboard.
+Both processes cannot listen on the same host port. Atlas' original launcher is
+retained for rollback; never run both against the same log/limits directory.

@@ -39,3 +39,8 @@ temp-test-config/
 *.credentials.key.*.tmp
 
 .workbuddy
+
+# Python relay build/test caches
+__pycache__/
+*.pyc
+.pytest_cache/

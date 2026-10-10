@@ -1,3 +1,4 @@
+import RelayRuntime from '../components/RelayRuntime';
 import RelayLimits from '../components/RelayLimits';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -84,6 +85,7 @@ export default function RelayPage() {
         <h1 className="hub-h1">{t('atlas.title')}</h1>
         <p className="mt-2 text-sm text-[var(--hub-ink-2)]">{t('atlas.description')}</p>
       </div>
+      <RelayRuntime onChange={() => void load(true)} />
       <section className="hub-card space-y-4 p-5">
         <h2 className="hub-card-title">{t('atlas.relay')}</h2>
         <p className="text-sm text-[var(--hub-ink-2)]">{t('atlas.relayDescription')}</p>

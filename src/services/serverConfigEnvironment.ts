@@ -56,7 +56,13 @@ export const getServerEnvironment = async (
 ): Promise<Record<string, string>> => {
   const trusted =
     !config.owner || (await getUserDao().findByUsername(config.owner))?.isAdmin === true;
-  const source = trusted ? process.env : {};
+  const expansionSource = trusted ? process.env : {};
+  // Hub's relay bootstrap account must not become an implicit MCP credential.
+  const source = Object.fromEntries(
+    Object.entries(expansionSource).filter(
+      ([key]) => !key.startsWith('IPWO_PROXY_') && !key.startsWith('MCP_RELAY_'),
+    ),
+  );
   const name = serverName || config.name || '';
   let relay: Record<string, string> = {};
   const relayCompatible = supportsFetchRelay(config);
@@ -68,7 +74,9 @@ export const getServerEnvironment = async (
   }
   const environment = {
     ...(source as Record<string, string>),
-    ...(hasCredentialTemplate(config) ? config.env : replaceEnvVars(config.env || {}, source)),
+    ...(hasCredentialTemplate(config)
+      ? config.env
+      : replaceEnvVars(config.env || {}, expansionSource)),
     ...relay,
   };
   if (config.env?.MCPHUB_CONNECTION_TARGET) {

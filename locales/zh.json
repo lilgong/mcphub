@@ -1702,5 +1702,28 @@
     "manageRoutes": "管理聚合路由",
     "deleteKeyTitle": "删除组 Key",
     "deleteKeyHint": "删除后，使用此 Key 的客户端将无法调用。可以重新生成一个 Key。"
+  },
+  "relayRuntime": {
+    "title": "Relay 运行管理",
+    "description": "由 MCPHub 独立启动 IP 池服务，无需安装 Atlas。仅管理员可以操作；Hub 重启后需手动启动 Relay。",
+    "state": {
+      "running": "Hub 已启动",
+      "external": "外部 Relay",
+      "stopped": "未启动",
+      "failed": "启动失败"
+    },
+    "externalHint": "检测到外部 Relay 正在运行。迁移前请保持现状，此处不会停止外部进程或修改其 Token。",
+    "missing": "请在 Hub 的 .env 中配置：{{names}}",
+    "start": "启动 Relay",
+    "stop": "停止 Relay",
+    "resetToken": "重置 Token",
+    "started": "Relay 已启动，连接配置已保存。",
+    "stopped": "Relay 已停止。",
+    "tokenReset": "Token 已重置，常驻 MCP 已刷新凭据。",
+    "tokenOnce": "新 Token 仅在此处显示一次，请及时保存。",
+    "showToken": "显示 Token",
+    "hideToken": "隐藏 Token",
+    "stopConfirm": "停止后，依赖此 Relay 的请求将失败。请确认当前没有运行中的测评。",
+    "resetConfirm": "重置会立即让旧 Token 失效。常驻 MCP 会刷新凭据，已启动的任务容器需结束后重新创建。"
   }
 }

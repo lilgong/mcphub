@@ -187,3 +187,5 @@ Sous licence [Apache 2.0 License](LICENSE).
 Pour les serveurs MCP-Atlas et le transport Hub optionnel, voir [MCP-Atlas integration](docs/features/atlas-integration.mdx).
 
 Versions natives/wrapper simultanées, activation par cible, inventaire des connexions, routage des tâches et statistiques : [Target connections](docs/features/target-connections.mdx).
+
+Les administrateurs peuvent démarrer/arrêter le relais résidentiel intégré et renouveler son jeton dans les paramètres Relay. Configurez `.env.example` ; MCP-Atlas n’est pas nécessaire.

@@ -1697,5 +1697,28 @@
     "manageRoutes": "Toplama rotalarını yönet",
     "deleteKeyTitle": "Grup Key sil",
     "deleteKeyHint": "Bu Key kullanan istemciler erişimini kaybeder. Yeni bir Key oluşturabilirsiniz."
+  },
+  "relayRuntime": {
+    "title": "Relay çalışma yönetimi",
+    "description": "Atlas olmadan yerleşik konut proxy servisini MCPHub içinde başlatın. Yalnızca yöneticiler kullanabilir; Hub yeniden başlatıldığında elle başlatın.",
+    "state": {
+      "running": "Hub tarafından başlatıldı",
+      "external": "Harici relay",
+      "stopped": "Durduruldu",
+      "failed": "Başarısız"
+    },
+    "externalHint": "Harici relay çalışıyor. Taşıma sırasında çalışır durumda tutun; Hub bu servisi durduramaz veya tokenını değiştiremez.",
+    "missing": "Hub .env dosyasında yapılandırın: {{names}}",
+    "start": "Relay başlat",
+    "stop": "Relay durdur",
+    "resetToken": "Token yenile",
+    "started": "Relay başlatıldı ve bağlantı kaydedildi.",
+    "stopped": "Relay durduruldu.",
+    "tokenReset": "Token yenilendi ve kalıcı MCP kimlik bilgileri güncellendi.",
+    "tokenOnce": "Yeni token yalnızca burada gösterilir. Ayrılmadan önce kaydedin.",
+    "showToken": "Token göster",
+    "hideToken": "Token gizle",
+    "stopConfirm": "Bu relay servisini kullanan istekler başarısız olacak. Çalışan değerlendirme olmadığından emin olun.",
+    "resetConfirm": "Eski token hemen geçersiz olur. Kalıcı MCP kimlik bilgileri yenilenir; çalışan görev konteynerleri yeniden oluşturulmalıdır."
   }
 }

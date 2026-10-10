@@ -14,7 +14,8 @@
     "servers.json",
     "frontend/dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "relay"
   ],
   "scripts": {
     "build": "pnpm backend:build && pnpm frontend:build",

@@ -1,4 +1,10 @@
 import {
+  relayRuntime,
+  startRelay,
+  stopRelay,
+  resetRelayToken,
+} from '../controllers/relayRuntimeController.js';
+import {
   getUserGroups,
   saveUserGroup,
   moveUserGroupMember,
@@ -300,6 +306,10 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.get('/credentials', listMyCredentials);
   authenticatedRouter.put('/credentials/:name', updateMyCredential);
   authenticatedRouter.delete('/credentials/:name', updateMyCredential);
+  authenticatedRouter.get('/relay/runtime', relayRuntime);
+  authenticatedRouter.post('/relay/runtime/start', startRelay);
+  authenticatedRouter.post('/relay/runtime/stop', stopRelay);
+  authenticatedRouter.post('/relay/runtime/reset-token', resetRelayToken);
   authenticatedRouter.get('/relay/limits', relayLimits);
   authenticatedRouter.put('/relay/limits', relayLimits);
   authenticatedRouter.get('/relay/config', getAtlasSettings);

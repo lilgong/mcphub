@@ -129,6 +129,17 @@ export async function hasRelayToken(): Promise<boolean> {
   );
 }
 
+/** Saved dashboard credentials take precedence over bootstrap environment values. */
+export async function getRelayToken(): Promise<string> {
+  const binding = await getCredentialBindingDao().get(
+    RELAY_BINDING.serverName,
+    RELAY_BINDING.username,
+  );
+  return binding
+    ? (await decryptCredentialValues(binding)).token
+    : (process.env.MCP_RELAY_TOKEN || '').trim();
+}
+
 export async function getRelayEnvironment(
   server: string,
   connection?: FetchRelayConfig,

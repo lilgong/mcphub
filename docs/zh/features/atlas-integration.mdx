@@ -142,3 +142,28 @@ MCPHUB_URL=http://192.168.0.22:3002
 不重复显示 Relay 地址/凭据。Arxiv、PubMed、OSM、Wikipedia 的交付包使用
 `MCP_RELAY_*`，并声明 `MCPHUB_RELAY_ADAPTER=fetch-v1`。仅使用统一变量名，
 已有本机安装的配置与 wrapper 已同步迁移。
+
+
+## 在 MCPHub 内启动 Relay
+
+MCPHub 自带 `relay/egress_relay.py`，只需要 Python 3，不引用 Atlas 代码或依赖。
+按照 `.env.example` 在 Hub 的 `.env` 中填写 Relay 与 IPWO 参数，管理员在
+**Relay 设置 → Relay 运行管理**中启动、停止服务，或重置 Token。Hub 重启后
+需要手动启动 Relay。停止只作用于该 Hub 启动的子进程；外部 Relay 会单独标识，
+不能在此停止或重置凭据。
+
+初次启动使用 `MCP_RELAY_TOKEN`；网页保存过的加密 Token 优先。重置时生成新
+Token，在线更新 Relay 并保存加密凭据，刷新已适配的常驻 MCP，无需重启 Relay。
+旧 Token 立即失效；已经创建的任务容器保留启动时的 Token，因此请在测评结束后
+重置。新 Token 只在重置响应中展示一次，可点击眼睛查看，不出现在状态接口或审计日志中。
+
+`compose.local.yaml` 读取可选的 Hub `.env`、发布 3985 端口，并将 `data/relay`
+以读写方式挂载到 `/app/data/relay`。请求日志与 HTTP 限速设置持久化，容器
+替换后仍保留，网页调用日志读取同一个 `usage.jsonl`。其他部署方式也应发布
+Relay 端口并持久化该目录。`MCP_RELAY_URL` 需填写 MCP/任务容器都可达的地址，
+例如 Hub 宿主机的局域网 IP。
+
+迁移期间保持 Atlas Relay 和当前 Hub 运行，只构建新镜像。测评结束后，手动
+停止旧 Relay，使用新镜像更新 Hub，再从网页启动 Relay。两个进程不能同时
+占用宿主机同一个端口。Atlas 原启动方式保留用于回退；不要让两套进程同时
+使用相同的日志/限速目录。

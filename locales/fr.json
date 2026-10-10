@@ -1698,5 +1698,28 @@
     "manageRoutes": "Gérer les routes agrégées",
     "deleteKeyTitle": "Supprimer la clé du groupe",
     "deleteKeyHint": "Les clients utilisant cette clé perdront leur accès. Vous pourrez créer une nouvelle clé."
+  },
+  "relayRuntime": {
+    "title": "Gestion du relais",
+    "description": "Lancez le relais résidentiel dans MCPHub, sans Atlas. Administrateurs uniquement ; relancez-le après le redémarrage du Hub.",
+    "state": {
+      "running": "Lancé par Hub",
+      "external": "Relais externe",
+      "stopped": "Arrêté",
+      "failed": "Échec"
+    },
+    "externalHint": "Un relais externe fonctionne. Conservez-le pendant la migration ; Hub ne peut ni l’arrêter ni modifier son jeton.",
+    "missing": "Configurez ces valeurs dans le .env du Hub : {{names}}",
+    "start": "Démarrer le relais",
+    "stop": "Arrêter le relais",
+    "resetToken": "Renouveler le jeton",
+    "started": "Relais démarré et connexion enregistrée.",
+    "stopped": "Relais arrêté.",
+    "tokenReset": "Jeton renouvelé et identifiants des MCP persistants actualisés.",
+    "tokenOnce": "Le nouveau jeton est affiché uniquement ici. Enregistrez-le avant de quitter.",
+    "showToken": "Afficher le jeton",
+    "hideToken": "Masquer le jeton",
+    "stopConfirm": "Les requêtes utilisant ce relais échoueront. Vérifiez qu’aucune évaluation ne tourne.",
+    "resetConfirm": "L’ancien jeton devient immédiatement invalide. Les MCP persistants sont actualisés ; les conteneurs de tâche actifs doivent être recréés."
   }
 }

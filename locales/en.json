@@ -1700,5 +1700,28 @@
     "manageRoutes": "Manage aggregation routes",
     "deleteKeyTitle": "Delete group Key",
     "deleteKeyHint": "Clients using this Key will lose access. You can generate a replacement."
+  },
+  "relayRuntime": {
+    "title": "Relay runtime",
+    "description": "Run the residential egress service inside MCPHub, without Atlas. Administrators only; start it manually after restarting Hub.",
+    "state": {
+      "running": "Started by Hub",
+      "external": "External relay",
+      "stopped": "Stopped",
+      "failed": "Failed"
+    },
+    "externalHint": "An external relay is running. Keep it during migration; Hub cannot stop it or reset its token.",
+    "missing": "Configure these in the Hub .env: {{names}}",
+    "start": "Start relay",
+    "stop": "Stop relay",
+    "resetToken": "Reset token",
+    "started": "Relay started and connection settings saved.",
+    "stopped": "Relay stopped.",
+    "tokenReset": "Token reset and persistent MCP credentials refreshed.",
+    "tokenOnce": "The new token is displayed only here. Save it before leaving.",
+    "showToken": "Show token",
+    "hideToken": "Hide token",
+    "stopConfirm": "Requests that depend on this relay will fail. Ensure no evaluations are running.",
+    "resetConfirm": "The old token becomes invalid immediately. Persistent MCPs reload credentials; active task workers must be recreated."
   }
 }

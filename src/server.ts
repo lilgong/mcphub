@@ -1,4 +1,5 @@
 import express from 'express';
+import { relayRuntimeService } from './services/relayRuntimeService.js';
 import cors, { type CorsOptions } from 'cors';
 import config, { isWebDisabled } from './config/index.js';
 import path from 'path';
@@ -266,6 +267,8 @@ export class AppServer {
 
     await httpShutdown;
     this.server = null;
+
+    await relayRuntimeService.shutdown();
 
     // Close database connection if in database mode
     const useDatabase =

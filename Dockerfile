@@ -62,7 +62,7 @@ RUN rm /app/mcp_settings.json
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-EXPOSE 3000
+EXPOSE 3000 3985
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 # Launch node directly instead of `pnpm start`: the pnpm shim resolves via
