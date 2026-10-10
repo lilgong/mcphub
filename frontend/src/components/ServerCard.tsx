@@ -562,12 +562,13 @@ const ServerCard = ({
               }}
             />
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <span
-                  className="hub-mono min-w-0 flex-1 truncate"
+                  className="hub-mono max-w-full flex-shrink-0"
                   title={server.name}
                   style={{
                     fontSize: 13.5,
+                    overflowWrap: 'anywhere',
                     color: enabled ? 'var(--hub-ink)' : 'var(--hub-ink-3)',
                   }}
                 >
