@@ -3,20 +3,33 @@ title: 'User groups and calling Keys'
 description: 'Grant one application access to selected MCP servers and exact targets.'
 ---
 
-Administrators manage **User groups** in the dashboard. These are access-control groups,
-separate from **MCP groups**, which aggregate servers and tools behind one MCP route.
+Administrators manage accounts and access groups in **Users & groups**. The folder
+list selects a group; the user table manages its members. **MCP routes** is the
+separate connection aggregation feature; it does not grant group access.
 
-1. Add a user group and choose its registered MCP servers.
-2. Optionally restrict a server to selected configured targets. Without a target restriction,
-   all of that server's targets are allowed; an empty restricted selection allows none.
-3. Optionally select dashboard users. A member's user-level Key receives the union of their
-   enabled groups, subject to existing server visibility and credential rules.
-4. Generate the group's calling Key and save the complete token shown once. One group has
-   one Key; it can call all selected servers. Manage its name, enabled state, or deletion in
-   Settings. Delete the old Key before creating a replacement.
+1. Create or rename a group in the folder list.
+2. Drag a user onto a group, or use the group selector in the user table. Moving
+   removes previous memberships and assigns the destination in one atomic update.
+   Dragging to **Ungrouped** explicitly removes all memberships. Existing multiple
+   memberships are retained until the administrator moves that user.
+3. Open **Group permissions** and select MCP servers. Each multi-target server
+   lists its targets directly: choose one or several without a separate mode switch.
+   **Select all** chooses the currently registered servers and targets; newly added
+   targets require a separate grant. Legacy API grants with omitted `targets` still
+   mean all targets, including future ones.
+4. Generate the group's calling Key and save the complete token shown once. A Key
+   calls all resources allowed by its group. Manage its enabled state or deletion
+   in Settings. Deleting the old Key allows generating a replacement in the group.
+
+Membership management requires an administrator. `PUT /api/user-groups/membership`
+accepts `{ "username": "alice", "groupId": "destination-group-id" }`; use `null`
+for `groupId` to move to Ungrouped. The update is serialized with group edits so
+concurrent moves do not lose another user's membership or briefly remove all
+restrictions during a move. Enabled memberships still combine by union for clients
+that maintain multiple memberships through the API.
 
 A group Key uses only its own group's permissions, regardless of user memberships.
-An unbound system Key with all-access scope remains a shared/operator Key; User groups
+An unbound system Key with all-access scope remains a shared/operator Key; Users & groups
 also offers an explicit button to create one. Existing scoped Keys keep their restrictions.
 
 For target-managed servers, include the exact target on every MCP request:

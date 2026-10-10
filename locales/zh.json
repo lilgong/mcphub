@@ -451,7 +451,7 @@
     "servers": "服务器",
     "settings": "设置",
     "changePassword": "修改密码",
-    "groups": "MCP 分组",
+    "groups": "MCP 路由",
     "prompts": "提示词",
     "resources": "资源",
     "users": "用户",
@@ -489,7 +489,7 @@
       "oauthServer": "OAuth"
     },
     "groups": {
-      "title": "分组管理"
+      "title": "MCP 路由"
     },
     "prompts": {
       "title": "内置提示词"
@@ -1638,7 +1638,7 @@
     "multiTarget": "多目标"
   },
   "userGroups": {
-    "title": "用户分组",
+    "title": "用户与分组",
     "description": "按成员和调用 Key 统一限制可用 MCP 与目标；请求仍通过 X-MCPHub-Target 指定目标。",
     "add": "添加用户组",
     "name": "用户组名称",
@@ -1665,5 +1665,31 @@
     "deleteTitle": "删除用户组",
     "deleteHint": "删除后，该组的调用 Key 将无法调用 MCP，不会转为共用 Key。",
     "keyHint": "该 Key 的服务器与目标权限在“用户分组”中管理。"
+  },
+  "userDirectory": {
+    "description": "将用户拖入分组，再为组选择可用的 MCP 和目标。",
+    "createGroup": "新建组",
+    "groupList": "分组",
+    "allUsers": "全部用户",
+    "ungrouped": "未分组",
+    "dragHint": "拖动用户到组即可移动；也可以在用户列表中选择分组。",
+    "permissions": "组权限",
+    "permissionsFor": "组权限 · {{name}}",
+    "rename": "重命名组",
+    "deleteGroup": "删除组",
+    "searchUsers": "搜索用户",
+    "searchServers": "搜索 MCP",
+    "membership": "所属分组",
+    "moveUser": "移动 {{name}} 到分组",
+    "editUser": "编辑用户 {{name}}",
+    "deleteUser": "删除用户 {{name}}",
+    "membersHint": "组内用户共享组权限；管理员仍保留管理权限。",
+    "noUsers": "暂无用户，可将用户拖入此组或调整搜索。",
+    "keyCreated": "组 Key 已创建",
+    "targetHint": "可分别选择每个 MCP 下的一个或多个目标。全选仅授权当前列出的资源，新增目标需另行授权。",
+    "selectAll": "一键全选",
+    "clearAll": "清空选择",
+    "targetCount": "{{count}} 个目标",
+    "singleConnection": "单一连接"
   }
 }

@@ -32,6 +32,8 @@ const Toast: React.FC<ToastProps> = ({
     }
   }, [visible, duration, onClose]);
 
+  if (!visible) return null;
+
   const icons = {
     success: <Check className="w-5 h-5 text-green-500" />,
     error: <X className="w-5 h-5 text-red-500" />,

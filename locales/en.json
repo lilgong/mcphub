@@ -447,7 +447,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "servers": "Servers",
-    "groups": "MCP groups",
+    "groups": "MCP routes",
     "prompts": "Prompts",
     "resources": "Resources",
     "users": "Users",
@@ -476,7 +476,7 @@
       "title": "Server Management"
     },
     "groups": {
-      "title": "Group Management"
+      "title": "MCP routes"
     },
     "prompts": {
       "title": "Built-in Prompts"
@@ -1636,7 +1636,7 @@
     "multiTarget": "Targets"
   },
   "userGroups": {
-    "title": "User groups",
+    "title": "Users & groups",
     "description": "Limit MCPs and targets by members and a group calling key. Requests still select targets through X-MCPHub-Target.",
     "add": "Add user group",
     "name": "User group name",
@@ -1663,5 +1663,31 @@
     "deleteTitle": "Delete user group",
     "deleteHint": "The group key stops working after deletion; it never becomes a shared key.",
     "keyHint": "Manage this key’s server and target permissions in User groups."
+  },
+  "userDirectory": {
+    "description": "Manage users in folders, then choose each group’s MCP and target permissions.",
+    "createGroup": "New group",
+    "groupList": "Groups",
+    "allUsers": "All users",
+    "ungrouped": "Ungrouped",
+    "dragHint": "Drag a user onto a group to move them. Use the group selector on touch screens.",
+    "permissions": "Group permissions",
+    "permissionsFor": "Permissions · {{name}}",
+    "rename": "Rename group",
+    "deleteGroup": "Delete group",
+    "searchUsers": "Search users",
+    "searchServers": "Search MCP servers",
+    "membership": "Group",
+    "moveUser": "Move {{name}} to a group",
+    "editUser": "Edit {{name}}",
+    "deleteUser": "Delete {{name}}",
+    "membersHint": "Members share group access; administrators retain administrator access.",
+    "noUsers": "No users here. Drag users into this group or change the search.",
+    "keyCreated": "Group Key created",
+    "targetHint": "Choose one or more targets under each MCP. Select all grants the currently listed resources; new targets need permission separately.",
+    "selectAll": "Select all",
+    "clearAll": "Clear selection",
+    "targetCount": "{{count}} targets",
+    "singleConnection": "Single connection"
   }
 }

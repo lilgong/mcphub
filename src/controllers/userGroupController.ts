@@ -12,6 +12,43 @@ export async function getUserGroups(req: Request, res: Response): Promise<void> 
 
 // Serialize read/modify/write operations in the single Hub process.
 let mutations: Promise<unknown> = Promise.resolve();
+/** Move a user atomically so a folder move cannot temporarily drop all restrictions. */
+export async function moveUserGroupMember(req: Request, res: Response): Promise<void> {
+  if (!(await requireAdmin(req, res))) return;
+  const operation = mutations
+    .catch(() => undefined)
+    .then(async () => {
+      const { username, groupId } = req.body;
+      if (typeof username !== 'string' || (groupId !== null && typeof groupId !== 'string'))
+        throw new Error('Invalid membership move');
+      if (!(await getUserDao().findAll()).some((user) => user.username === username))
+        throw new Error('Unknown group member');
+      const groups = (await getSystemConfigDao().get()).userGroups ?? [];
+      if (groupId !== null && !groups.some((group) => group.id === groupId))
+        throw new Error('User group not found');
+      const updated = groups.map((group) => ({
+        ...group,
+        members:
+          group.id === groupId
+            ? [...new Set([...group.members, username])]
+            : group.members.filter((name) => name !== username),
+      }));
+      await getSystemConfigDao().update({ userGroups: updated });
+      res.json({ success: true, data: updated });
+    });
+  mutations = operation;
+  try {
+    await operation;
+  } catch (error) {
+    res
+      .status(400)
+      .json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Invalid membership move',
+      });
+  }
+}
+
 export async function saveUserGroup(req: Request, res: Response): Promise<void> {
   if (!(await requireAdmin(req, res))) return;
   const operation = mutations

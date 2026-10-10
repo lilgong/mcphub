@@ -25,7 +25,7 @@ const useCrumbs = (): string[] => {
     if (path.startsWith('/groups')) return [root, t('nav.groups')];
     if (path.startsWith('/prompts')) return [root, t('nav.prompts')];
     if (path.startsWith('/resources')) return [root, t('nav.resources')];
-    if (path.startsWith('/users')) return [root, t('nav.users')];
+    if (path.startsWith('/users')) return [root, t('userGroups.title')];
     if (path.startsWith('/market')) {
       const serverName = (params as { serverName?: string }).serverName;
       const crumbs = [root, t('nav.market')];
@@ -58,7 +58,11 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         {crumbs.map((c, i) => (
           <React.Fragment key={i}>
             {i > 0 && <span className="sep">/</span>}
-            {i === crumbs.length - 1 ? <b className="truncate">{c}</b> : <span className="truncate">{c}</span>}
+            {i === crumbs.length - 1 ? (
+              <b className="truncate">{c}</b>
+            ) : (
+              <span className="truncate">{c}</span>
+            )}
           </React.Fragment>
         ))}
       </div>

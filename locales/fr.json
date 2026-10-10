@@ -448,7 +448,7 @@
   "nav": {
     "dashboard": "Tableau de bord",
     "servers": "Serveurs",
-    "groups": "Groupes MCP",
+    "groups": "Routes MCP",
     "prompts": "Prompts",
     "resources": "Ressources",
     "users": "Utilisateurs",
@@ -475,7 +475,7 @@
       "title": "Gestion des serveurs"
     },
     "groups": {
-      "title": "Gestion des groupes"
+      "title": "Routes MCP"
     },
     "prompts": {
       "title": "Prompts intégrés"
@@ -1634,7 +1634,7 @@
     "multiTarget": "Cibles"
   },
   "userGroups": {
-    "title": "Groupes d’utilisateurs",
+    "title": "Utilisateurs et groupes",
     "description": "Limitez les MCP et les cibles par membres et clé du groupe. X-MCPHub-Target choisit toujours la cible.",
     "add": "Ajouter un groupe",
     "name": "Nom du groupe",
@@ -1661,5 +1661,31 @@
     "deleteTitle": "Supprimer le groupe",
     "deleteHint": "La clé du groupe cesse de fonctionner après suppression ; elle ne devient jamais partagée.",
     "keyHint": "Gérez les serveurs et cibles de cette clé dans Groupes d’utilisateurs."
+  },
+  "userDirectory": {
+    "description": "Gérez les utilisateurs dans des dossiers et les accès MCP de chaque groupe.",
+    "createGroup": "Nouveau groupe",
+    "groupList": "Groupes",
+    "allUsers": "Tous les utilisateurs",
+    "ungrouped": "Sans groupe",
+    "dragHint": "Glissez un utilisateur vers un groupe ou utilisez le sélecteur du tableau.",
+    "permissions": "Permissions du groupe",
+    "permissionsFor": "Permissions · {{name}}",
+    "rename": "Renommer le groupe",
+    "deleteGroup": "Supprimer le groupe",
+    "searchUsers": "Rechercher des utilisateurs",
+    "searchServers": "Rechercher des serveurs MCP",
+    "membership": "Groupe",
+    "moveUser": "Déplacer {{name}} vers un groupe",
+    "editUser": "Modifier {{name}}",
+    "deleteUser": "Supprimer {{name}}",
+    "membersHint": "Les membres partagent les accès du groupe ; les administrateurs conservent leurs droits.",
+    "noUsers": "Aucun utilisateur. Déplacez des utilisateurs ici ou modifiez la recherche.",
+    "keyCreated": "Clé du groupe créée",
+    "targetHint": "Choisissez les cibles de chaque MCP. Tout sélectionner autorise uniquement les ressources actuelles ; les nouvelles cibles nécessitent une autorisation.",
+    "selectAll": "Tout sélectionner",
+    "clearAll": "Effacer la sélection",
+    "targetCount": "{{count}} cibles",
+    "singleConnection": "Connexion unique"
   }
 }

@@ -448,7 +448,7 @@
   "nav": {
     "dashboard": "Kontrol Paneli",
     "servers": "Sunucular",
-    "groups": "MCP grupları",
+    "groups": "MCP yönlendirmeleri",
     "prompts": "Promptlar",
     "resources": "Kaynaklar",
     "users": "Kullanıcılar",
@@ -475,7 +475,7 @@
       "title": "Sunucu Yönetimi"
     },
     "groups": {
-      "title": "Grup Yönetimi"
+      "title": "MCP yönlendirmeleri"
     },
     "prompts": {
       "title": "Yerleşik Promptlar"
@@ -1633,7 +1633,7 @@
     "multiTarget": "Hedefler"
   },
   "userGroups": {
-    "title": "Kullanıcı grupları",
+    "title": "Kullanıcılar ve gruplar",
     "description": "MCP ve hedefleri üyeler ve grup anahtarıyla sınırlandırın. İstekler hedefi X-MCPHub-Target ile seçer.",
     "add": "Kullanıcı grubu ekle",
     "name": "Grup adı",
@@ -1660,5 +1660,31 @@
     "deleteTitle": "Grubu sil",
     "deleteHint": "Silinen grubun anahtarı çalışmaz; ortak anahtara dönüşmez.",
     "keyHint": "Bu anahtarın sunucu ve hedef izinlerini Kullanıcı gruplarında yönetin."
+  },
+  "userDirectory": {
+    "description": "Kullanıcıları klasörlerde yönetin ve her grubun MCP ve hedef izinlerini seçin.",
+    "createGroup": "Yeni grup",
+    "groupList": "Gruplar",
+    "allUsers": "Tüm kullanıcılar",
+    "ungrouped": "Grupsuz",
+    "dragHint": "Kullanıcıyı bir gruba sürükleyin veya listedeki grup seçiciyi kullanın.",
+    "permissions": "Grup izinleri",
+    "permissionsFor": "İzinler · {{name}}",
+    "rename": "Grubu yeniden adlandır",
+    "deleteGroup": "Grubu sil",
+    "searchUsers": "Kullanıcı ara",
+    "searchServers": "MCP sunucusu ara",
+    "membership": "Grup",
+    "moveUser": "{{name}} kullanıcısını gruba taşı",
+    "editUser": "{{name}} kullanıcısını düzenle",
+    "deleteUser": "{{name}} kullanıcısını sil",
+    "membersHint": "Üyeler grup izinlerini paylaşır; yöneticiler yönetici erişimini korur.",
+    "noUsers": "Kullanıcı yok. Bu gruba kullanıcı taşıyın veya aramayı değiştirin.",
+    "keyCreated": "Grup anahtarı oluşturuldu",
+    "targetHint": "Her MCP için hedefleri seçin. Tümünü seç yalnızca mevcut kaynakları yetkilendirir; yeni hedefler için ayrıca izin gerekir.",
+    "selectAll": "Tümünü seç",
+    "clearAll": "Seçimi temizle",
+    "targetCount": "{{count}} hedef",
+    "singleConnection": "Tek bağlantı"
   }
 }

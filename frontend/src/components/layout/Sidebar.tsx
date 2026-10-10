@@ -66,14 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
       ? [{ path: '/relay', label: t('atlas.title'), icon: <RouteIcon className="h-4 w-4" /> }]
       : []),
     ...(userCanManageUsers
-      ? [
-          { path: '/users', label: t('nav.users'), icon: <UsersIcon className="h-4 w-4" /> },
-          {
-            path: '/user-groups',
-            label: t('userGroups.title'),
-            icon: <UsersIcon className="h-4 w-4" />,
-          },
-        ]
+      ? [{ path: '/users', label: t('userGroups.title'), icon: <UsersIcon className="h-4 w-4" /> }]
       : []),
     ...(canViewSystemLogs(auth.user)
       ? [{ path: '/logs', label: t('callLogs.title'), icon: <ScrollText className="h-4 w-4" /> }]
