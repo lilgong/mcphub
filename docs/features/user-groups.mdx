@@ -1,38 +1,36 @@
 ---
-title: 'User groups and calling Keys'
-description: 'Grant one application access to selected MCP servers and exact targets.'
+title: 'Users and owned calling groups'
+description: 'Let each user organize authorized MCP servers and targets behind scoped calling keys.'
 ---
 
-Administrators manage accounts and access groups in **Users & groups**. The contact-style list
-shows users directly under collapsible group headings. **Advanced: MCP aggregation routes** links to the separate connection aggregation
-feature from this page; it does not grant group access.
+Users own resources. Calling groups belong to users and narrow the resources their clients
+may invoke. A user can create several groups and include the same authorized server in
+more than one group. Groups do not contain user members.
 
-1. Create or rename a group using the group headings.
-2. Drag a user onto a group, or use the selector on the user row. Moving
-   removes previous memberships and assigns the destination in one atomic update.
-   Dragging to **Ungrouped** explicitly removes all memberships. Existing multiple
-   memberships are retained until the administrator moves that user.
-3. Open **Group permissions** and select MCP servers. Each multi-target server
-   lists its targets directly: choose one or several without a separate mode switch.
-   **Select all** chooses the currently registered servers and targets; newly added
-   targets require a separate grant. Legacy API grants with omitted `targets` still
-   mean all targets, including future ones.
-4. Open **Group Key** beside the group heading to generate, enable, disable, or delete
-   its calling Key. Save the complete token shown once. A Key calls all resources
-   allowed by its group. Deleting the old Key allows generating a replacement.
+## Dashboard
 
-Membership management requires an administrator. `PUT /api/user-groups/membership`
-accepts `{ "username": "alice", "groupId": "destination-group-id" }`; use `null`
-for `groupId` to move to Ungrouped. The update is serialized with group edits so
-concurrent moves do not lose another user's membership or briefly remove all
-restrictions during a move. Enabled memberships still combine by union for clients
-that maintain multiple memberships through the API.
+Ordinary users see **Groups** and manage their own groups. They can select their own MCP
+servers, public servers, and servers explicitly shared with them. Other users' private
+servers and restricted targets are not selectable. The dashboard's server visibility and
+configuration management rules continue to apply independently of calling groups.
 
-A group Key uses only its own group's permissions, regardless of user memberships.
-An unbound system Key with all-access scope remains a shared/operator Key; Users & groups
-also offers an explicit button to create one. Existing scoped Keys keep their restrictions.
+Administrators see **Users & groups**, with users as collapsible headings and their owned
+groups beneath them. They can create users, create a group for a selected user, edit a
+group's resources, and manage its calling key. Selecting resources for another user applies
+that user's access rules, even when the administrator edits the group. Group ownership is
+fixed after creation; edit the name and grants without moving the group between owners.
 
-For target-managed servers, include the exact target on every MCP request:
+Open **Group permissions** to select registered servers and exact targets. **Select all**
+selects the resources available to the group owner. New target grants use explicit paths.
+Open **Calling key** to create, enable, disable, delete, or replace the group's key. Save
+the complete token displayed once; subsequent reads return a masked value. No separate
+personal key or username parameter is needed for this flow.
+
+Administrators retain an advanced link to MCP aggregation routes. Those routes aggregate
+MCP tools; they are distinct from calling permissions. Unbound operator/system keys retain
+their existing semantics, including the administrator's shared-key option.
+
+## Requests and live permissions
 
 ```http
 POST /mcp/slack
@@ -41,19 +39,34 @@ X-MCPHub-Target: atlas/official
 Content-Type: application/json
 ```
 
-Target selection is independent of the calling Key. The editor uses
-`application/category`: `atlas/official`, `atlas/syn-1`, `other-benchmark/default`.
-The Hub does not interpret these labels or route to another target when a target is
-missing, unknown, disabled, or forbidden. Ordinary single connections do not require this
-header. Provider API Keys belong to the MCP connection; group Keys authenticate Hub clients.
+The key identifies one group and its owner. Requests inherit the owner's current resource
+visibility plus the group's explicit grants. Knowing a key never permits access to another
+user's private server. Revoking sharing, disabling/deleting a group or key, deleting its
+owner, or changing the owner's privileges takes effect on subsequent requests, including
+established MCP sessions. Target selection remains separate from the key. Single-connection
+servers do not need a target header; HTTP forwarding uses the same owner and group checks.
 
-Permissions are checked against live configuration, including established sessions.
-Removing access or disabling a group blocks subsequent requests. Deleting a group leaves
-its Key bound to the deleted group and denied; it never becomes a shared Key. Disabled
-membership groups also deny access until enabled or the membership is explicitly removed.
-Administrator identities retain management access. Legacy explicit target access lists
-remain additional restrictions.
+Group keys do not grant dashboard management access. Existing administrator-owned task
+registration and runtime snapshot capabilities remain supported; the existing administrator
+requirement for task callback registration is retained.
 
-Group Keys cannot access general dashboard management APIs. They can register task
-callbacks for allowed resources, renew/remove their own leases, and read the scoped relay
-runtime snapshot. See [Target connections](/features/target-connections).
+## APIs and storage
+
+- `GET /api/user-groups`: all groups for administrators, owned groups for ordinary users.
+- `POST /api/user-groups`: create a group with `name`, `enabled`, and `servers`. Administrators
+  may specify `owner`; ordinary users can only create groups for themselves.
+- `PUT /api/user-groups/{id}` and `DELETE /api/user-groups/{id}`: owner or administrator only.
+- `GET /api/user-groups/resources?owner={username}`: safe selector metadata, without
+  transport configuration, credentials or task runtime identities. Only administrators can
+  request another owner's selector.
+- Existing `/api/auth/keys` APIs manage group-bound keys under owner/admin authorization.
+
+Ownership is stored inside the existing system configuration JSON in both file and database
+modes. At startup, legacy groups are assigned to the administrator (`admin` when present,
+otherwise an existing administrator). The migration removes old user membership fields and
+binds legacy group keys to that owner while preserving group IDs, tokens, enable flags, key
+kinds, and grants. It is idempotent and does not regenerate keys. Deleted groups leave their
+keys bound and denied; they never turn into unrestricted shared keys.
+
+Develop and test the upgrade in isolation. Deploy its backend and dashboard together after
+active benchmarks finish; the existing service does not load source changes automatically.

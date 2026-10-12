@@ -1,109 +1,160 @@
 import type { Request, Response } from 'express';
-import { moveUserGroupMember, saveUserGroup } from '../../src/controllers/userGroupController.js';
+import {
+  getUserGroups,
+  getGroupResources,
+  saveUserGroup,
+} from '../../src/controllers/userGroupController.js';
 import type { UserGroup } from '../../src/types/index.js';
-import { userGroupAllows } from '../../src/services/userGroupService.js';
-
 let groups: UserGroup[];
-const snapshots: UserGroup[][] = [];
+const users = [
+  { username: 'admin', isAdmin: true },
+  { username: 'alice', isAdmin: false },
+  { username: 'bob', isAdmin: false },
+];
+const definitions = [
+  {
+    name: 'bob-only-targets',
+    owner: 'admin',
+    visibility: 'public',
+    targets: [{ path: 'suite/bob', kind: 'static', allowedUsers: ['bob'] }],
+  },
+  { name: 'public', owner: 'admin', visibility: 'public' },
+  { name: 'alice-private', owner: 'alice', visibility: 'private' },
+  {
+    name: 'bob-private',
+    owner: 'bob',
+    visibility: 'private',
+    headers: { Authorization: 'never-expose' },
+  },
+  {
+    name: 'targets',
+    owner: 'admin',
+    visibility: 'public',
+    targets: [
+      {
+        path: 'suite/alice',
+        kind: 'static',
+        allowedUsers: ['alice'],
+        config: { headers: { KEY: 'never-expose' } },
+      },
+      { path: 'suite/bob', kind: 'static', allowedUsers: ['bob'] },
+    ],
+  },
+];
 const update = jest.fn(async (value: { userGroups: UserGroup[] }) => {
   groups = structuredClone(value.userGroups);
-  snapshots.push(structuredClone(groups));
 });
 jest.mock('../../src/dao/index.js', () => ({
   getSystemConfigDao: () => ({
     get: async () => ({ userGroups: structuredClone(groups) }),
     update,
   }),
-  getUserDao: () => ({ findAll: async () => [{ username: 'alice' }, { username: 'bob' }] }),
-  getServerDao: () => ({
-    findAll: async () => [
-      { name: 'slack', targets: [{ path: 'atlas/official' }, { path: 'atlas/syn-1' }] },
-    ],
+  getUserDao: () => ({
+    findByUsername: async (name: string) => users.find((user) => user.username === name),
   }),
+  getServerDao: () => ({ findAll: async () => definitions }),
 }));
-function request(body: unknown, admin = true, id?: string): Request {
-  return { body, user: { isAdmin: admin }, params: { id }, method: 'PUT' } as unknown as Request;
-}
-function response(): Response {
-  const res = { status: jest.fn(), json: jest.fn() };
-  res.status.mockReturnValue(res);
-  return res as unknown as Response;
-}
+const req = (
+  body: unknown = {},
+  username = 'alice',
+  id?: string,
+  method = 'POST',
+  query = {},
+): Request =>
+  ({
+    body,
+    params: { id },
+    method,
+    query,
+    user: users.find((user) => user.username === username),
+  }) as unknown as Request;
+const res = (): Response => {
+  const value = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
+  return value as unknown as Response;
+};
 beforeEach(() => {
   groups = [
-    {
-      id: 'a',
-      name: 'A',
-      enabled: true,
-      members: ['alice', 'bob'],
-      servers: [{ name: 'slack', targets: ['atlas/official'] }],
-    },
-    {
-      id: 'b',
-      name: 'B',
-      enabled: true,
-      members: [],
-      servers: [{ name: 'slack', targets: ['atlas/syn-1'] }],
-    },
+    { id: 'a', owner: 'alice', name: 'Search', enabled: true, servers: [{ name: 'public' }] },
+    { id: 'b', owner: 'bob', name: 'Search', enabled: true, servers: [] },
   ];
-  snapshots.length = 0;
   update.mockClear();
 });
-test('moving a user changes permissions with one atomic configuration write', async () => {
-  const res = response();
-  await moveUserGroupMember(request({ username: 'alice', groupId: 'b' }), res);
-  expect(update).toHaveBeenCalledTimes(1);
-  expect(groups[0].members).toEqual(['bob']);
-  expect(groups[1].members).toEqual(['alice']);
-  const policy = {
-    restricted: true,
-    groups: groups.filter((group) => group.members.includes('alice')),
-  };
-  expect(userGroupAllows(policy, 'slack', 'atlas/official')).toBe(false);
-  expect(userGroupAllows(policy, 'slack', 'atlas/syn-1')).toBe(true);
-  expect(
-    snapshots.every((snapshot) => snapshot.some((group) => group.members.includes('alice'))),
-  ).toBe(true);
+test('ordinary users see only their groups; administrators see all owners', async () => {
+  const alice = res();
+  await getUserGroups(req(), alice);
+  expect(alice.json).toHaveBeenCalledWith({ success: true, data: [groups[0]] });
+  const admin = res();
+  await getUserGroups(req({}, 'admin'), admin);
+  expect(admin.json).toHaveBeenCalledWith({ success: true, data: groups });
 });
-test('concurrent moves do not overwrite another user membership', async () => {
-  await Promise.all([
-    moveUserGroupMember(request({ username: 'alice', groupId: 'b' }), response()),
-    moveUserGroupMember(request({ username: 'bob', groupId: 'b' }), response()),
+test('resource selector exposes only allowed names and target paths, never configs', async () => {
+  const response = res();
+  await getGroupResources(req(), response);
+  const data = (response.json as jest.Mock).mock.calls[0][0].data;
+  expect(data.map((server: { name: string }) => server.name)).toEqual([
+    'public',
+    'alice-private',
+    'targets',
   ]);
-  expect(groups[0].members).toEqual([]);
-  expect(groups[1].members).toEqual(['alice', 'bob']);
+  expect(data[2].targets.map((target: { path: string }) => target.path)).toEqual(['suite/alice']);
+  expect(JSON.stringify(data)).not.toContain('never-expose');
+  const denied = res();
+  await getGroupResources(req({}, 'alice', undefined, 'GET', { owner: 'bob' }), denied);
+  expect(denied.status).toHaveBeenCalledWith(403);
 });
-test('moving and renaming share the same mutation queue', async () => {
-  const first = moveUserGroupMember(request({ username: 'alice', groupId: 'b' }), response());
-  // Rename the source group with its remaining member, preserving both operations.
-  const second = saveUserGroup(
-    request({ ...groups[0], name: 'Renamed', members: ['bob'] }, true, 'a'),
-    response(),
+test('an owner can create several groups and another owner can reuse a group name', async () => {
+  const response = res();
+  await saveUserGroup(
+    req({ name: 'Other', enabled: true, servers: [{ name: 'public' }, { name: 'alice-private' }] }),
+    response,
   );
-  await Promise.all([first, second]);
-  expect(groups[0].name).toBe('Renamed');
-  expect(groups[1].members).toEqual(['alice']);
+  expect(response.status).toHaveBeenCalledWith(201);
+  expect(groups[2].owner).toBe('alice');
+  const same = res();
+  await saveUserGroup(req({ name: 'Other', enabled: true, servers: [] }, 'bob'), same);
+  expect(same.status).toHaveBeenCalledWith(201);
 });
-test('moving to ungrouped clears all memberships without changing resources', async () => {
-  groups[1].members = ['alice'];
-  await moveUserGroupMember(request({ username: 'alice', groupId: null }), response());
-  expect(groups.every((group) => !group.members.includes('alice'))).toBe(true);
-  expect(groups[0].servers[0].targets).toEqual(['atlas/official']);
+test('ordinary users cannot manage another owner or grant private/forbidden targets', async () => {
+  for (const body of [
+    { name: 'Private', enabled: true, owner: 'bob', servers: [] },
+    { name: 'Private', enabled: true, servers: [{ name: 'bob-private' }] },
+    { name: 'Targets', enabled: true, servers: [{ name: 'targets', targets: ['suite/bob'] }] },
+  ]) {
+    const response = res();
+    await saveUserGroup(req(body), response);
+    expect(response.status).toHaveBeenCalledWith(400);
+  }
+  const updateOther = res();
+  await saveUserGroup(
+    req({ name: 'Renamed', enabled: true, servers: [] }, 'alice', 'b', 'PUT'),
+    updateOther,
+  );
+  expect(updateOther.status).toHaveBeenCalledWith(404);
+  const deleteOther = res();
+  await saveUserGroup(req({}, 'alice', 'b', 'DELETE'), deleteOther);
+  expect(deleteOther.status).toHaveBeenCalledWith(404);
 });
-test.each([
-  { username: 'unknown', groupId: 'b' },
-  { username: 'alice', groupId: 'missing' },
-  { username: 'alice' },
-  { username: 'alice', groupId: 5 },
-])('invalid move fails without changing permissions: %p', async (body) => {
-  const res = response();
-  await moveUserGroupMember(request(body), res);
-  expect(res.status).toHaveBeenCalledWith(400);
-  expect(update).not.toHaveBeenCalled();
+test('admins creating groups for ordinary owners cannot bypass those owners’ ACLs', async () => {
+  const response = res();
+  await saveUserGroup(
+    req(
+      { owner: 'alice', name: 'Private', enabled: true, servers: [{ name: 'bob-private' }] },
+      'admin',
+    ),
+    response,
+  );
+  expect(response.status).toHaveBeenCalledWith(400);
 });
-test('membership management requires administrator access', async () => {
-  const res = response();
-  await moveUserGroupMember(request({ username: 'alice', groupId: 'b' }, false), res);
-  expect(res.status).toHaveBeenCalledWith(403);
-  expect(update).not.toHaveBeenCalled();
+test('deleting a group preserves other owners and requires no user membership', async () => {
+  const response = res();
+  await saveUserGroup(req({}, 'alice', 'a', 'DELETE'), response);
+  expect(groups.map((group) => group.id)).toEqual(['b']);
+});
+test('concurrent group creation preserves both owners’ updates', async () => {
+  await Promise.all(
+    ['alice', 'bob'].map((owner) =>
+      saveUserGroup(req({ name: 'New', enabled: true, servers: [] }, owner), res()),
+    ),
+  );
+  expect(groups.filter((group) => group.name === 'New')).toHaveLength(2);
 });

@@ -208,3 +208,5 @@ pnpm dev
 管理员可在 Relay 设置中启动、停止内置 IP 池服务并重置 Token；参数见 `.env.example`，无需安装 MCP-Atlas。
 
 普通 HTTP API 可通过 [HTTP 转发](docs/features/http-forwarding.mdx)接入，保留客户端原有请求，并共用 Hub 权限、限速与调用日志。
+
+调用分组属于用户：普通用户管理自己的分组及组 key，管理员在“用户与分组”中统一管理。详见[调用分组](docs/features/user-groups.mdx)。

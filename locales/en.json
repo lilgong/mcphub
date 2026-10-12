@@ -340,6 +340,7 @@
     "failedToUpdateBetterAuthConfig": "Failed to update Better Auth configuration"
   },
   "common": {
+    "add": "Add",
     "processing": "Processing...",
     "save": "Save",
     "cancel": "Cancel",
@@ -1684,7 +1685,7 @@
     "keyHint": "Manage this key’s server and target permissions in User groups."
   },
   "userDirectory": {
-    "description": "Expand groups to see users; drag users to another group to move them.",
+    "description": "Each group belongs to one user and defines the MCP servers and targets its key may call.",
     "createGroup": "New group",
     "groupList": "Groups",
     "allUsers": "All users",
@@ -1718,7 +1719,11 @@
     "routesHint": "Combine several MCPs behind one calling address. Configure only when needed; routes do not grant user-group access.",
     "manageRoutes": "Manage aggregation routes",
     "deleteKeyTitle": "Delete group Key",
-    "deleteKeyHint": "Clients using this Key will lose access. You can generate a replacement."
+    "deleteKeyHint": "Clients using this Key will lose access. You can generate a replacement.",
+    "myGroups": "My groups",
+    "searchOwnedGroups": "Search users or groups",
+    "owner": "Group owner",
+    "noOwnedGroups": "No groups yet"
   },
   "relayRuntime": {
     "title": "Relay runtime",

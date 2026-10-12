@@ -341,6 +341,7 @@
     "failedToUpdateBetterAuthConfig": "Better Auth yapılandırması güncellenemedi"
   },
   "common": {
+    "add": "Ekle",
     "processing": "İşleniyor...",
     "save": "Kaydet",
     "cancel": "İptal",
@@ -1681,7 +1682,7 @@
     "keyHint": "Bu anahtarın sunucu ve hedef izinlerini Kullanıcı gruplarında yönetin."
   },
   "userDirectory": {
-    "description": "Kullanıcıları görmek için grupları açın ve başka gruba sürükleyin.",
+    "description": "Her grup bir kullanıcıya aittir; anahtarı seçili MCP sunucularını ve hedefleri çağırır.",
     "createGroup": "Yeni grup",
     "groupList": "Gruplar",
     "allUsers": "Tüm kullanıcılar",
@@ -1715,7 +1716,11 @@
     "routesHint": "Birden fazla MCP için tek çağrı adresi oluşturun. Yalnızca gerektiğinde yapılandırın; rotalar kullanıcı grubu izni vermez.",
     "manageRoutes": "Toplama rotalarını yönet",
     "deleteKeyTitle": "Grup Key sil",
-    "deleteKeyHint": "Bu Key kullanan istemciler erişimini kaybeder. Yeni bir Key oluşturabilirsiniz."
+    "deleteKeyHint": "Bu Key kullanan istemciler erişimini kaybeder. Yeni bir Key oluşturabilirsiniz.",
+    "myGroups": "Gruplarım",
+    "searchOwnedGroups": "Kullanıcı veya grup ara",
+    "owner": "Grup sahibi",
+    "noOwnedGroups": "Henüz grup yok"
   },
   "relayRuntime": {
     "title": "Relay çalışma yönetimi",

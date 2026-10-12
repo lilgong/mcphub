@@ -204,3 +204,5 @@ Target connections support concurrent native/wrapper versions, per-target enable
 Administrators can start/stop the built-in residential relay and reset its token from Relay settings. Configure `.env.example`; MCP-Atlas is not required.
 
 HTTP APIs can be managed through [HTTP forwarding](docs/features/http-forwarding.mdx), preserving existing client requests while sharing Hub authorization, rate limits and audit logs.
+
+Calling groups are owned by users. Ordinary users manage their own groups and scoped keys; administrators manage accounts and groups in one directory. See [owned calling groups](docs/features/user-groups.mdx).

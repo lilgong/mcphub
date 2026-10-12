@@ -1,56 +1,73 @@
 import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
-import type { UserGroup } from '../types/index.js';
+import type { UserGroup, IUser } from '../types/index.js';
 import { getServerDao, getSystemConfigDao, getUserDao } from '../dao/index.js';
-import { requireAdmin } from '../utils/requireAdmin.js';
+import { authorizationService } from '../services/authorizationService.js';
+import { canSelectGroupTarget } from '../services/userGroupService.js';
 import { validateTargetPath } from '../utils/targetConnection.js';
 
+const caller = (req: Request): IUser | undefined => (req as Request & { user?: IUser }).user;
 export async function getUserGroups(req: Request, res: Response): Promise<void> {
-  if (!(await requireAdmin(req, res))) return;
-  res.json({ success: true, data: (await getSystemConfigDao().get()).userGroups ?? [] });
-}
-
-// Serialize read/modify/write operations in the single Hub process.
-let mutations: Promise<unknown> = Promise.resolve();
-/** Move a user atomically so a folder move cannot temporarily drop all restrictions. */
-export async function moveUserGroupMember(req: Request, res: Response): Promise<void> {
-  if (!(await requireAdmin(req, res))) return;
-  const operation = mutations
-    .catch(() => undefined)
-    .then(async () => {
-      const { username, groupId } = req.body;
-      if (typeof username !== 'string' || (groupId !== null && typeof groupId !== 'string'))
-        throw new Error('Invalid membership move');
-      if (!(await getUserDao().findAll()).some((user) => user.username === username))
-        throw new Error('Unknown group member');
-      const groups = (await getSystemConfigDao().get()).userGroups ?? [];
-      if (groupId !== null && !groups.some((group) => group.id === groupId))
-        throw new Error('User group not found');
-      const updated = groups.map((group) => ({
-        ...group,
-        members:
-          group.id === groupId
-            ? [...new Set([...group.members, username])]
-            : group.members.filter((name) => name !== username),
-      }));
-      await getSystemConfigDao().update({ userGroups: updated });
-      res.json({ success: true, data: updated });
-    });
-  mutations = operation;
-  try {
-    await operation;
-  } catch (error) {
-    res
-      .status(400)
-      .json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Invalid membership move',
-      });
+  const user = caller(req);
+  if (!user?.username) {
+    res.status(401).json({ success: false });
+    return;
   }
+  const groups = (await getSystemConfigDao().get()).userGroups ?? [];
+  res.json({
+    success: true,
+    data: groups.filter((group) => user.isAdmin || group.owner === user.username),
+  });
 }
 
+/** Safe selector metadata for the prospective group owner, without config or runtime leases. */
+export async function getGroupResources(req: Request, res: Response): Promise<void> {
+  const user = caller(req);
+  if (!user?.username) {
+    res.status(401).json({ success: false });
+    return;
+  }
+  const requested = typeof req.query.owner === 'string' ? req.query.owner : user.username;
+  if (!user.isAdmin && requested !== user.username) {
+    res.status(403).json({ success: false });
+    return;
+  }
+  const owner = await getUserDao().findByUsername(requested);
+  if (!owner) {
+    res.status(404).json({ success: false });
+    return;
+  }
+  const definitions = await getServerDao().findAll();
+  res.json({
+    success: true,
+    data: definitions
+      .filter((server) => authorizationService.can('server.invoke', server, owner))
+      .filter(
+        (server) =>
+          !server.targets?.length ||
+          server.targets.some((target) => canSelectGroupTarget(server, target, owner)),
+      )
+      .map((server) => ({
+        name: server.name,
+        enabled: server.enabled !== false,
+        targets: (server.targets ?? [])
+          .filter((target) => canSelectGroupTarget(server, target, owner))
+          .map((target) => ({
+            path: target.path,
+            enabled: target.enabled !== false,
+            kind: target.kind,
+          })),
+      })),
+  });
+}
+
+let mutations: Promise<unknown> = Promise.resolve();
 export async function saveUserGroup(req: Request, res: Response): Promise<void> {
-  if (!(await requireAdmin(req, res))) return;
+  const user = caller(req);
+  if (!user?.username) {
+    res.status(401).json({ success: false });
+    return;
+  }
   const operation = mutations
     .catch(() => undefined)
     .then(async () => {
@@ -58,19 +75,24 @@ export async function saveUserGroup(req: Request, res: Response): Promise<void> 
       const groups = config.userGroups ?? [];
       const id = req.params.id;
       const existing = id ? groups.find((group) => group.id === id) : undefined;
-      if (id && !existing) {
-        res.status(404).json({ success: false, message: 'User group not found' });
+      if (id && (!existing || (!user.isAdmin && existing.owner !== user.username))) {
+        res.status(404).json({ success: false, message: 'Group not found' });
         return;
       }
       if (req.method === 'DELETE') {
-        // Bound keys retain the deleted ID and fail closed; they never become shared keys.
         await getSystemConfigDao().update({
           userGroups: groups.filter((group) => group.id !== id),
         });
         res.json({ success: true });
         return;
       }
-      const { name, description, enabled, members, servers } = req.body;
+      const { name, description, enabled, servers } = req.body;
+      const ownerName =
+        existing?.owner ?? (user.isAdmin ? req.body.owner || user.username : user.username);
+      if ((req.body.owner !== undefined && req.body.owner !== ownerName) || 'members' in req.body)
+        throw new Error('Group ownership is fixed; user memberships are not supported');
+      const owner = await getUserDao().findByUsername(ownerName);
+      if (!owner) throw new Error('Unknown group owner');
       if (
         typeof name !== 'string' ||
         !name.trim() ||
@@ -78,26 +100,23 @@ export async function saveUserGroup(req: Request, res: Response): Promise<void> 
         (description !== undefined &&
           (typeof description !== 'string' || description.length > 1000)) ||
         typeof enabled !== 'boolean' ||
-        !Array.isArray(members) ||
         !Array.isArray(servers) ||
-        members.length > 1000 ||
         servers.length > 1000 ||
-        groups.some((group) => group.id !== id && group.name === name.trim())
-      )
-        throw new Error('Invalid user group');
-      const users = await getUserDao().findAll();
-      if (
-        members.some(
-          (username: unknown) =>
-            typeof username !== 'string' || !users.some((user) => user.username === username),
+        groups.some(
+          (group) => group.id !== id && group.owner === ownerName && group.name === name.trim(),
         )
       )
-        throw new Error('Unknown group member');
+        throw new Error('Invalid or duplicate group');
       const registered = await getServerDao().findAll();
       const seen = new Set<string>();
       for (const resource of servers) {
         const server = registered.find((entry) => entry.name === resource?.name);
-        if (!server || seen.has(resource.name)) throw new Error('Unknown or duplicate MCP');
+        if (
+          !server ||
+          seen.has(resource.name) ||
+          !authorizationService.can('server.invoke', server, owner)
+        )
+          throw new Error('MCP unavailable to group owner');
         seen.add(resource.name);
         if (
           resource.targets !== undefined &&
@@ -106,17 +125,21 @@ export async function saveUserGroup(req: Request, res: Response): Promise<void> 
             resource.targets.some(
               (path: unknown) =>
                 !validateTargetPath(path) ||
-                !server.targets?.some((target) => target.path === path),
+                !server.targets?.some(
+                  (target) => target.path === path && canSelectGroupTarget(server, target, owner),
+                ),
             ))
         )
-          throw new Error('Unknown target');
+          throw new Error('Target unavailable to group owner');
+        if (!owner.isAdmin && server.targets?.length && resource.targets === undefined)
+          throw new Error('Select explicit targets for this MCP');
       }
       const group: UserGroup = {
         id: existing?.id ?? randomUUID(),
+        owner: ownerName,
         name: name.trim(),
         description,
         enabled,
-        members: [...new Set<string>(members)],
         servers: servers.map((resource) => ({
           name: resource.name,
           ...(resource.targets !== undefined
@@ -124,7 +147,7 @@ export async function saveUserGroup(req: Request, res: Response): Promise<void> 
             : {}),
         })),
       };
-      if (!id && groups.length >= 1000) throw new Error('Too many user groups');
+      if (!id && groups.length >= 1000) throw new Error('Too many groups');
       await getSystemConfigDao().update({
         userGroups: existing
           ? groups.map((entry) => (entry.id === id ? group : entry))
@@ -136,9 +159,8 @@ export async function saveUserGroup(req: Request, res: Response): Promise<void> 
   try {
     await operation;
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: error instanceof Error ? error.message : 'Invalid user group',
-    });
+    res
+      .status(400)
+      .json({ success: false, message: error instanceof Error ? error.message : 'Invalid group' });
   }
 }

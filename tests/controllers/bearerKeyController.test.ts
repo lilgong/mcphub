@@ -17,6 +17,7 @@ jest.mock('../../src/dao/index.js', () => ({
     update: mockUpdate,
     delete: mockDelete,
   })),
+  getSystemConfigDao: jest.fn(() => ({ get: async () => ({ userGroups: [] }) })),
   getUserDao: jest.fn(() => ({
     findByUsername: mockFindUserByUsername,
   })),

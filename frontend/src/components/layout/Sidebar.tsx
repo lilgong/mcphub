@@ -16,7 +16,6 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useServerContext } from '@/contexts/ServerContext';
 import { canViewSystemLogs } from '@/utils/navigationPermissions';
-import { usePermissionCheck } from '../PermissionChecker';
 import UserProfileMenu from '@/components/ui/UserProfileMenu';
 
 interface SidebarProps {
@@ -38,7 +37,6 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
 
   const appVersion = import.meta.env.PACKAGE_VERSION as string;
 
-  const userCanManageUsers = auth.user?.isAdmin && usePermissionCheck('x');
 
   const workspaceItems: MenuItem[] = [
     { path: '/', label: t('nav.dashboard'), icon: <LayoutGrid className="h-4 w-4" />, end: true },
@@ -57,9 +55,11 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
     ...(auth.user?.isAdmin
       ? [{ path: '/relay', label: t('atlas.title'), icon: <RouteIcon className="h-4 w-4" /> }]
       : []),
-    ...(userCanManageUsers
-      ? [{ path: '/users', label: t('userGroups.title'), icon: <UsersIcon className="h-4 w-4" /> }]
-      : []),
+    {
+      path: auth.user?.isAdmin ? '/users' : '/user-groups',
+      label: t(auth.user?.isAdmin ? 'userGroups.title' : 'userDirectory.myGroups'),
+      icon: <UsersIcon className="h-4 w-4" />,
+    },
     ...(canViewSystemLogs(auth.user)
       ? [{ path: '/logs', label: t('callLogs.title'), icon: <ScrollText className="h-4 w-4" /> }]
       : []),

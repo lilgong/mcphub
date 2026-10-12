@@ -78,7 +78,7 @@ function App() {
                       <Route path="/prompts" element={<PromptsPage />} />
                       <Route path="/resources" element={<ResourcesPage />} />
                       <Route path="/users" element={<UsersPage />} />
-                      <Route path="/user-groups" element={<Navigate to="/users" replace />} />
+                      <Route path="/user-groups" element={<UsersPage />} />
                       <Route path="/market" element={<MarketPage />} />
                       <Route path="/market/:serverName" element={<MarketPage />} />
                       {/* Legacy cloud routes redirect to the local market page */}

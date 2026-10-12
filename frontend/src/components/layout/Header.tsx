@@ -1,3 +1,4 @@
+import { useAuth } from '@/contexts/AuthContext';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useParams } from 'react-router-dom';
@@ -13,6 +14,7 @@ interface HeaderProps {
 
 const useCrumbs = (): string[] => {
   const { t } = useTranslation();
+  const { auth } = useAuth();
   const location = useLocation();
   const params = useParams();
 
@@ -25,7 +27,8 @@ const useCrumbs = (): string[] => {
     if (path.startsWith('/groups')) return [root, t('nav.groups')];
     if (path.startsWith('/prompts')) return [root, t('nav.prompts')];
     if (path.startsWith('/resources')) return [root, t('nav.resources')];
-    if (path.startsWith('/users')) return [root, t('userGroups.title')];
+    if (path.startsWith('/users') || path.startsWith('/user-groups'))
+      return [root, t(auth.user?.isAdmin ? 'userGroups.title' : 'userDirectory.myGroups')];
     if (path.startsWith('/market')) {
       const serverName = (params as { serverName?: string }).serverName;
       const crumbs = [root, t('nav.market')];
@@ -36,7 +39,7 @@ const useCrumbs = (): string[] => {
     if (path.startsWith('/activity')) return [root, t('nav.activity')];
     if (path.startsWith('/settings')) return [root, t('nav.settings')];
     return [root];
-  }, [location.pathname, params, t]);
+  }, [location.pathname, params, t, auth.user?.isAdmin]);
 };
 
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {

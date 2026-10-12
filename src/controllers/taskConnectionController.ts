@@ -131,7 +131,9 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
         entry.keyId,
       )) ||
       (entry.keyId &&
-        (!key?.enabled || (key.kind ?? 'system') !== 'system' || key.accessType !== 'all'))
+        (!key?.enabled ||
+          (!key.userGroupId && (key.kind ?? 'system') !== 'system') ||
+          key.accessType !== 'all'))
     )
       throw new Error('Task target unavailable');
     if (

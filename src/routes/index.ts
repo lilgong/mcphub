@@ -8,7 +8,7 @@ import {
 import {
   getUserGroups,
   saveUserGroup,
-  moveUserGroupMember,
+  getGroupResources,
 } from '../controllers/userGroupController.js';
 import { connectionRuntime } from '../controllers/connectionRuntimeController.js';
 import { callStats } from '../controllers/callStatsController.js';
@@ -422,7 +422,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   // Bearer authentication key management (admin only)
   authenticatedRouter.get('/user-groups', getUserGroups);
   authenticatedRouter.post('/user-groups', saveUserGroup);
-  authenticatedRouter.put('/user-groups/membership', moveUserGroupMember);
+  authenticatedRouter.get('/user-groups/resources', getGroupResources);
   authenticatedRouter.put('/user-groups/:id', saveUserGroup);
   authenticatedRouter.delete('/user-groups/:id', saveUserGroup);
   authenticatedRouter.get('/auth/keys', getBearerKeys);

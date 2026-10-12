@@ -5,7 +5,7 @@ import defaultConfig from '../config/index.js';
 import { JWT_SECRET } from '../config/jwt.js';
 import { getToken } from '../models/OAuth.js';
 import { isOAuthServerEnabled } from '../services/oauthServerService.js';
-import { getBearerKeyDao, getSystemConfigDao } from '../dao/index.js';
+import { getBearerKeyDao, getSystemConfigDao, getUserDao } from '../dao/index.js';
 import { BearerKey, SystemConfig } from '../types/index.js';
 import { getBetterAuthRuntimeConfig } from '../services/betterAuthConfig.js';
 import { authenticateForwardAuthToken } from '../services/forwardAuthService.js';
@@ -64,7 +64,7 @@ const validateBearerAuth = async (
     (['PUT', 'DELETE'].includes(req.method) &&
       /\/api\/task-connections\/[a-zA-Z0-9-]+$/.test(apiPath)) ||
     (req.method === 'GET' && /\/api\/servers\/[^/]+\/runtime$/.test(apiPath));
-  if (matchingKey.userGroupId && matchingKey.kind !== 'user' && taskApi) {
+  if (matchingKey.userGroupId && taskApi) {
     const policy = await getUserGroupPolicy(null, matchingKey.id);
     return policy.groups.length ? matchingKey : null;
   }
@@ -164,11 +164,21 @@ export const auth = async (req: Request, res: Response, next: NextFunction): Pro
   }
 
   if (matchingBearerKey) {
-    (req as any).user = {
-      username: matchingBearerKey.owner || 'system',
-      isAdmin: true,
-      credentialEligible: false,
-    };
+    const owner =
+      matchingBearerKey.userGroupId && matchingBearerKey.owner
+        ? await getUserDao().findByUsername(matchingBearerKey.owner)
+        : null;
+    if (matchingBearerKey.userGroupId && !owner) {
+      res.status(401).json({ success: false, message: 'Calling group owner unavailable' });
+      return;
+    }
+    (req as any).user = matchingBearerKey.userGroupId
+      ? {
+          username: owner!.username,
+          isAdmin: owner!.isAdmin ?? false,
+          credentialEligible: false,
+        }
+      : { username: matchingBearerKey.owner || 'system', isAdmin: true, credentialEligible: false };
     (req as any).bearerKey = matchingBearerKey;
     next();
     return;

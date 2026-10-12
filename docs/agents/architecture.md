@@ -47,3 +47,11 @@ Bearer keys have explicit kinds. Legacy and operator-created keys use `kind: 'sy
 ## Declarative database configuration
 
 `MCPHUB_SETTINGS_SYNC=upsert` reconciles server/group declarations at startup only; see `src/utils/settingsSync.ts`. Keep runtime authentication state outside reconciliation. The internal server declaration fingerprint must stay out of public DAO mappings and settings exports; unchanged declarations retain upstream OAuth state, while changes invalidate it.
+
+
+Calling groups (`systemConfig.userGroups`) belong to one user and contain server/target
+permissions, not user memberships. Group keys restore the owner's live identity and are
+bounded by both the group's grants and the owner's current visibility. New group keys
+use explicit user kind; migrated operator group keys preserve their kind and token while
+adding ownership. Keep dashboard configuration authorization separate from invocation
+permissions. Startup migration removes legacy memberships and must never rotate keys.

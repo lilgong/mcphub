@@ -17,13 +17,14 @@ let seen: { url?: string; body?: string; authorization?: string; cookie?: string
 const mockFindServer = jest.fn(async () => resource);
 const mockFindUser = jest.fn(async () => ({ username: 'admin', isAdmin: true }));
 jest.mock('../../src/dao/index.js', () => ({
-  getServerDao: () => ({ findById: mockFindServer }),
+  getServerDao: () => ({ findById: mockFindServer, findAll: async () => [resource] }),
   getUserDao: () => ({ findByUsername: mockFindUser }),
   getBearerKeyDao: () => ({
     findById: async () => ({
       id: shared ? 'shared-key' : 'group-key',
       enabled: valid,
       kind: 'system',
+      owner: shared ? undefined : 'admin',
       accessType: 'all',
       userGroupId: shared ? undefined : 'bench-group',
     }),
@@ -35,7 +36,7 @@ jest.mock('../../src/dao/index.js', () => ({
         {
           id: 'bench-group',
           enabled: true,
-          members: [],
+          owner: 'admin',
           servers: permitted ? [{ name: 'serper' }] : [],
         },
       ],
@@ -43,12 +44,17 @@ jest.mock('../../src/dao/index.js', () => ({
   }),
 }));
 jest.mock('../../src/dao/DaoFactory.js', () => ({
-  getServerDao: () => ({ findById: mockFindServer }),
+  getServerDao: () => ({ findById: mockFindServer, findAll: async () => [resource] }),
 }));
 jest.mock('../../src/services/sseService.js', () => ({
   validateBearerAuth: async (req: express.Request) =>
     valid && req.get('authorization') === 'Bearer hub-test-token'
-      ? { valid: true, keyId: shared ? 'shared-key' : 'group-key', keyName: 'test' }
+      ? {
+          valid: true,
+          keyId: shared ? 'shared-key' : 'group-key',
+          keyName: 'test',
+          user: shared ? undefined : { username: 'admin', isAdmin: true },
+        }
       : { valid: false, reason: 'invalid' },
 }));
 jest.mock('../../src/services/serverConfigEnvironment.js', () => ({
@@ -101,6 +107,7 @@ beforeEach(() => {
   audit = mkdtempSync(join(tmpdir(), 'mcphub-http-audit-'));
   process.env.MCPHUB_AUDIT_LOG_DIR = audit;
   jest.clearAllMocks();
+  mockFindUser.mockResolvedValue({ username: 'admin', isAdmin: true });
 });
 afterEach(() => rmSync(audit, { recursive: true, force: true }));
 afterAll(async () => {
@@ -194,7 +201,7 @@ it('fails closed when mandatory audit is unavailable', async () => {
   expect(seen.url).toBeUndefined();
 });
 it('blocks non-admin upstream connections to internal addresses', async () => {
-  mockFindUser.mockResolvedValueOnce({ username: 'user', isAdmin: false });
+  mockFindUser.mockResolvedValue({ username: 'admin', isAdmin: false });
   expect((await search()).status).toBe(502);
   expect(seen.url).toBeUndefined();
 });

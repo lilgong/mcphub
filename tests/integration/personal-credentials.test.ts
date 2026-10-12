@@ -3,7 +3,11 @@ import {
   renewTaskConnection,
 } from '../../src/controllers/taskConnectionController.js';
 import { connectionRuntime } from '../../src/controllers/connectionRuntimeController.js';
-import { getUserGroups, saveUserGroup } from '../../src/controllers/userGroupController.js';
+import {
+  getUserGroups,
+  getGroupResources,
+  saveUserGroup,
+} from '../../src/controllers/userGroupController.js';
 import { getBearerKeys, createBearerKey } from '../../src/controllers/bearerKeyController.js';
 import { RequestContextService } from '../../src/services/requestContextService.js';
 import { logger } from '../../src/utils/logger.js';
@@ -27,6 +31,7 @@ import { Server as McpServer } from '@modelcontextprotocol/server';
 import request from 'supertest';
 import {
   getServerDao,
+  getUserDao,
   getSystemConfigDao,
   getGroupDao,
   getBearerKeyDao,
@@ -180,6 +185,7 @@ beforeAll(async () => {
   app.put('/api/task-connections/:id', renewTaskConnection);
   app.get('/api/servers/:name/runtime', connectionRuntime);
   app.get('/api/user-groups', getUserGroups);
+  app.get('/api/user-groups/resources', getGroupResources);
   app.post('/api/user-groups', saveUserGroup);
   app.put('/api/user-groups/:id', saveUserGroup);
   app.delete('/api/user-groups/:id', saveUserGroup);
@@ -1070,7 +1076,7 @@ test('user group keys span MCPs, select targets explicitly, and enforce live res
   const body = {
     name: 'Atlas access',
     enabled: true,
-    members: [alice],
+    owner: 'admin',
     servers: [
       { name: 'group-targeted', targets: ['atlas/official'] },
       { name: 'group-ordinary' },
@@ -1081,7 +1087,7 @@ test('user group keys span MCPs, select targets explicitly, and enforce live res
     .post('/api/user-groups')
     .set('x-auth-token', apiToken(alice))
     .send(body)
-    .expect(403);
+    .expect(400);
   await request(app)
     .post('/api/user-groups')
     .set('x-auth-token', apiToken('admin'))
@@ -1230,4 +1236,99 @@ test('user group keys span MCPs, select targets explicitly, and enforce live res
     .set('x-auth-token', apiToken('admin'))
     .expect(200);
   await expect(connectKey(key.token, 'group-ordinary')).rejects.toThrow();
+}, 30000);
+
+test('owned groups bind calling keys to their owner and cannot grant foreign private resources', async () => {
+  const dao = getServerDao();
+  for (const [name, owner, visibility] of [
+    ['owned-alice', alice, 'private'],
+    ['owned-bob', bob, 'private'],
+    ['owned-public', 'admin', 'public'],
+  ] as const) {
+    await dao.create({
+      name,
+      owner,
+      visibility,
+      enabled: true,
+      type: 'stdio',
+      command: process.execPath,
+      args: [fixture],
+      env: { PERSONAL_KEY: name },
+    });
+  }
+  await initializeClientsFromSettings(true);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const info = (await getServersInfo()).find((server) => server.name === 'owned-public');
+    if (info?.status === 'connected' && info.tools?.length) break;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const selected = (
+    await request(app)
+      .get('/api/user-groups/resources')
+      .set('x-auth-token', apiToken(alice))
+      .expect(200)
+  ).body.data;
+  expect(selected.some((entry: { name: string }) => entry.name === 'owned-alice')).toBe(true);
+  expect(selected.some((entry: { name: string }) => entry.name === 'owned-bob')).toBe(false);
+  const body = {
+    name: 'Owned search',
+    enabled: true,
+    servers: [{ name: 'owned-alice' }, { name: 'owned-public' }],
+  };
+  const group = (
+    await request(app)
+      .post('/api/user-groups')
+      .set('x-auth-token', apiToken(alice))
+      .send(body)
+      .expect(201)
+  ).body.data;
+  expect(group.owner).toBe(alice);
+  expect(group).not.toHaveProperty('members');
+  await request(app)
+    .post('/api/user-groups')
+    .set('x-auth-token', apiToken(alice))
+    .send({ ...body, name: 'Escalation', servers: [{ name: 'owned-bob' }] })
+    .expect(400);
+  await request(app)
+    .post('/api/user-groups')
+    .set('x-auth-token', apiToken('admin'))
+    .send({ ...body, owner: alice, name: 'Admin delegation', servers: [{ name: 'owned-bob' }] })
+    .expect(400);
+  await request(app)
+    .put(`/api/user-groups/${group.id}`)
+    .set('x-auth-token', apiToken(bob))
+    .send(body)
+    .expect(404);
+  const key = (
+    await request(app)
+      .post('/api/auth/keys')
+      .set('x-auth-token', apiToken(alice))
+      .send({ name: 'owned key', userGroupId: group.id })
+      .expect(201)
+  ).body.data;
+  expect(key.owner).toBe(alice);
+  expect(key.kind).toBe('user');
+  await request(app)
+    .post('/api/auth/keys')
+    .set('x-auth-token', apiToken(bob))
+    .send({ name: 'foreign key', userGroupId: group.id })
+    .expect(403);
+  const bobGroups = (
+    await request(app).get('/api/user-groups').set('x-auth-token', apiToken(bob)).expect(200)
+  ).body.data;
+  expect(bobGroups.some((entry: { id: string }) => entry.id === group.id)).toBe(false);
+  await request(app).get('/api/users').set('Authorization', `Bearer ${key.token}`).expect(401);
+  const client = new Client({ name: 'owned-group-e2e', version: '1' });
+  clients.push(client);
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp/owned-public`), {
+      requestInit: { headers: { Authorization: `Bearer ${key.token}` } },
+    }),
+  );
+  const tool = (await client.listTools()).tools[0];
+  expect(parseIdentity(await client.callTool({ name: tool.name, arguments: {} })).credential).toBe(
+    'owned-public',
+  );
+  await dao.update('owned-public', { visibility: 'private' });
+  await expect(client.callTool({ name: tool.name, arguments: {} })).rejects.toThrow();
 }, 30000);

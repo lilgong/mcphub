@@ -23,8 +23,20 @@ const sanitizeKey = (key: BearerKey): BearerKey => ({
   token: maskToken(key.token),
 });
 
-const canManageKey = (user: AuthenticatedUser | undefined, key: BearerKey): boolean =>
-  Boolean(user?.isAdmin || (user?.username && key.kind === 'user' && key.owner === user.username));
+const canManageKey = async (
+  user: AuthenticatedUser | undefined,
+  key: BearerKey,
+): Promise<boolean> => {
+  if (user?.isAdmin) return true;
+  if (!user?.username) return false;
+  if (key.userGroupId) {
+    const group = (await getSystemConfigDao().get()).userGroups?.find(
+      (entry) => entry.id === key.userGroupId,
+    );
+    return group?.owner === user.username && key.owner === group.owner;
+  }
+  return key.kind === 'user' && key.owner === user.username;
+};
 
 const validateSystemScope = (
   accessType: BearerKeyAccessType | undefined,
@@ -46,7 +58,19 @@ export const getBearerKeys = async (req: Request, res: Response): Promise<void> 
     }
 
     const dao = getBearerKeyDao();
-    const keys = user.isAdmin ? await dao.findAll() : await dao.findByOwner(user.username);
+    let keys = user.isAdmin ? await dao.findAll() : await dao.findByOwner(user.username);
+    if (!user.isAdmin) {
+      const owned = ((await getSystemConfigDao().get()).userGroups ?? []).filter(
+        (group) => group.owner === user.username,
+      );
+      if (owned.length) {
+        const legacy = (await dao.findAll()).filter(
+          (key) =>
+            key.owner === user.username && owned.some((group) => group.id === key.userGroupId),
+        );
+        keys = [...new Map([...keys, ...legacy].map((key) => [key.id, key])).values()];
+      }
+    }
     const response: ApiResponse = {
       success: true,
       data: keys.map(sanitizeKey),
@@ -82,13 +106,30 @@ const createBearerKeyCore = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const kind: BearerKeyKind = user.isAdmin ? (requestedKind ?? 'system') : 'user';
+    const group = userGroupId
+      ? (await getSystemConfigDao().get()).userGroups?.find((entry) => entry.id === userGroupId)
+      : undefined;
+    if (
+      userGroupId !== undefined &&
+      (typeof userGroupId !== 'string' ||
+        !group ||
+        (!user.isAdmin && group.owner !== user.username))
+    ) {
+      res.status(403).json({ success: false, message: 'Group not available' });
+      return;
+    }
+    const kind: BearerKeyKind = group
+      ? 'user'
+      : user.isAdmin
+        ? (requestedKind ?? 'system')
+        : 'user';
     if (!['system', 'user'].includes(kind)) {
       res.status(400).json({ success: false, message: 'Invalid key kind' });
       return;
     }
 
-    const resolvedOwner = kind === 'user' ? (user.isAdmin ? owner : user.username) : undefined;
+    const resolvedOwner =
+      group?.owner ?? (kind === 'user' ? (user.isAdmin ? owner : user.username) : undefined);
     if (kind === 'user') {
       if (!resolvedOwner || typeof resolvedOwner !== 'string') {
         res.status(400).json({ success: false, message: 'User-level keys require an owner' });
@@ -102,17 +143,6 @@ const createBearerKeyCore = async (req: Request, res: Response): Promise<void> =
 
     const resolvedAccessType = kind === 'user' ? 'all' : accessType;
     if (kind === 'system' && !validateSystemScope(resolvedAccessType, res)) {
-      return;
-    }
-
-    if (
-      userGroupId !== undefined &&
-      (!user.isAdmin ||
-        kind !== 'system' ||
-        typeof userGroupId !== 'string' ||
-        !(await getSystemConfigDao().get()).userGroups?.some((group) => group.id === userGroupId))
-    ) {
-      res.status(400).json({ success: false, message: 'Invalid user group' });
       return;
     }
 
@@ -165,7 +195,7 @@ export const updateBearerKey = async (req: Request, res: Response): Promise<void
     }
 
     const user = getAuthenticatedUser(req);
-    if (!canManageKey(user, existing)) {
+    if (!(await canManageKey(user, existing))) {
       res.status(403).json({ success: false, message: 'Forbidden' });
       return;
     }
@@ -176,7 +206,7 @@ export const updateBearerKey = async (req: Request, res: Response): Promise<void
     if (name !== undefined) updates.name = name;
     if (enabled !== undefined) updates.enabled = enabled;
 
-    if (existing.kind !== 'user' && user?.isAdmin) {
+    if (!existing.userGroupId && existing.kind !== 'user' && user?.isAdmin) {
       if (accessType !== undefined) {
         if (!validateSystemScope(accessType, res)) return;
         updates.accessType = accessType;
@@ -212,7 +242,7 @@ export const deleteBearerKey = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    if (!canManageKey(getAuthenticatedUser(req), existing)) {
+    if (!(await canManageKey(getAuthenticatedUser(req), existing))) {
       res.status(403).json({ success: false, message: 'Forbidden' });
       return;
     }

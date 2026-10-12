@@ -1,3 +1,4 @@
+import { migrateOwnedCallGroups } from './services/userGroupService.js';
 import express from 'express';
 import { relayRuntimeService } from './services/relayRuntimeService.js';
 import cors, { type CorsOptions } from 'cors';
@@ -91,6 +92,7 @@ export class AppServer {
 
       // Initialize default admin user if no users exist
       await initializeDefaultUser();
+      await migrateOwnedCallGroups();
 
       // Initialize OAuth provider if configured (for proxying upstream MCP OAuth)
       await initOAuthProvider();

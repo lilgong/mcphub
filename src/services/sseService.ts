@@ -387,7 +387,7 @@ const isBearerKeyAllowedForRequest = async (req: Request, key: BearerKey): Promi
 };
 
 const resolveUserLevelKeyUser = async (req: Request, key: BearerKey): Promise<BearerAuthResult> => {
-  if (key.kind !== 'user') {
+  if (key.kind !== 'user' && !key.userGroupId) {
     return { valid: true, keyId: key.id, keyName: key.name, kind: key.kind || 'system' };
   }
 
@@ -405,7 +405,7 @@ const resolveUserLevelKeyUser = async (req: Request, key: BearerKey): Promise<Be
     return { valid: false, reason: 'forbidden' };
   }
 
-  return { valid: true, user, keyId: key.id, keyName: key.name, kind: 'user' };
+  return { valid: true, user, keyId: key.id, keyName: key.name, kind: key.kind ?? 'system' };
 };
 
 export const validateBearerAuth = async (req: Request): Promise<BearerAuthResult> => {

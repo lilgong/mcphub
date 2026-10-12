@@ -191,3 +191,5 @@ Versions natives/wrapper simultanées, activation par cible, inventaire des conn
 Les administrateurs peuvent démarrer/arrêter le relais résidentiel intégré et renouveler son jeton dans les paramètres Relay. Configurez `.env.example` ; MCP-Atlas n’est pas nécessaire.
 
 Les API HTTP peuvent utiliser le [transfert HTTP](docs/features/http-forwarding.mdx), avec les autorisations, les limites et les journaux du Hub.
+
+Les groupes d’appel appartiennent aux utilisateurs ; les administrateurs gèrent les comptes et groupes dans un seul annuaire. Voir les [groupes d’appel](docs/features/user-groups.mdx).

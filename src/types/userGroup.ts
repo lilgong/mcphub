@@ -9,6 +9,13 @@ export interface UserGroup {
   name: string;
   description?: string;
   enabled: boolean;
-  members: string[];
+  owner: string;
   servers: UserGroupResource[];
+}
+
+/** Selector metadata only; excludes provider credentials, commands and task leases. */
+export interface UserGroupResourceOption {
+  name: string;
+  enabled: boolean;
+  targets: { path: string; kind: 'static' | 'task'; enabled: boolean }[];
 }
