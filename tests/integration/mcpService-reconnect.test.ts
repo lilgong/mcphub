@@ -1,5 +1,6 @@
 /// <reference types="jest" />
 import { SSEClientTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 // Keep DNS deterministic while exercising the real SSRF URL validation.
 jest.mock('node:dns/promises', () => ({
@@ -52,7 +53,10 @@ jest.mock('@modelcontextprotocol/client', () => {
 });
 
 jest.mock('@modelcontextprotocol/client/stdio', () => ({
-  StdioClientTransport: jest.fn(),
+  StdioClientTransport: class MockStdioTransport {
+    close = jest.fn().mockResolvedValue(undefined);
+    constructor(public options?: unknown) {}
+  },
 }));
 
 jest.mock('../../src/services/oauthService.js', () => ({
@@ -221,6 +225,49 @@ describe('mcpService reconnect config integration', () => {
       } finally {
         jest.clearAllTimers();
         jest.useRealTimers();
+        mcpService.setServerInfosForTest([]);
+      }
+    },
+  );
+
+  it.each(['Not connected', 'MCP error -32000: Connection closed'])(
+    'recovers closed stdio (%s) on subsequent calls without replaying the failed tool',
+    async (message) => {
+      const config = {
+        name: 'clock-server',
+        type: 'stdio',
+        command: 'node',
+        args: ['server.js'],
+        enabled: true,
+      };
+      mockServerDao.findById.mockResolvedValueOnce(config as any);
+      const firstCall = jest.fn().mockRejectedValue(new Error(message));
+      const initialTransport = new StdioClientTransport({ command: 'node', args: ['server.js'] });
+      const serverInfo = createServerInfo(firstCall, initialTransport) as any;
+      serverInfo.config = config;
+      mcpService.setServerInfosForTest([serverInfo]);
+      const call = () =>
+        mcpService.handleCallToolRequest(
+          {
+            params: {
+              name: 'call_tool',
+              arguments: { toolName: 'clock-server::get_current_time', arguments: {} },
+            },
+          },
+          { sessionId: 'stdio-recovery', server: 'clock-server' },
+        );
+      try {
+        const failed = await call();
+        expect(failed.isError).toBe(true);
+        expect(firstCall).toHaveBeenCalledTimes(1);
+        expect(mockReconnectClient.connect).not.toHaveBeenCalled();
+        const results = await Promise.all([call(), call()]);
+        expect(results.every((result) => !result.isError)).toBe(true);
+        expect(firstCall).toHaveBeenCalledTimes(1);
+        expect(mockReconnectClient.connect).toHaveBeenCalledTimes(1);
+        expect(mockReconnectClient.callTool).toHaveBeenCalledTimes(2);
+        expect(initialTransport.close).toHaveBeenCalledTimes(1);
+      } finally {
         mcpService.setServerInfosForTest([]);
       }
     },

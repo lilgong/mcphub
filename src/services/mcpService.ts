@@ -1800,6 +1800,68 @@ type IsolatedClientContext = {
   transport: any;
 };
 
+const failedStdioClients = new WeakSet<Client>();
+type RecoveredStdioConnection = {
+  client: Client;
+  transport: Awaited<ReturnType<typeof createTransportFromConfig>>;
+};
+const stdioRecoveryPromises = new WeakMap<Client, Promise<RecoveredStdioConnection>>();
+
+// Recover before a subsequent request, never replay a possibly executed tool.
+const recoverClosedStdioClient = async (
+  serverInfo: ServerInfo,
+  staleClient: Client,
+  staleTransport: StdioClientTransport,
+  isolated?: IsolatedClientContext,
+): Promise<void> => {
+  const pending = stdioRecoveryPromises.get(staleClient);
+  if (pending) {
+    const connection = await pending;
+    if (isolated) Object.assign(isolated, connection);
+    return;
+  }
+  const recovery = (async () => {
+    // Target/personal clients already carry their exact expanded connection;
+    // looking up the logical server here would select the wrong workspace.
+    const rawConfig =
+      serverInfo.config?.env?.MCPHUB_CONNECTION_TARGET || hasCredentialTemplate(serverInfo.config)
+        ? serverInfo.config
+        : await getServerDao().findById(serverInfo.name);
+    if (!rawConfig || rawConfig.enabled === false) {
+      throw new Error(`Cannot recover unavailable server: ${serverInfo.name}`);
+    }
+    const config = await expandServerConfig(rawConfig);
+    await Promise.resolve(staleClient.close()).catch(() => undefined);
+    await Promise.resolve(staleTransport.close()).catch(() => undefined);
+    const transport = await createTransportFromConfig(serverInfo.name, config);
+    const client = createUpstreamMcpClient(serverInfo.name, () => serverInfo);
+    try {
+      await connectClientWithDiagnostics(client, transport, serverInfo.options || {});
+    } catch (error) {
+      await Promise.resolve(client.close()).catch(() => undefined);
+      await Promise.resolve(transport.close()).catch(() => undefined);
+      throw error;
+    }
+    if (isolated) {
+      setSessionIsolatedClient(isolated.sessionId, serverInfo.name, client, transport);
+      isolated.client = client;
+      isolated.transport = transport;
+    } else {
+      serverInfo.client = client;
+      serverInfo.transport = transport;
+      serverInfo.error = null;
+    }
+    logger.log(`Recovered closed STDIO connection: ${serverInfo.name}`);
+    return { client, transport };
+  })();
+  stdioRecoveryPromises.set(staleClient, recovery);
+  try {
+    await recovery;
+  } finally {
+    stdioRecoveryPromises.delete(staleClient);
+  }
+};
+
 // Helper function to handle client.callTool with reconnection logic
 const callToolWithReconnectCore = async (
   serverInfo: ServerInfo,
@@ -1818,15 +1880,42 @@ const callToolWithReconnectCore = async (
   }
 
   if (
+    transport instanceof StdioClientTransport &&
+    (failedStdioClients.has(client) || ('transport' in client && !client.transport))
+  ) {
+    await recoverClosedStdioClient(serverInfo, client, transport, isolated);
+    client = (isolated ? isolated.client : serverInfo.client)!;
+    transport = isolated ? isolated.transport : serverInfo.transport;
+  }
+
+  const invoke = async () => {
+    const activeClient = client;
+    if (!activeClient) throw new Error(`Client not found for server: ${serverInfo.name}`);
+    try {
+      return await activeClient.callTool(toolParams, options || {});
+    } catch (error) {
+      if (
+        transport instanceof StdioClientTransport &&
+        error instanceof Error &&
+        /^(?:MCP error -\d+: )?(?:Not connected|Connection closed)(?:$|[.:\s])/.test(error.message)
+      ) {
+        failedStdioClients.add(activeClient);
+        logger.warn(`STDIO connection closed for ${serverInfo.name}; next call will reconnect`);
+      }
+      throw error;
+    }
+  };
+
+  if (
     hasCredentialTemplate(serverInfo.config) ||
     serverInfo.config?.env?.MCPHUB_CONNECTION_TARGET
   ) {
-    return client.callTool(toolParams, options || {});
+    return invoke();
   }
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await client.callTool(toolParams, options || {});
+      const result = await invoke();
       // Check auth error
       checkAuthError(result);
       return result;
