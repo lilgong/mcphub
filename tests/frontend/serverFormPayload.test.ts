@@ -499,3 +499,30 @@ it.each([undefined, false, true])('round-trips HTTP OAuth exception=%s from the 
   });
   expect(payload.config.oauth?.allowInsecureTokenEndpoint).toBe(value);
 });
+
+it('submits HTTP forwarding URL and headers without hidden MCP environment settings', () => {
+  const formData: ServerFormData = {
+    name: 'serper',
+    url: 'https://yibuapi.com',
+    command: 'node',
+    arguments: '',
+    args: ['old.js'],
+    env: [],
+    headers: [],
+    options: { timeout: 20000 },
+  };
+  const payload = buildServerPayload({
+    formData,
+    serverType: 'http-proxy',
+    envVars: [{ key: 'OLD_KEY', value: 'unused' }],
+    headerVars: [{ key: 'Authorization', value: 'Bearer entered-key' }],
+  });
+  expect(payload.config).toMatchObject({
+    type: 'http-proxy',
+    url: 'https://yibuapi.com',
+    headers: { Authorization: 'Bearer entered-key' },
+    options: { timeout: 20000 },
+  });
+  expect(payload.config.env).toBeUndefined();
+  expect(payload.config.command).toBeUndefined();
+});

@@ -622,11 +622,11 @@ export const createServer = async (req: Request, res: Response): Promise<void> =
     // Validate the server type if specified
     if (
       normalizedConfig.type &&
-      !['stdio', 'sse', 'streamable-http', 'openapi'].includes(normalizedConfig.type)
+      !['stdio', 'sse', 'streamable-http', 'openapi', 'http-proxy'].includes(normalizedConfig.type)
     ) {
       res.status(400).json({
         success: false,
-        message: 'Server type must be one of: stdio, sse, streamable-http, openapi',
+        message: 'Server type must be one of: stdio, sse, streamable-http, openapi, http-proxy',
       });
       return;
     }
@@ -780,11 +780,11 @@ export const batchCreateServers = async (req: Request, res: Response): Promise<v
       // Validate server type if specified
       if (
         normalizedConfig.type &&
-        !['stdio', 'sse', 'streamable-http', 'openapi'].includes(normalizedConfig.type)
+        !['stdio', 'sse', 'streamable-http', 'openapi', 'http-proxy'].includes(normalizedConfig.type)
       ) {
         return {
           valid: false,
-          message: 'Server type must be one of: stdio, sse, streamable-http, openapi',
+          message: 'Server type must be one of: stdio, sse, streamable-http, openapi, http-proxy',
         };
       }
 
@@ -1095,11 +1095,11 @@ export const updateServer = async (req: Request, res: Response): Promise<void> =
     // Validate the server type if specified
     if (
       normalizedConfig.type &&
-      !['stdio', 'sse', 'streamable-http', 'openapi'].includes(normalizedConfig.type)
+      !['stdio', 'sse', 'streamable-http', 'openapi', 'http-proxy'].includes(normalizedConfig.type)
     ) {
       res.status(400).json({
         success: false,
-        message: 'Server type must be one of: stdio, sse, streamable-http, openapi',
+        message: 'Server type must be one of: stdio, sse, streamable-http, openapi, http-proxy',
       });
       return;
     }

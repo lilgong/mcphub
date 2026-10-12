@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "serper": {
+      "type": "http-proxy",
+      "description": "Serper HTTP search forwarding; configure the upstream URL, authentication method and API key.",
+      "url": "https://yibuapi.com/serper",
+      "headers": {
+        "Authorization": ""
+      },
+      "options": {
+        "timeout": 60000
+      },
+      "enabled": true
+    }
+  }
+}

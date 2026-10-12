@@ -48,6 +48,7 @@ export const initMiddlewares = (app: express.Application): void => {
       const betterAuthPath = `${basePath}${betterAuthConfig.basePath}`;
 
       if (
+        !req.path.startsWith(`${basePath}/http/`) &&
         !req.path.startsWith(betterAuthPath) &&
         req.path !== `${basePath}/sse` &&
         !req.path.startsWith(`${basePath}/sse/`) &&

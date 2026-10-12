@@ -408,7 +408,7 @@ const resolveUserLevelKeyUser = async (req: Request, key: BearerKey): Promise<Be
   return { valid: true, user, keyId: key.id, keyName: key.name, kind: 'user' };
 };
 
-const validateBearerAuth = async (req: Request): Promise<BearerAuthResult> => {
+export const validateBearerAuth = async (req: Request): Promise<BearerAuthResult> => {
   const systemConfigDao = getSystemConfigDao();
   const systemConfig = await systemConfigDao.get();
   const enableBearerAuth = systemConfig?.routing?.enableBearerAuth ?? true;

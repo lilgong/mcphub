@@ -1,3 +1,4 @@
+import HttpForwardEditor from './HttpForwardEditor';
 import {
   supportsFetchRelay,
   isRelayEnvironmentVariable,
@@ -128,9 +129,9 @@ const ServerForm = ({
     };
   };
 
-  const [serverType, setServerType] = useState<'stdio' | 'sse' | 'streamable-http' | 'openapi'>(
-    getInitialServerType(),
-  );
+  const [serverType, setServerType] = useState<
+    'stdio' | 'sse' | 'streamable-http' | 'openapi' | 'http-proxy'
+  >(getInitialServerType());
 
   const [formData, setFormData] = useState<ServerFormData>({
     targets: initialData?.config?.targets ?? undefined,
@@ -377,9 +378,22 @@ const ServerForm = ({
     setFormData({ ...formData, [name]: value });
   };
 
-  const updateServerType = (type: 'stdio' | 'sse' | 'streamable-http' | 'openapi') => {
+  const updateServerType = (
+    type: 'stdio' | 'sse' | 'streamable-http' | 'openapi' | 'http-proxy',
+  ) => {
     setServerType(type);
-    setFormData((prev) => ({ ...prev, type }));
+    setFormData((prev) => ({
+      ...prev,
+      type,
+      ...(type === 'http-proxy'
+        ? {
+            targets: undefined,
+            keyPool: undefined,
+            relay: undefined,
+            credentialTemplate: undefined,
+          }
+        : {}),
+    }));
   };
 
   const handleEnvVarChange = (index: number, field: 'key' | 'value', value: string) => {
@@ -818,39 +832,41 @@ const ServerForm = ({
           )}
         </div>
 
-        <TargetConnectionEditor
-          value={formData.targets}
-          currentConnection={
-            serverType !== 'openapi' &&
-            !initialData?.config?.credentialTemplate?.length &&
-            !initialData?.config?.proxy &&
-            !initialData?.config?.perSessionClient &&
-            !initialData?.config?.oauth &&
-            !formData.passthroughHeaders?.trim() &&
-            (serverType === 'stdio' ? !!formData.command : !!formData.url)
-              ? {
-                  type: serverType,
-                  command: serverType === 'stdio' ? formData.command : undefined,
-                  args: serverType === 'stdio' ? formData.args : undefined,
-                  url: serverType !== 'stdio' ? formData.url : undefined,
-                  env: Object.fromEntries(
-                    envVars
-                      .filter((item) => item.key.trim())
-                      .map((item) => [item.key.trim(), item.value]),
-                  ),
-                  headers: Object.fromEntries(
-                    headerVars
-                      .filter((item) => item.key.trim())
-                      .map((item) => [item.key.trim(), item.value]),
-                  ),
-                  options: formData.options,
-                  keyPool: formData.keyPool,
-                  relay: formData.relay,
-                }
-              : undefined
-          }
-          onChange={(targets) => setFormData((previous) => ({ ...previous, targets }))}
-        />
+        {serverType !== 'http-proxy' && (
+          <TargetConnectionEditor
+            value={formData.targets}
+            currentConnection={
+              serverType !== 'openapi' &&
+              !initialData?.config?.credentialTemplate?.length &&
+              !initialData?.config?.proxy &&
+              !initialData?.config?.perSessionClient &&
+              !initialData?.config?.oauth &&
+              !formData.passthroughHeaders?.trim() &&
+              (serverType === 'stdio' ? !!formData.command : !!formData.url)
+                ? {
+                    type: serverType,
+                    command: serverType === 'stdio' ? formData.command : undefined,
+                    args: serverType === 'stdio' ? formData.args : undefined,
+                    url: serverType !== 'stdio' ? formData.url : undefined,
+                    env: Object.fromEntries(
+                      envVars
+                        .filter((item) => item.key.trim())
+                        .map((item) => [item.key.trim(), item.value]),
+                    ),
+                    headers: Object.fromEntries(
+                      headerVars
+                        .filter((item) => item.key.trim())
+                        .map((item) => [item.key.trim(), item.value]),
+                    ),
+                    options: formData.options,
+                    keyPool: formData.keyPool,
+                    relay: formData.relay,
+                  }
+                : undefined
+            }
+            onChange={(targets) => setFormData((previous) => ({ ...previous, targets }))}
+          />
+        )}
         {!formData.targets?.length && (
           <>
             {serverType === 'stdio' && (
@@ -917,6 +933,20 @@ const ServerForm = ({
                   <div>
                     <input
                       type="radio"
+                      id="http-proxy"
+                      name="serverType"
+                      value="http-proxy"
+                      checked={serverType === 'http-proxy'}
+                      onChange={() => updateServerType('http-proxy')}
+                      className="mr-1"
+                    />
+                    <label htmlFor="http-proxy" className="text-[var(--hub-ink)]">
+                      {t('server.typeHttpProxy')}
+                    </label>
+                  </div>
+                  <div>
+                    <input
+                      type="radio"
                       id="openapi"
                       name="serverType"
                       value="openapi"
@@ -933,7 +963,22 @@ const ServerForm = ({
 
               {/* Connection details — indented to show hierarchy under Server Type */}
               <div className="pl-4 border-l-2 border-gray-200 dark:border-gray-700 ml-2">
-                {serverType === 'openapi' ? (
+                {serverType === 'http-proxy' ? (
+                  <HttpForwardEditor
+                    name={formData.name}
+                    url={formData.url}
+                    headers={headerVars}
+                    onUrlChange={(url) => setFormData((previous) => ({ ...previous, url }))}
+                    onHeadersChange={setHeaderVars}
+                    timeout={formData.options?.timeout ?? 60000}
+                    onTimeoutChange={(timeout) =>
+                      setFormData((previous) => ({
+                        ...previous,
+                        options: { ...previous.options, timeout },
+                      }))
+                    }
+                  />
+                ) : serverType === 'openapi' ? (
                   <>
                     {/* Input Mode Selection */}
                     <div className="mb-4">
@@ -1969,7 +2014,7 @@ const ServerForm = ({
             </div>
 
             {/* ─── Section 3: Advanced Options (collapsible) ─── */}
-            <div className="mb-4">
+            <div className="mb-4" hidden={serverType === 'http-proxy'}>
               <div
                 className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-700"
                 onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
@@ -2100,7 +2145,7 @@ const ServerForm = ({
                   </div>
 
                   {/* OAuth Configuration - non-OpenAPI types */}
-                  {serverType !== 'openapi' && (
+                  {serverType !== 'openapi' && serverType !== 'http-proxy' && (
                     <div>
                       <div
                         className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-700"
@@ -2174,7 +2219,7 @@ const ServerForm = ({
                   )}
 
                   {/* Request Options Configuration */}
-                  {serverType !== 'openapi' && (
+                  {serverType !== 'openapi' && serverType !== 'http-proxy' && (
                     <div>
                       <div
                         className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 p-3 rounded border border-gray-200 dark:border-gray-700"
@@ -2377,7 +2422,7 @@ const ServerForm = ({
                   )}
 
                   {/* Per-session client isolation - applies to any server type except openapi */}
-                  {serverType !== 'openapi' && (
+                  {serverType !== 'openapi' && serverType !== 'http-proxy' && (
                     <div>
                       <div className="flex items-center mb-1">
                         <input

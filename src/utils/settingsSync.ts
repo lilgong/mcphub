@@ -36,7 +36,7 @@ const declarationSchema = z.object({
       name,
       z
         .object({
-          type: z.enum(['stdio', 'sse', 'streamable-http', 'openapi']).optional(),
+          type: z.enum(['stdio', 'sse', 'streamable-http', 'openapi', 'http-proxy']).optional(),
           url: z.string().optional(),
           command: z.string().optional(),
           args: z.array(z.string()).optional(),

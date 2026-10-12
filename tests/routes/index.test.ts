@@ -5,6 +5,8 @@ const routeHandler = jest.fn();
 const uploadMiddleware = jest.fn();
 const authMiddleware = jest.fn((_req, _res, next) => next());
 
+jest.mock('../../src/controllers/httpForwardController.js', () => ({ forwardHttp: routeHandler }));
+
 jest.mock('../../src/controllers/atlasController.js', () => ({
   relayLimits: routeHandler,
   getAtlasSettings: routeHandler,

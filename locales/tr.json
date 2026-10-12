@@ -293,7 +293,26 @@
     "showSecret": "{{name}} göster",
     "hideSecret": "{{name}} gizle",
     "transportHelp": "MCPB paketleri genellikle STDIO kullanır: Hub programı kendi konteynerinde başlatır. SSE / Akış HTTP başka yerde çalışan MCP’ye bağlanır. OpenAPI HTTP API tanımını araçlara dönüştürür.",
-    "stdioHelp": "İçe aktarılan komut ve parametreleri genellikle değiştirmeyin. node programı, launch.cjs paketi başlatır. /app/... Hub konteynerindeki mutlak yoldur; sunucu veya Atlas yolu değildir."
+    "stdioHelp": "İçe aktarılan komut ve parametreleri genellikle değiştirmeyin. node programı, launch.cjs paketi başlatır. /app/... Hub konteynerindeki mutlak yoldur; sunucu veya Atlas yolu değildir.",
+    "typeHttpProxy": "HTTP yönlendirme",
+    "httpForward": {
+      "help": "HTTP isteklerini MCP araçlarına dönüştürmeden iletir. Hız sınırı paylaşılır ve üst hizmet yanıtları korunur.",
+      "upstream": "Üst hizmet temel URL’si",
+      "headers": "Üst hizmet başlıkları",
+      "headerName": "Başlık adı",
+      "endpoint": "İstemci temel URL’si",
+      "endpointHint": "Örneğin /search API yolunu ekleyin. Hub grup veya ortak anahtarıyla doğrulayın. Değişiklikler sonraki isteklere uygulanır.",
+      "timeout": "Üst hizmet zaman aşımı (saniye)",
+      "authMode": "Kimlik doğrulama",
+      "bearer": "Bearer",
+      "apiKeyHeader": "API anahtarı başlığı",
+      "noAuth": "Kimlik doğrulama yok",
+      "apiKey": "API anahtarı",
+      "keyPlaceholder": "Yalnızca anahtarı girin",
+      "bearerHint": "Bearer öneki otomatik eklenir. İstemcinin Hub anahtarı üst hizmete iletilmez.",
+      "clientKeyHint": "İstemcinin Hub anahtarı üst hizmete iletilmez.",
+      "extraHeaders": "Gelişmiş: ek başlıklar"
+    }
   },
   "status": {
     "sleeping": "Uykuda",

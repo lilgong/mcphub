@@ -1,0 +1,38 @@
+---
+title: HTTP Forwarding
+description: Manage ordinary HTTP APIs alongside MCP servers without changing their client protocol.
+---
+
+HTTP forwarding is a separate server type (`http-proxy`). Unlike Streamable HTTP, it does not perform an MCP handshake. Unlike OpenAPI import, it does not convert endpoints into MCP tools. Register the resource in **Servers**, configure its upstream base URL and headers, then use the generated client base URL. Displayed and copied URLs use **Settings → Base URL**, independently of the browser or reverse-proxy address. Set it for each deployment; no source changes are needed.
+
+## Configure Serper
+
+Import `examples/http-forwarding/serper.json` through JSON import, or create a server named `serper` with type **HTTP forwarding**:
+
+- Upstream base URL: `https://yibuapi.com/serper`. The path prefix restricts this resource to Serper.
+- Authentication: **Bearer**. Enter only your upstream API key; the dashboard adds the Authorization header and Bearer prefix automatically.
+- Client base URL: `http://YOUR_HUB:3002/http/serper`.
+- Search endpoint: `http://YOUR_HUB:3002/http/serper/search`.
+
+Authenticate client requests with a Hub shared, user, or user-group bearer key. Grant the group access to `serper` in **Users and groups**. Client keys and cookies are not copied upstream. Shared keys retain their existing scope; user keys also retain server visibility restrictions. Permissions are checked before queuing and again before dispatch.
+
+For official Serper, set the upstream base URL to `https://google.serper.dev`, select **API key header** with header name `X-API-KEY`, enter only the key, and call `/http/serper/search`. An upstream URL can also use a Hub environment placeholder such as `${SERPER_UPSTREAM_URL}`. Recognized Yibu and official Serper URLs preselect the corresponding authentication mode until the user chooses one explicitly. Other HTTP APIs can use Bearer, a custom API-key header, or no authentication; extra headers remain under a collapsed advanced section. Existing stored headers are recognized when editing and require no migration. Values entered directly in the dashboard apply to subsequent requests without restarting the Hub.
+
+## Benchmark clients
+
+Keep existing search parameter generation, response parsing, and retry behavior. Change only the upstream URL/base URL and credential:
+
+- claw-eval: set `SERP_API_URL` to the Hub search endpoint, and set its search key to a Hub key.
+- Toolathlon: set `serper_api_base_url` to `http://YOUR_HUB:3002/http`, and `serper_api_key` to a Hub key. Its existing `/serper/search` suffix selects the `serper` resource and `/search` endpoint. Keep the resource name `serper` for this configuration.
+
+The forwarding layer preserves the request body, query string, upstream response body, status code, Content-Type, Retry-After, ETag, Last-Modified and supported rate-limit headers. It makes one upstream attempt per accepted request and does not automatically retry or follow redirects.
+
+## Limits, audit and deployment
+
+Existing per-resource call limits apply to HTTP requests across all clients of one Hub process. No default rate or concurrency cap is added. Limits are not coordinated across multiple Hub replicas.
+
+Configure `MCPHUB_AUDIT_LOG_DIR` to a persistent, writable directory. Every dispatched request is audited before any upstream credential is used; without durable auditing, HTTP forwarding fails closed. HTTP statuses and durations appear in **Call logs**, including status filtering, and calls appear in time-range statistics. Queries, request bodies, response bodies and full keys are not written to the audit. Credential fingerprints and four-character suffixes identify configured keys.
+
+HTTP forwarding is implemented in the project code and included in builds/images of this branch. Resource settings use the existing JSON or database server storage, including import/export; no extra process or port is needed. Mount the settings and audit directory outside the container before deployment. Existing deployments do not change until a new build is deployed.
+
+This initial implementation forwards buffered HTTP APIs with up to 1 MiB requests and 8 MiB responses. MCP target connections, MCP key-pool adapters, wrapper Relay routing, browser cookie sessions, WebSocket connections and streaming responses are not supported by this server type. Admin-owned resources may address internal upstream services; other owners are subject to the existing SSRF protections.

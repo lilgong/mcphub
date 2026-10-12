@@ -1,3 +1,4 @@
+import { forwardHttp } from '../controllers/httpForwardController.js';
 import {
   relayRuntime,
   startRelay,
@@ -244,6 +245,12 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
 
   // Health check endpoint (no auth required, accessible at /health)
   app.get('/health', healthCheck);
+  const httpPrefix = config.basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  app.all(
+    new RegExp(`^${httpPrefix}/http/([^/]+)(/.*)?$`),
+    express.raw({ type: () => true, limit: '1mb' }),
+    forwardHttp,
+  );
   app.post(
     '/gateway/v1/tasks/:id/:operation',
     express.json({ limit: '1mb' }),

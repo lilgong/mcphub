@@ -213,7 +213,7 @@ export interface ServerConfig {
   rateLimit?: import('../../../src/types/serviceControls').ServiceRateLimit;
   relay?: import('../../../src/types/serviceControls').FetchRelayConfig;
   credentialTemplate?: CredentialSlot[];
-  type?: 'stdio' | 'sse' | 'streamable-http' | 'openapi';
+  type?: 'stdio' | 'sse' | 'streamable-http' | 'openapi' | 'http-proxy';
   description?: string;
   url?: string;
   command?: string;
@@ -399,7 +399,7 @@ export interface ServerFormData {
   command: string;
   arguments: string;
   args?: string[]; // Added explicit args field
-  type?: 'stdio' | 'sse' | 'streamable-http' | 'openapi'; // Added type field with openapi support
+  type?: 'stdio' | 'sse' | 'streamable-http' | 'openapi' | 'http-proxy'; // Added type field with openapi support
   env: EnvVar[];
   headers: EnvVar[];
   passthroughHeaders?: string;

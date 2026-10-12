@@ -202,3 +202,5 @@ For pinned MCP-Atlas servers and optional Atlas transport, see [MCP-Atlas integr
 Target connections support concurrent native/wrapper versions, per-target enablement and runtime inventory, alongside generic task routing and call statistics: [Target connections](docs/features/target-connections.mdx).
 
 Administrators can start/stop the built-in residential relay and reset its token from Relay settings. Configure `.env.example`; MCP-Atlas is not required.
+
+HTTP APIs can be managed through [HTTP forwarding](docs/features/http-forwarding.mdx), preserving existing client requests while sharing Hub authorization, rate limits and audit logs.

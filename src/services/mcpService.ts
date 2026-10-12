@@ -1174,15 +1174,15 @@ export interface ServerConnectionStats {
 // Normalize and infer server type for safe client display
 const normalizeServerType = (
   type?: string,
-): 'stdio' | 'sse' | 'streamable-http' | 'openapi' | undefined => {
+): 'stdio' | 'sse' | 'streamable-http' | 'openapi' | 'http-proxy' | undefined => {
   if (!type) return undefined;
-  const allowed = ['stdio', 'sse', 'streamable-http', 'openapi'];
+  const allowed = ['stdio', 'sse', 'streamable-http', 'openapi', 'http-proxy'];
   return allowed.includes(type) ? (type as any) : undefined;
 };
 
 const inferServerType = (
   conf?: ServerConfig,
-): 'stdio' | 'sse' | 'streamable-http' | 'openapi' | undefined => {
+): 'stdio' | 'sse' | 'streamable-http' | 'openapi' | 'http-proxy' | undefined => {
   if (!conf) return undefined;
 
   const normalized = normalizeServerType(conf.type);
@@ -2103,6 +2103,25 @@ export const initializeClientsFromSettings = async (
           resources: [],
           createTime: Date.now(),
           enabled: false,
+        });
+        continue;
+      }
+
+      // HTTP resources expose REST endpoints, not an MCP handshake or tools/list.
+      if (expandedConf.type === 'http-proxy') {
+        nextServerInfos.push({
+          name,
+          status: 'connected',
+          error: null,
+          tools: [],
+          prompts: [],
+          resources: [],
+          createTime: Date.now(),
+          enabled: true,
+          owner: expandedConf.owner,
+          visibility: expandedConf.visibility,
+          sharedWithUsers: expandedConf.sharedWithUsers,
+          config: expandedConf,
         });
         continue;
       }

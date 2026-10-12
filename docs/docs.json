@@ -22,6 +22,7 @@
             "group": "Core Features",
             "pages": [
               "features/server-management",
+              "features/http-forwarding",
               "features/per-user-credentials",
               "features/target-connections",
               "features/group-management",

@@ -270,7 +270,10 @@ export const buildServerPayload = ({
     return { name: formData.name.trim(), config };
   }
 
-  if (serverType === 'openapi') {
+  if (serverType === 'http-proxy') {
+    config.url = formData.url.trim();
+    config.headers = headers;
+  } else if (serverType === 'openapi') {
     config.headers = headers;
     config.openapi = buildOpenApiConfig(formData);
   } else if (serverType === 'sse' || serverType === 'streamable-http') {

@@ -451,7 +451,7 @@ export interface ServerConfig {
   rateLimit?: ServiceRateLimit;
   relay?: FetchRelayConfig;
   credentialTemplate?: CredentialSlot[]; // Metadata only; every slot requires a personal binding.
-  type?: 'stdio' | 'sse' | 'streamable-http' | 'openapi'; // Type of server
+  type?: 'stdio' | 'sse' | 'streamable-http' | 'openapi' | 'http-proxy'; // Type of server
   description?: string; // Optional server note/description for management UI
   url?: string; // URL for SSE or streamable HTTP servers
   command?: string; // Command to execute for stdio-based servers

@@ -293,7 +293,26 @@
     "showSecret": "Afficher {{name}}",
     "hideSecret": "Masquer {{name}}",
     "transportHelp": "Les paquets MCPB utilisent généralement STDIO : Hub lance le MCP dans son conteneur. SSE / HTTP streaming connectent un MCP déjà lancé ailleurs. OpenAPI transforme une spécification HTTP API en outils.",
-    "stdioHelp": "Gardez normalement la commande et les arguments générés à l’import. node exécute le programme ; launch.cjs démarre le paquet. /app/... est un chemin absolu dans le conteneur Hub, pas sur l’hôte ou dans Atlas."
+    "stdioHelp": "Gardez normalement la commande et les arguments générés à l’import. node exécute le programme ; launch.cjs démarre le paquet. /app/... est un chemin absolu dans le conteneur Hub, pas sur l’hôte ou dans Atlas.",
+    "typeHttpProxy": "Transfert HTTP",
+    "httpForward": {
+      "help": "Transfère les requêtes HTTP sans conversion MCP. La limite est partagée et les réponses amont sont conservées.",
+      "upstream": "URL de base en amont",
+      "headers": "En-têtes en amont",
+      "headerName": "Nom de l’en-tête",
+      "endpoint": "URL de base du client",
+      "endpointHint": "Ajoutez le chemin API, par exemple /search. Utilisez une clé Hub de groupe ou partagée. Les modifications s’appliquent aux prochaines requêtes.",
+      "timeout": "Délai en amont (secondes)",
+      "authMode": "Authentification",
+      "bearer": "Bearer",
+      "apiKeyHeader": "En-tête de clé API",
+      "noAuth": "Sans authentification",
+      "apiKey": "Clé API",
+      "keyPlaceholder": "Saisissez uniquement la clé",
+      "bearerHint": "Le préfixe Bearer est ajouté automatiquement. La clé Hub du client n’est jamais transférée.",
+      "clientKeyHint": "La clé Hub du client n’est jamais transférée.",
+      "extraHeaders": "Avancé : en-têtes supplémentaires"
+    }
   },
   "status": {
     "sleeping": "En veille",

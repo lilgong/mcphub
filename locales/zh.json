@@ -293,7 +293,26 @@
     "showSecret": "显示 {{name}}",
     "hideSecret": "隐藏 {{name}}",
     "transportHelp": "导入 MCPB 包通常使用 STDIO：Hub 在自己的容器内启动 MCP 程序。SSE / 流式 HTTP 用于连接已在别处运行的 MCP 地址；OpenAPI 用于把 HTTP API 文档转换成工具。",
-    "stdioHelp": "导入包的启动命令和参数已自动生成，通常保持原样。node 是运行程序；launch.cjs 是包内启动文件。这里的 /app/... 是 Hub 容器内的绝对路径，不是宿主机或 Atlas 路径。"
+    "stdioHelp": "导入包的启动命令和参数已自动生成，通常保持原样。node 是运行程序；launch.cjs 是包内启动文件。这里的 /app/... 是 Hub 容器内的绝对路径，不是宿主机或 Atlas 路径。",
+    "typeHttpProxy": "HTTP 转发",
+    "httpForward": {
+      "help": "转发普通 HTTP 请求，不转换为 MCP 工具。所有客户端共享此资源的限速，保留上游响应。",
+      "upstream": "上游基础地址",
+      "headers": "上游请求头",
+      "headerName": "请求头名称",
+      "endpoint": "客户端基础地址",
+      "endpointHint": "在此地址后追加原接口路径，例如 /search。使用 Hub 分组 key 或共用 key 认证；保存配置后后续请求生效。",
+      "timeout": "上游请求超时（秒）",
+      "authMode": "认证方式",
+      "bearer": "Bearer",
+      "apiKeyHeader": "API Key 请求头",
+      "noAuth": "无需认证",
+      "apiKey": "API Key",
+      "keyPlaceholder": "只填写 key",
+      "bearerHint": "自动添加 Bearer 前缀。客户端 Hub key 不会传给上游。",
+      "clientKeyHint": "客户端 Hub key 不会传给上游。",
+      "extraHeaders": "高级：其他请求头"
+    }
   },
   "status": {
     "sleeping": "休眠",

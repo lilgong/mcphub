@@ -129,6 +129,7 @@ const transportLabel = (t: any, type?: string) => {
   if (type === 'stdio') return t('server.typeStdio') || 'stdio';
   if (type === 'sse') return t('server.typeSse') || 'sse';
   if (type === 'streamable-http') return t('server.typeStreamableHttp') || 'http';
+  if (type === 'http-proxy') return t('server.typeHttpProxy');
   if (type === 'openapi') return t('server.typeOpenapi') || 'openapi';
   return type;
 };
@@ -213,20 +214,26 @@ const ServerCard = ({
   // Reinstall is only available for stdio servers using npx or uvx
   const supportsReinstall = server.config?.command === 'npx' || server.config?.command === 'uvx';
   const supportsOAuthDisconnect = Boolean(server.oauth?.connected && onOAuthDisconnect);
-  const instanceVersions = [...new Set(
-    (server.runtime?.instances ?? [])
-      .filter((instance) => !instance.draining)
-      .map((instance) => instance.packageVersion)
-      .filter(Boolean),
-  )];
-  const installedVersion = server.packageVersion ||
-    (instanceVersions.length === 1 ? instanceVersions[0] : undefined);
-  const displayVersion = installedVersion || server.bundleVersion ||
+  const instanceVersions = [
+    ...new Set(
+      (server.runtime?.instances ?? [])
+        .filter((instance) => !instance.draining)
+        .map((instance) => instance.packageVersion)
+        .filter(Boolean),
+    ),
+  ];
+  const installedVersion =
+    server.packageVersion || (instanceVersions.length === 1 ? instanceVersions[0] : undefined);
+  const displayVersion =
+    installedVersion ||
+    server.bundleVersion ||
     (server.config?.command ? undefined : server.version);
-  const versionTitle = installedVersion ? t('server.packageVersion') :
-    server.bundleVersion ? t('runtime.bundleVersion') : t('runtime.reportedVersion');
+  const versionTitle = installedVersion
+    ? t('server.packageVersion')
+    : server.bundleVersion
+      ? t('runtime.bundleVersion')
+      : t('runtime.reportedVersion');
   const compactVersion = displayVersion?.split('+')[0];
-
 
   const handleToggle = async (nextEnabled: boolean) => {
     if (!canManage || isToggling || !onToggle) return;
@@ -340,7 +347,12 @@ const ServerCard = ({
         showToast(result?.message || t('common.copyFailed') || 'Copy failed', 'error');
         return;
       }
-      setClientConfigTarget(toClientSnippetTarget(server.name, exported));
+      if (server.config?.type === 'http-proxy') {
+        const ok = await copyText(
+          JSON.stringify({ mcpServers: { [server.name]: exported } }, null, 2),
+        );
+        showToast(t(ok ? 'common.copySuccess' : 'common.copyFailed'), ok ? 'success' : 'error');
+      } else setClientConfigTarget(toClientSnippetTarget(server.name, exported));
     } catch (error) {
       console.error('Error copying server configuration:', error);
       showToast(t('common.copyFailed') || 'Copy failed', 'error');
@@ -502,7 +514,8 @@ const ServerCard = ({
     return parts.join(' ');
   })();
 
-  const serverEndpoint = `${baseUrl}/mcp/${server.name}`;
+  const isHttpForward = server.config?.type === 'http-proxy';
+  const serverEndpoint = `${baseUrl}/${isHttpForward ? 'http' : 'mcp'}/${server.name}`;
   const serverOpenApiEndpoint = `${baseUrl}/api/${server.name}`;
 
   const copyEndpoint = async (value: string) => {
@@ -578,16 +591,32 @@ const ServerCard = ({
                   <span
                     className="hub-tag flex-shrink-0"
                     title={`${versionTitle}: ${displayVersion}`}
-                    style={{ fontSize: 11, maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    style={{
+                      fontSize: 11,
+                      maxWidth: 92,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
                   >
-                    {!installedVersion && server.bundleVersion ? `${t('runtime.bundleLabel')} ` : ''}v{compactVersion}
+                    {!installedVersion && server.bundleVersion
+                      ? `${t('runtime.bundleLabel')} `
+                      : ''}
+                    v{compactVersion}
                   </span>
                 )}
                 {supportsReinstall && server.updateAvailable && server.latestVersion && (
                   <span
                     className="hub-tag flex-shrink-0"
                     title={`${t('server.updateAvailable')}: ${server.latestVersion}`}
-                    style={{ fontSize: 11, color: 'var(--hub-warn)', maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--hub-warn)',
+                      maxWidth: 72,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
                   >
                     ↑ {server.latestVersion.split('+')[0]}
                   </span>
@@ -1010,7 +1039,7 @@ const ServerCard = ({
               {/* Endpoint inline, pushed to the right */}
               <div className="ml-auto max-w-full flex-shrink-0 flex items-center justify-end gap-1.5 flex-wrap">
                 <div className="hub-endpoint" style={{ height: 26 }}>
-                  <div className="hub-endpoint-label">/mcp/</div>
+                  <div className="hub-endpoint-label">{isHttpForward ? '/http/' : '/mcp/'}</div>
                   <div
                     className="hub-endpoint-url"
                     title={serverEndpoint}
@@ -1030,27 +1059,29 @@ const ServerCard = ({
                     <Copy size={12} />
                   </button>
                 </div>
-                <div className="hub-endpoint" style={{ height: 26 }}>
-                  <div className="hub-endpoint-label">/api/</div>
-                  <div
-                    className="hub-endpoint-url"
-                    title={serverOpenApiEndpoint}
-                    style={{ maxWidth: 200 }}
-                  >
-                    {server.name}
+                {!isHttpForward && (
+                  <div className="hub-endpoint" style={{ height: 26 }}>
+                    <div className="hub-endpoint-label">/api/</div>
+                    <div
+                      className="hub-endpoint-url"
+                      title={serverOpenApiEndpoint}
+                      style={{ maxWidth: 200 }}
+                    >
+                      {server.name}
+                    </div>
+                    <button
+                      type="button"
+                      className="hub-endpoint-copy"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void copyEndpoint(serverOpenApiEndpoint);
+                      }}
+                      title={t('common.copyOpenApiUrl')}
+                    >
+                      <Copy size={12} />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="hub-endpoint-copy"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void copyEndpoint(serverOpenApiEndpoint);
-                    }}
-                    title={t('common.copyOpenApiUrl')}
-                  >
-                    <Copy size={12} />
-                  </button>
-                </div>
+                )}
               </div>
             </div>
 

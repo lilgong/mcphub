@@ -44,7 +44,7 @@ const JSONImportForm: React.FC<JSONImportFormProps> = ({ onSuccess, onCancel }) 
   }
 }
 
-Supports: STDIO, SSE, HTTP (streamable-http), OpenAPI
+Supports: STDIO, SSE, HTTP (streamable-http), OpenAPI, HTTP forwarding (http-proxy)
 All servers will be imported in a single efficient batch operation.`;
 
   const parseAndValidateJson = (input: string): ImportJsonFormat | null => {

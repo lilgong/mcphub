@@ -20,7 +20,7 @@ export interface NormalizeResult {
 }
 
 // Remote transport types that require a `url`.
-const REMOTE_TYPES = ['sse', 'streamable-http'];
+const REMOTE_TYPES = ['sse', 'streamable-http', 'http-proxy'];
 
 // Keys that mcphub understands on a server config. Anything else is either a
 // typo or copied from another tool's schema (e.g. an `auth` block), and would
@@ -28,6 +28,7 @@ const REMOTE_TYPES = ['sse', 'streamable-http'];
 // the imported server does not behave as their JSON suggested.
 const KNOWN_KEYS = new Set<keyof ServerConfig | string>([
   'type',
+  'description',
   'url',
   'command',
   'args',
@@ -73,11 +74,20 @@ export const normalizeImportedServers = (parsed: ImportJsonFormat): NormalizeRes
       continue;
     }
 
-    if (config.type === 'sse' || config.type === 'streamable-http') {
+    if (
+      config.type === 'sse' ||
+      config.type === 'streamable-http' ||
+      config.type === 'http-proxy'
+    ) {
       normalizedConfig.type = config.type;
       normalizedConfig.url = config.url;
       if (config.headers) {
         normalizedConfig.headers = config.headers;
+      }
+      if (config.type === 'http-proxy') {
+        normalizedConfig.description = config.description;
+        normalizedConfig.options = config.options;
+        normalizedConfig.enabled = config.enabled;
       }
       if (config.oauth) {
         normalizedConfig.oauth = config.oauth;
@@ -122,7 +132,7 @@ export const normalizeImportedServers = (parsed: ImportJsonFormat): NormalizeRes
       // Unknown/unsupported type such as "http".
       const suggestion = REMOTE_TYPES.includes(String(config.type))
         ? ''
-        : ` Did you mean "streamable-http"? Supported types: stdio, sse, streamable-http, openapi.`;
+        : ` Did you mean "streamable-http"? Supported types: stdio, sse, streamable-http, openapi, http-proxy.`;
       issues.push({
         name,
         message: `unsupported type "${config.type}".${suggestion}`,

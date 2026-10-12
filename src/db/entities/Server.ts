@@ -19,7 +19,7 @@ export class Server {
   name: string;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
-  type?: string; // 'stdio', 'sse', 'streamable-http', 'openapi'
+  type?: string; // 'stdio', 'sse', 'streamable-http', 'openapi', 'http-proxy'
 
   @Column({ type: 'text', nullable: true })
   description?: string;

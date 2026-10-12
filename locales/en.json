@@ -293,7 +293,26 @@
     "showSecret": "Show {{name}}",
     "hideSecret": "Hide {{name}}",
     "transportHelp": "Imported MCPB packages normally use STDIO: Hub starts the MCP program in its own container. SSE / Streamable HTTP connect to an MCP already running elsewhere. OpenAPI converts an HTTP API specification into tools.",
-    "stdioHelp": "Imported launch commands and arguments are generated automatically; normally keep them. node runs the program; launch.cjs starts the package. /app/... is an absolute path inside the Hub container, not on the host or in Atlas."
+    "stdioHelp": "Imported launch commands and arguments are generated automatically; normally keep them. node runs the program; launch.cjs starts the package. /app/... is an absolute path inside the Hub container, not on the host or in Atlas.",
+    "typeHttpProxy": "HTTP forwarding",
+    "httpForward": {
+      "help": "Forward ordinary HTTP requests without converting them to MCP tools. Requests share this resource’s rate limit; upstream responses are preserved.",
+      "upstream": "Upstream base URL",
+      "headers": "Upstream headers",
+      "headerName": "Header name",
+      "endpoint": "Client base URL",
+      "endpointHint": "Append the original API path, for example /search. Authenticate with a Hub group or shared key. Saving changes applies to subsequent requests.",
+      "timeout": "Upstream timeout (seconds)",
+      "authMode": "Authentication",
+      "bearer": "Bearer",
+      "apiKeyHeader": "API key header",
+      "noAuth": "No authentication",
+      "apiKey": "API Key",
+      "keyPlaceholder": "Enter the key only",
+      "bearerHint": "Bearer is added automatically. Client Hub keys are never forwarded upstream.",
+      "clientKeyHint": "Client Hub keys are never forwarded upstream.",
+      "extraHeaders": "Advanced: additional headers"
+    }
   },
   "status": {
     "sleeping": "Sleeping",

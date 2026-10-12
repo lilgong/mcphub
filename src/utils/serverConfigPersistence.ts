@@ -356,6 +356,52 @@ export const normalizeServerConfigForPersistence = (config: ServerConfig): Serve
   delete (normalized as unknown as Record<string, unknown>).latestVersion;
   delete (normalized as unknown as Record<string, unknown>).updateAvailable;
 
+  if (normalizedType === 'http-proxy') {
+    if (!url)
+      throw new ServerConfigValidationError('HTTP forwarding requires an upstream base URL');
+    let parsed: URL;
+    const validationUrl = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(url)
+      ? 'https://placeholder.invalid'
+      : url;
+    try {
+      parsed = new URL(validationUrl);
+    } catch {
+      throw new ServerConfigValidationError('Invalid HTTP forwarding URL');
+    }
+    if (
+      !['http:', 'https:'].includes(parsed.protocol) ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    )
+      throw new ServerConfigValidationError(
+        'HTTP forwarding URL must be HTTP(S), without credentials, query or fragment',
+      );
+    if (
+      config.targets?.length ||
+      config.credentialTemplate?.length ||
+      config.keyPool?.enabled ||
+      config.relay?.enabled
+    )
+      throw new ServerConfigValidationError(
+        'HTTP forwarding supports a fixed upstream with headers; MCP targets, key pools and wrapper relay are not supported',
+      );
+    normalized.url = url;
+    normalized.headers = headers;
+    normalized.command = undefined;
+    normalized.args = undefined;
+    normalized.env = undefined;
+    normalized.oauth = undefined;
+    normalized.openapi = undefined;
+    normalized.passthroughHeaders = undefined;
+    normalized.perSessionClient = undefined;
+    normalized.startOnDemand = undefined;
+    normalized.enableKeepAlive = undefined;
+    normalized.keepAliveInterval = undefined;
+    return normalized;
+  }
+
   if (normalizedType === 'openapi') {
     normalized.url = undefined;
     normalized.command = undefined;
