@@ -83,6 +83,53 @@ describe('call log reader', () => {
     expect((await getCallLogs({ ...query, status: 'none' })).total).toBe(1);
     expect((await getCallLogs({ ...query, errorsOnly: false })).total).toBe(3);
   });
+  test('shows relay queue expiry and cancellation without counting successful summaries', async () => {
+    await writeFile(
+      join(root, 'relay.jsonl'),
+      jsonl([
+        { event: 'request_queued', parent_request_id: 'expired', host: 'export.arxiv.org' },
+        {
+          event: 'http_completed',
+          request_id: 'expired',
+          timestamp: `${query.date}T10:00:00Z`,
+          status: 504,
+          category: 'queue_timeout',
+          upstream_group: 'arxiv',
+          queued_ms: 85000,
+        },
+        {
+          event: 'http_completed',
+          request_id: 'cancelled',
+          timestamp: `${query.date}T10:01:00Z`,
+          status: 499,
+          category: 'client_cancelled',
+          upstream_group: 'arxiv',
+        },
+        {
+          event: 'http_completed',
+          request_id: 'ok',
+          timestamp: `${query.date}T10:02:00Z`,
+          status: 200,
+          category: 'success',
+          upstream_group: 'arxiv',
+        },
+      ]),
+    );
+    const result = await getCallLogs({ ...query, source: 'relay' });
+    expect(result.total).toBe(2);
+    expect(result.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          server: 'arxiv',
+          httpStatus: 504,
+          category: 'queue_timeout',
+          waitMs: 85000,
+        }),
+        expect.objectContaining({ server: 'arxiv', httpStatus: 499, category: 'client_cancelled' }),
+      ]),
+    );
+    expect((await getCallLogs({ ...query, source: 'relay', status: '504' })).total).toBe(1);
+  });
   test('reads relay attempts without double counting workflow summaries and yibu status', async () => {
     await writeFile(
       join(root, 'relay.jsonl'),

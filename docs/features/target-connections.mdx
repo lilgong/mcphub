@@ -51,6 +51,26 @@ A disabled switch clears relay URL and token values at runtime.
 Task connection configurations can retain the same adapter declaration without
 embedding credentials. The callback adapter must apply the relay snapshot to its runtime.
 
+### Relay request lifetime
+
+Relay queueing, shared cooldown and up to three HTTP attempts share a total deadline.
+`MCP_RELAY_REQUEST_TIMEOUT_SECONDS` defaults to 85 seconds; clients may supply a
+shorter `timeout_seconds` in `/v1/fetch`. Keep the relay deadline below the client's
+HTTP timeout (for example, 85 seconds before a 90-second client timeout).
+Each attempt joins a FIFO queue. Network concurrency is released between retries,
+but the shared upstream cooldown and configured rate remain enforced.
+Expired or disconnected queued requests are removed without contacting the upstream.
+Response reads are bounded and cancellation stops further attempts; an already sent
+upstream request cannot be undone. Connection establishment remains bounded by the
+upstream socket timeout, so cancellation during establishment may not be immediate.
+
+Audit records use a request identifier with linked attempt identifiers and record queue
+wait, attempt duration, cooldown, expiry and cancellation. The call-log page includes
+504 queue/upstream deadline errors and 499 client cancellations. HTTP attempt statistics
+continue to count actual upstream attempts, rather than successful workflow summaries.
+A benchmark task's own deadline remains separate: every tool call and queue wait consumes
+that task's elapsed time; relay retries do not extend it.
+
 ## Native implementations, wrappers and versions
 
 Different targets of one logical MCP can run different implementations simultaneously.

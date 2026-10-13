@@ -190,6 +190,12 @@ export async function getCallLogs(
           // Per-attempt records count actual HTTP requests; workflow summaries are omitted.
           if (
             !['http_finished', 'request_rejected'].includes(safeString(record.event)) &&
+            !(
+              raw.event === 'http_completed' &&
+              ['queue_timeout', 'upstream_timeout', 'client_cancelled'].includes(
+                safeString(raw.category),
+              )
+            ) &&
             !record.account_error_code
           )
             continue;
