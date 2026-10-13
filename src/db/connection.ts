@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { initializeWithGroupNameCheck } from './groupSchema.js';
 import 'reflect-metadata'; // Ensure reflect-metadata is imported here too
 import { DataSource, DataSourceOptions } from 'typeorm';
@@ -6,7 +7,7 @@ import { registerPostgresVectorType } from './types/postgresVectorType.js';
 import { VectorEmbeddingSubscriber } from './subscribers/VectorEmbeddingSubscriber.js';
 import { getSmartRoutingConfig } from '../utils/smartRouting.js';
 import { createVectorIndex } from '../services/vectorSearchService.js';
-import { isRetryableDbError } from '../utils/dbRetry.js';
+import { isBrokenDbConnection } from '../utils/dbRetry.js';
 import { withTimeout } from '../utils/withTimeout.js';
 import { logger } from '../utils/logger.js';
 
@@ -130,6 +131,43 @@ let appDataSource: DataSource | null = null;
 
 // Global promise to track initialization status
 let initializationPromise: Promise<DataSource> | null = null;
+const recoveryContext = new AsyncLocalStorage<boolean>();
+const guardedSources = new WeakSet<DataSource>();
+let healthProbe: Promise<unknown> | null = null;
+let consecutiveProbeTimeouts = 0;
+let healthCheckPromise: Promise<boolean> | null = null;
+
+export class DatabaseRecoveringError extends Error {
+  readonly status = 503;
+  constructor() {
+    super('Database recovery is in progress; please retry later');
+    this.name = 'DatabaseRecoveringError';
+  }
+}
+
+/** Pause new pool acquisitions, including repositories and query builders. */
+function guardPoolAcquisition(source: DataSource): void {
+  if (guardedSources.has(source)) return;
+  guardedSources.add(source);
+  const driver = source.driver;
+  for (const method of ['obtainMasterConnection', 'obtainSlaveConnection'] as const) {
+    const acquire = driver[method].bind(driver);
+    driver[method] = async () => {
+      if (!recoveryContext.getStore() && reconnectionPromise) {
+        try {
+          await withTimeout(reconnectionPromise, 10000, 'Database recovery wait expired');
+        } catch {
+          throw new DatabaseRecoveringError();
+        }
+      }
+      // Query runners belonging to a replaced source must never use its old pool.
+      if (!recoveryContext.getStore() && source !== appDataSource) {
+        throw new DatabaseRecoveringError();
+      }
+      return acquire();
+    };
+  }
+}
 
 // Function to create a new DataSource with updated configuration
 export const updateDataSourceConfig = async (): Promise<DataSource> => {
@@ -190,6 +228,7 @@ export const initializeDatabase = async (): Promise<DataSource> => {
 
   try {
     const result = await initializationPromise;
+    guardPoolAcquisition(result);
     logger.log('Database initialization completed successfully');
 
     // Start health check after successful initialization
@@ -435,7 +474,25 @@ export const getDatabaseHealth = (): {
 };
 
 // Perform a health check on the database connection
-export const checkDatabaseHealth = async (): Promise<boolean> => {
+export const checkDatabaseHealth = (): Promise<boolean> => {
+  if (healthCheckPromise) return healthCheckPromise;
+  healthCheckPromise = performHealthCheck().finally(() => {
+    healthCheckPromise = null;
+  });
+  return healthCheckPromise;
+};
+
+class HealthProbeTimeout extends Error {}
+
+const performHealthCheck = async (): Promise<boolean> => {
+  if (reconnectionPromise) {
+    try {
+      await reconnectionPromise;
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (!appDataSource) {
     isHealthy = false;
     lastHealthCheckError = new Error('Database not initialized');
@@ -461,11 +518,39 @@ export const checkDatabaseHealth = async (): Promise<boolean> => {
     // Simple query to check connection. Bounded by a short timeout so a DB
     // that stops accepting queries cannot stall the health probe for the full
     // pool connection timeout (#1205).
-    await withTimeout(
-      appDataSource.query('SELECT 1'),
-      CONNECTION_CONFIG.healthCheckQueryTimeout,
-      `DB health check failed: connection timeout after ${CONNECTION_CONFIG.healthCheckQueryTimeout}ms`,
-    );
+    // Reuse a pending probe: a timeout does not cancel its query or pool waiter.
+    if (!healthProbe) {
+      const probe = appDataSource.query('SELECT 1');
+      healthProbe = probe;
+      void probe.then(
+        () => {
+          if (healthProbe === probe) healthProbe = null;
+        },
+        () => {
+          if (healthProbe === probe) healthProbe = null;
+        },
+      );
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        healthProbe,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new HealthProbeTimeout(
+                  `DB health probe exceeded ${CONNECTION_CONFIG.healthCheckQueryTimeout}ms`,
+                ),
+              ),
+            CONNECTION_CONFIG.healthCheckQueryTimeout,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    consecutiveProbeTimeouts = 0;
     isHealthy = true;
     lastHealthCheckError = null;
     return true;
@@ -475,7 +560,23 @@ export const checkDatabaseHealth = async (): Promise<boolean> => {
     logger.warn('[DB Health] Health check failed:', lastHealthCheckError.message);
 
     // If it's a retryable error, attempt reconnection
-    if (isRetryableDbError(error)) {
+    const probeTimeout = error instanceof HealthProbeTimeout;
+    if (probeTimeout) {
+      consecutiveProbeTimeouts++;
+      const pool = (
+        appDataSource.driver as unknown as {
+          master?: { totalCount?: number; idleCount?: number; waitingCount?: number };
+        }
+      ).master;
+      logger.warn('[DB Health] Slow probe; preserving pool', {
+        consecutiveTimeouts: consecutiveProbeTimeouts,
+        total: pool?.totalCount,
+        idle: pool?.idleCount,
+        waiting: pool?.waitingCount,
+      });
+      if (consecutiveProbeTimeouts < 3) return false;
+    }
+    if (probeTimeout || isBrokenDbConnection(error)) {
       logger.log('[DB Health] Detected connection issue, attempting reconnection...');
       try {
         await attemptReconnection();
@@ -525,7 +626,7 @@ const attemptReconnection = (): Promise<DataSource> => {
     return reconnectionPromise;
   }
 
-  const promise = (async () => {
+  const promise = recoveryContext.run(true, async () => {
     reconnectionInProgress = true;
     logger.log('[DB Reconnect] Starting reconnection attempt...');
 
@@ -572,6 +673,9 @@ const attemptReconnection = (): Promise<DataSource> => {
           registerPostgresVectorType(dataSource);
           appDataSource = dataSource;
 
+          guardPoolAcquisition(dataSource);
+          healthProbe = null;
+          consecutiveProbeTimeouts = 0;
           logger.log('[DB Reconnect] Successfully reconnected to database');
           isHealthy = true;
           lastHealthCheckError = null;
@@ -615,7 +719,7 @@ const attemptReconnection = (): Promise<DataSource> => {
       reconnectionPromise = null;
       initializationPromise = null;
     }
-  })();
+  });
 
   // Reuse the existing DataSource options. Resolving the URL through the
   // database-backed system config is impossible while that database is down.

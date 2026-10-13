@@ -1,13 +1,11 @@
+import { DatabaseRecoveringError } from '../db/connection.js';
 import express, { Request, Response, NextFunction } from 'express';
 import { auth } from './auth.js';
 import { userContextMiddleware } from './userContext.js';
 import { i18nMiddleware } from './i18n.js';
 import config from '../config/index.js';
 import { getSystemConfigDao } from '../dao/index.js';
-import {
-  getBetterAuthRuntimeConfig,
-  isApiAuthExemptPath,
-} from '../services/betterAuthConfig.js';
+import { getBetterAuthRuntimeConfig, isApiAuthExemptPath } from '../services/betterAuthConfig.js';
 import { getCachedSystemConfig } from '../utils/systemConfigCache.js';
 import { resolveJsonBodyLimit } from '../utils/bearerAuth.js';
 import { apiAuthGateRateLimiter } from '../utils/rateLimit.js';
@@ -20,9 +18,9 @@ export const errorHandler = (
   _next: NextFunction,
 ): void => {
   logger.error('Unhandled error:', err);
-  res.status(500).json({
+  res.status(err instanceof DatabaseRecoveringError ? 503 : 500).json({
     success: false,
-    message: 'Internal server error',
+    message: err instanceof DatabaseRecoveringError ? err.message : 'Internal server error',
   });
 };
 

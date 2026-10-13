@@ -16,6 +16,10 @@ jest.mock('typeorm', () => {
     DataSource: jest.fn().mockImplementation((options: Record<string, unknown>) => {
       const dataSource = {
         options,
+        driver: {
+          obtainMasterConnection: jest.fn(async () => 'connection'),
+          obtainSlaveConnection: jest.fn(async () => 'replica'),
+        },
         isInitialized: false,
         setOptions: jest.fn((updates) => Object.assign(options, updates)),
         synchronize: jest.fn(async () => {}),
@@ -61,6 +65,7 @@ import {
   initializeDatabase,
   reconnectDatabase,
   stopHealthCheck,
+  getAppDataSource,
   updateDataSourceConfig,
 } from './connection.js';
 import { registerPostgresVectorType } from './types/postgresVectorType.js';
@@ -204,7 +209,7 @@ describe('database connection recovery', () => {
     }
   });
 
-  it('recovers via reconnection when the health check query hangs instead of wedging', async () => {
+  it('preserves the pool on one slow probe and recovers only after three consecutive timeouts', async () => {
     jest.useFakeTimers();
     const dataSource = await updateDataSourceConfig();
     dataSource.isInitialized = true;
@@ -223,9 +228,100 @@ describe('database connection recovery', () => {
       const health = checkDatabaseHealth();
       await jest.runAllTimersAsync();
 
-      await expect(health).resolves.toBe(true);
+      await expect(health).resolves.toBe(false);
+      expect(dataSource.destroy).not.toHaveBeenCalled();
+      for (let i = 0; i < 2; i++) {
+        const next = checkDatabaseHealth();
+        await jest.runAllTimersAsync();
+        await next;
+      }
+      expect(dataSource.query.mock.calls.filter(([sql]) => sql === 'SELECT 1')).toHaveLength(1);
       expect(dataSource.destroy).toHaveBeenCalledTimes(1);
       expect(dataSource.initialize).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('pauses pool acquisition during recovery and resumes after initialization', async () => {
+    const source = await updateDataSourceConfig();
+    source.isInitialized = true;
+    await reconnectDatabase(); // installs the acquisition guard
+    const acquire = getAppDataSource().driver.obtainMasterConnection;
+    let finish!: () => void;
+    source.destroy.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = () => {
+            source.isInitialized = false;
+            resolve();
+          };
+        }),
+    );
+    const recovery = reconnectDatabase();
+    let completed = false;
+    const waiting = acquire().then(() => {
+      completed = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(completed).toBe(false);
+    finish();
+    await recovery;
+    await waiting;
+    expect(completed).toBe(true);
+  });
+
+  it('bounds waiting for a stuck recovery without acquiring from the closing pool', async () => {
+    jest.useFakeTimers();
+    const source = await updateDataSourceConfig();
+    source.isInitialized = true;
+    await reconnectDatabase();
+    source.destroy.mockReturnValueOnce(new Promise(() => {}));
+    try {
+      const recovery = reconnectDatabase();
+      const waiting = getAppDataSource().driver.obtainMasterConnection();
+      const rejected = expect(waiting).rejects.toMatchObject({
+        name: 'DatabaseRecoveringError',
+        status: 503,
+      });
+      await jest.advanceTimersByTimeAsync(10000);
+      await rejected;
+      await jest.runAllTimersAsync();
+      await recovery;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('shares one pending probe and clears timeout history after it recovers', async () => {
+    jest.useFakeTimers();
+    const source = await updateDataSourceConfig();
+    source.isInitialized = true;
+    let resolveProbe!: () => void;
+    source.query.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveProbe = resolve;
+      }),
+    );
+    try {
+      const first = checkDatabaseHealth();
+      expect(checkDatabaseHealth()).toBe(first);
+      await jest.advanceTimersByTimeAsync(5000);
+      await expect(first).resolves.toBe(false);
+      expect(source.destroy).not.toHaveBeenCalled();
+      const second = checkDatabaseHealth();
+      resolveProbe();
+      await expect(second).resolves.toBe(true);
+      expect(source.query).toHaveBeenCalledTimes(1);
+      source.query.mockReturnValueOnce(new Promise(() => {}));
+      const third = checkDatabaseHealth();
+      await jest.advanceTimersByTimeAsync(5000);
+      await expect(third).resolves.toBe(false);
+      expect(source.destroy).not.toHaveBeenCalled();
+      // Resolve the two remaining timeout rounds to avoid leaking module state.
+      for (let i = 0; i < 2; i++) {
+        const check = checkDatabaseHealth();
+        await jest.runAllTimersAsync();
+        await check;
+      }
     } finally {
       jest.useRealTimers();
     }

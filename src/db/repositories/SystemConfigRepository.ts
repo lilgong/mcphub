@@ -1,8 +1,8 @@
 import { Repository } from 'typeorm';
 import { SystemConfig } from '../entities/SystemConfig.js';
-import { getAppDataSource, reconnectDatabase } from '../connection.js';
+import { getAppDataSource, reconnectDatabase, checkDatabaseHealth } from '../connection.js';
 import { cloneDefaultOAuthServerConfig } from '../../constants/oauthServerDefaults.js';
-import { isRetryableDbError } from '../../utils/dbRetry.js';
+import { isRetryableDbError, isBrokenDbConnection } from '../../utils/dbRetry.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -26,8 +26,12 @@ export class SystemConfigRepository {
         throw error;
       }
 
-      logger.warn('[DB Recovery] System config operation failed, reconnecting...');
-      await reconnectDatabase();
+      if (isBrokenDbConnection(error)) {
+        logger.warn('[DB Recovery] System config connection failed, reconnecting...');
+        await reconnectDatabase();
+      } else {
+        await checkDatabaseHealth();
+      }
       return await operation(this.getRepository());
     }
   }

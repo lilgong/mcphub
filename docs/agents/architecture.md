@@ -55,3 +55,17 @@ bounded by both the group's grants and the owner's current visibility. New group
 use explicit user kind; migrated operator group keys preserve their kind and token while
 adding ownership. Keep dashboard configuration authorization separate from invocation
 permissions. Startup migration removes legacy memberships and must never rotate keys.
+
+## Database recovery
+
+A health probe deadline measures both pool acquisition and query execution. One slow
+probe is not proof of a broken connection: preserve the pool and reuse the pending
+probe. Three consecutive timed-out rounds trigger recovery; explicit broken-connection
+errors recover immediately. Health checks share one in-flight operation.
+
+New driver pool acquisitions wait at most 10 seconds for the shared recovery promise.
+Recovery initialization uses an AsyncLocalStorage context to bypass that gate. Runners
+attached to a replaced DataSource fail with DatabaseRecoveringError instead of acquiring
+from its ended pool. Queries already running can still fail during teardown; do not
+blindly replay writes or tool calls. Generic HTTP error handling returns 503 for this
+recovery error. System-config recovery must not destroy the pool for an isolated timeout.

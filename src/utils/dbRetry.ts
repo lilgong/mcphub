@@ -73,6 +73,7 @@ const RETRYABLE_ERROR_PATTERNS = [
   /server.*closed/i,
   /client.*closed/i,
   /pool.*exhausted/i,
+  /cannot use a pool after calling end/i,
   /too.*many.*connections/i,
   /database.*unavailable/i,
 ];
@@ -131,6 +132,22 @@ export function isRetryableDbError(error: unknown): boolean {
   }
 
   return false;
+}
+
+/** A retryable timeout or exhausted pool does not prove the pool is broken. */
+export function isBrokenDbConnection(error: unknown): boolean {
+  if (!isRetryableDbError(error)) return false;
+  const err = error as {
+    message?: string;
+    code?: string;
+    driverError?: { message?: string; code?: string };
+  };
+  const message = `${err.message || ''} ${err.driverError?.message || ''}`;
+  const code = err.code || err.driverError?.code;
+  return (
+    code !== 'ETIMEDOUT' &&
+    !/timeout|timed out|pool.*exhausted|too.*many.*connections/i.test(message)
+  );
 }
 
 /**

@@ -17,9 +17,12 @@ const reconnectDatabaseMock = jest.fn(async () => {
   activeRepository = reconnectedRepository;
 });
 
+const healthCheckMock = jest.fn(async () => false);
+
 jest.mock('../connection.js', () => ({
   getAppDataSource: getAppDataSourceMock,
   reconnectDatabase: reconnectDatabaseMock,
+  checkDatabaseHealth: healthCheckMock,
 }));
 
 import { SystemConfigRepository } from './SystemConfigRepository.js';
@@ -55,5 +58,14 @@ describe('SystemConfigRepository connection recovery', () => {
 
     await expect(repository.get()).rejects.toBe(queryError);
     expect(reconnectDatabaseMock).not.toHaveBeenCalled();
+  });
+  it('does not destroy the business pool for a connection acquisition timeout', async () => {
+    const config = Object.assign(new SystemConfig(), { id: 'default' });
+    disconnectedRepository.findOne
+      .mockRejectedValueOnce(new Error('connection timeout exceeded'))
+      .mockResolvedValueOnce(config);
+    await expect(new SystemConfigRepository().get()).resolves.toBe(config);
+    expect(reconnectDatabaseMock).not.toHaveBeenCalled();
+    expect(healthCheckMock).toHaveBeenCalledTimes(1);
   });
 });
