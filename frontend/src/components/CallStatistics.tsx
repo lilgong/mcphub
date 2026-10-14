@@ -2,6 +2,8 @@ import { RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiGet } from '../utils/fetchInterceptor';
+import SecretInput from './SecretInput';
+import { credentialFingerprint } from '../utils/credentialFingerprint';
 interface Row {
   server: string;
   calls: number;
@@ -15,6 +17,7 @@ interface Result {
   success: number;
   errors: number;
   available: boolean;
+  unavailableSources?: string[];
 }
 export default function CallStatistics() {
   const { t } = useTranslation();
@@ -22,6 +25,9 @@ export default function CallStatistics() {
   const [start, setStart] = useState(month + '-01');
   const [end, setEnd] = useState(new Date().toISOString().slice(0, 10));
   const [server, setServer] = useState('');
+  const [metric, setMetric] = useState('tool');
+  const [key, setKey] = useState('');
+  const [fingerprint, setFingerprint] = useState('');
   const [data, setData] = useState<Result>();
   const [error, setError] = useState(false);
   const [refresh, setRefresh] = useState(0);
@@ -29,6 +35,8 @@ export default function CallStatistics() {
     let active = true;
     const query = new URLSearchParams({
       server,
+      metric,
+      ...(metric === 'upstream' && fingerprint ? { credentialId: fingerprint } : {}),
       start: start + 'T00:00:00Z',
       end: end + 'T23:59:59.999Z',
     });
@@ -45,12 +53,28 @@ export default function CallStatistics() {
     return () => {
       active = false;
     };
-  }, [server, start, end, refresh]);
+  }, [server, start, end, refresh, metric, fingerprint]);
   const input = 'hub-input';
   return (
     <section className="space-y-5">
-      <p className="hub-sub">{t('statistics.description')}</p>
+      <p className="hub-sub">
+        {t(metric === 'upstream' ? 'statistics.upstreamDescription' : 'statistics.description')}
+      </p>
       <div className="hub-card flex flex-wrap items-end gap-3 p-4">
+        <label className="hub-field">
+          <span className="hub-label">{t('statistics.metric')}</span>
+          <select
+            className="hub-input"
+            value={metric}
+            onChange={(e) => {
+              setMetric(e.target.value);
+              setData(undefined);
+            }}
+          >
+            <option value="tool">{t('statistics.toolCalls')}</option>
+            <option value="upstream">{t('statistics.upstreamCalls')}</option>
+          </select>
+        </label>
         <label className="hub-field">
           <span className="hub-label">{t('statistics.month')}</span>
           <input
@@ -102,6 +126,53 @@ export default function CallStatistics() {
           {t('callLogs.refresh')}
         </button>
       </div>
+      {metric === 'upstream' && (
+        <div className="hub-card space-y-3 p-4">
+          <label className="hub-field">
+            <span className="hub-label">{t('statistics.upstreamKey')}</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <SecretInput
+                className="hub-input min-w-0 flex-1"
+                sensitive
+                secretLabel={t('statistics.upstreamKey')}
+                autoComplete="off"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+              />
+              <button
+                type="button"
+                className="hub-btn"
+                onClick={() => {
+                  setFingerprint(key.trim() ? credentialFingerprint(key) : '');
+                  setKey('');
+                  setData(undefined);
+                }}
+              >
+                {t('statistics.applyKey')}
+              </button>
+              {fingerprint && (
+                <button
+                  type="button"
+                  className="hub-btn"
+                  onClick={() => {
+                    setFingerprint('');
+                    setKey('');
+                    setData(undefined);
+                  }}
+                >
+                  {t('statistics.clearKey')}
+                </button>
+              )}
+            </div>
+          </label>
+          <p className="hub-sub text-xs">
+            {t('statistics.keyPrivacy')}
+            {fingerprint && <> · {fingerprint}</>}
+          </p>
+        </div>
+      )}
+      {metric === 'upstream' && <p className="hub-sub text-sm">{t('statistics.coverage')}</p>}
+      {!!data?.unavailableSources?.length && <p role="alert">{t('statistics.incomplete')}</p>}
       {error && <p role="alert">{t('callLogs.failed')}</p>}
       {data?.available === false && <p>{t('statistics.unavailable')}</p>}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

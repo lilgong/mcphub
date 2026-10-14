@@ -77,7 +77,7 @@ export function describeToolFailure(
 export function captureToolDiagnostic(server: string): (event: string, fields: Diagnostic) => void {
   const write = diagnostics.getStore();
   return (event, fields) => {
-    if (write) write(event, { server: server.slice(0, 512), ...fields });
+    if (write) write(event, { ...(server ? { server: server.slice(0, 512) } : {}), ...fields });
     else logger.log('[tool-scheduler]', { event, server, ...fields });
   };
 }

@@ -104,6 +104,7 @@ export async function getCallLogs(
           const id = safeString(record.request_id);
           if (['queued', 'dispatched', 'queue_rejected'].includes(safeString(record.event)))
             calls.set(id, { ...calls.get(id), ...record });
+          if (record.event === 'upstream_finished') calls.set(id, { ...calls.get(id), ...record });
           if (record.event === 'completed') calls.set(id, { ...calls.get(id), ...record });
           if (record.event === 'finished') {
             const item = { ...record, ...calls.get(id) };
@@ -121,6 +122,7 @@ export async function getCallLogs(
               category: safeString(item.category) || undefined,
               durationMs: safeNumber(item.duration_ms),
               waitMs: safeNumber(item.wait_ms),
+              keyLabel: safeString(item.credential_suffix) || undefined,
             });
           }
         }

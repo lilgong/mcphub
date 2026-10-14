@@ -1613,7 +1613,17 @@
     "total": "Appels",
     "success": "Réussites",
     "errors": "Erreurs",
-    "unavailable": "Activez l’audit persistant pour collecter les statistiques."
+    "unavailable": "Activez l’audit persistant pour collecter les statistiques.",
+    "metric": "Mesure",
+    "toolCalls": "Appels d’outils",
+    "upstreamCalls": "Requêtes API en amont",
+    "upstreamDescription": "Tentatives HTTP terminées, échecs et nouvelles tentatives inclus.",
+    "upstreamKey": "Clé API en amont (facultatif)",
+    "applyKey": "Filtrer par clé",
+    "clearKey": "Toutes les clés",
+    "keyPrivacy": "La clé est hachée localement puis effacée. Seule son empreinte est envoyée.",
+    "coverage": "Couvre le transfert HTTP, les MCP Yibu instrumentés et les pools de clés. Les traces manquantes ne peuvent être reconstruites ; aucun résultat ne signifie pas aucune utilisation ailleurs.",
+    "incomplete": "Certaines sources sont illisibles ; les totaux sont incomplets."
   },
   "runtime": {
     "mcpVersion": "Version MCP",

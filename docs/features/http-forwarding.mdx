@@ -36,3 +36,28 @@ Configure `MCPHUB_AUDIT_LOG_DIR` to a persistent, writable directory. Every disp
 HTTP forwarding is implemented in the project code and included in builds/images of this branch. Resource settings use the existing JSON or database server storage, including import/export; no extra process or port is needed. Mount the settings and audit directory outside the container before deployment. Existing deployments do not change until a new build is deployed.
 
 This initial implementation forwards buffered HTTP APIs with up to 1 MiB requests and 8 MiB responses. MCP target connections, MCP key-pool adapters, wrapper Relay routing, browser cookie sessions, WebSocket connections and streaming responses are not supported by this server type. Admin-owned resources may address internal upstream services; other owners are subject to the existing SSRF protections.
+
+### Per-key usage
+
+Register separate resources such as `serper-a` and `serper-b` to assign different upstream
+keys to different callers. No multi-key rotation is introduced. Each actual HTTP attempt
+writes `upstream_started` and `upstream_finished` in the persistent tool-audit directory,
+with a separate upstream request ID, HTTP status, duration and credential roles. Bearer
+prefixes are removed before fingerprinting. Full keys, request URLs/queries and payloads
+are not logged. Very short credentials never expose their entire value through a suffix.
+
+Call statistics now offers **Tool calls** (the existing count) and **Upstream API requests**.
+The latter aggregates completed HTTP forwarding attempts, instrumented MCP usage records,
+and key-pool attempts. Retries count as separate API attempts; tool audit events never
+count as extra upstream calls. A request carrying multiple credential roles counts once,
+even when the same key appears in several roles. Billing may use a different unit.
+
+Administrators may enter an upstream key in statistics. The browser hashes it locally,
+clears the input, and sends only the 16-hex-character SHA-256 fingerprint as `credentialId`.
+The existing statistics route accepts `metric=upstream`; raw keys are not accepted there.
+Browser hashing also works on private-network HTTP deployments without Web Crypto.
+
+Coverage is partial: MCPs without upstream request instrumentation cannot supply per-key
+usage, older key-pool records without fingerprints cannot be matched, and older forwarding
+records lack completed credential-attributed attempts. Missing records do not prove zero
+usage. This feature does not infer credentials from arbitrary environment variables.

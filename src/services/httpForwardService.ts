@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { upstreamCredential } from '../utils/upstreamCredential.js';
+import { captureToolDiagnostic } from './toolAuditService.js';
 import axios from 'axios';
 import type { ServerConfig } from '../types/index.js';
 import { assertSafeUrl, ssrfConnectionOptions } from '../utils/ssrf.js';
@@ -64,23 +67,53 @@ export async function requestHttpUpstream(
       continue;
     headers[lower] = value;
   }
-  const result = await axios.request<ArrayBuffer>({
-    url,
-    method,
-    data: body,
-    headers,
-    signal,
-    timeout: config.options?.timeout ?? 60000,
-    maxRedirects: 0,
-    maxContentLength: 8 * 1024 * 1024,
-    maxBodyLength: 1024 * 1024,
-    responseType: 'arraybuffer',
-    transformRequest: [(value) => value],
-    transformResponse: [(value) => value],
-    validateStatus: () => true,
-    ...ssrfConnectionOptions(allowInternal),
-    proxy: false,
-  });
+  const log = captureToolDiagnostic('');
+  const credentials = Object.entries(headers)
+    .filter(([name, value]) => value && /authorization|key|token|secret/i.test(name))
+    .map(([name, value]) => upstreamCredential(value, name.toLowerCase()));
+  const metadata = {
+    upstream_request_id: randomUUID(),
+    upstream_credentials: JSON.stringify(credentials),
+    credential_suffix: credentials.map((value) => `${value.role}: …${value.suffix}`).join(', '),
+  };
+  // Persist admission before the HTTP request; failure must not spend a credential.
+  log('upstream_started', metadata);
+  const started = Date.now();
+  let result;
+  try {
+    result = await axios.request<ArrayBuffer>({
+      url,
+      method,
+      data: body,
+      headers,
+      signal,
+      timeout: config.options?.timeout ?? 60000,
+      maxRedirects: 0,
+      maxContentLength: 8 * 1024 * 1024,
+      maxBodyLength: 1024 * 1024,
+      responseType: 'arraybuffer',
+      transformRequest: [(value) => value],
+      transformResponse: [(value) => value],
+      validateStatus: () => true,
+      ...ssrfConnectionOptions(allowInternal),
+      proxy: false,
+    });
+    log('upstream_finished', {
+      ...metadata,
+      http_status: result.status,
+      duration_ms: Date.now() - started,
+      status: result.status >= 400 ? 'error' : 'success',
+    });
+  } catch (error) {
+    log('upstream_finished', {
+      ...metadata,
+      http_status:
+        signal.aborted || (error as { code?: string }).code === 'ECONNABORTED' ? 504 : 502,
+      duration_ms: Date.now() - started,
+      status: 'error',
+    });
+    throw error;
+  }
   const responseHeaders: Record<string, string> = {};
   for (const name of [
     'content-type',

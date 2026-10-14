@@ -1612,7 +1612,17 @@
     "total": "Çağrılar",
     "success": "Başarılı",
     "errors": "Hatalar",
-    "unavailable": "İstatistik toplamak için kalıcı denetimi etkinleştirin."
+    "unavailable": "İstatistik toplamak için kalıcı denetimi etkinleştirin.",
+    "metric": "Ölçüm",
+    "toolCalls": "Araç çağrıları",
+    "upstreamCalls": "Üst API istekleri",
+    "upstreamDescription": "Hatalar ve yeniden denemeler dahil tamamlanan HTTP istekleri.",
+    "upstreamKey": "Üst API anahtarı (isteğe bağlı)",
+    "applyKey": "Anahtara göre filtrele",
+    "clearKey": "Tüm anahtarlar",
+    "keyPrivacy": "Anahtar yerel olarak özetlenir ve temizlenir. Yalnızca özeti gönderilir.",
+    "coverage": "HTTP yönlendirme, günlüklenen Yibu MCP ve anahtar havuzu isteklerini kapsar. Eksik geçmiş yeniden oluşturulamaz; sonuç olmaması başka kullanım olmadığı anlamına gelmez.",
+    "incomplete": "Bazı günlük kaynakları okunamadı; toplamlar eksik."
   },
   "runtime": {
     "mcpVersion": "MCP sürümü",

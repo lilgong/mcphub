@@ -56,6 +56,7 @@
     "@modelcontextprotocol/node": "^2.1.0",
     "@modelcontextprotocol/server": "^2.1.0",
     "@modelcontextprotocol/server-legacy": "^2.1.0",
+    "@noble/hashes": "1.8.0",
     "@node-oauth/oauth2-server": "^5.2.1",
     "@types/adm-zip": "^0.5.7",
     "@types/bcrypt": "^6.0.0",

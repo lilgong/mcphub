@@ -1615,7 +1615,17 @@
     "total": "Calls",
     "success": "Successful",
     "errors": "Errors",
-    "unavailable": "Enable durable tool auditing to collect statistics."
+    "unavailable": "Enable durable tool auditing to collect statistics.",
+    "metric": "Count",
+    "toolCalls": "Tool calls",
+    "upstreamCalls": "Upstream API requests",
+    "upstreamDescription": "Completed upstream HTTP attempts, including failures and retries.",
+    "upstreamKey": "Upstream API key (optional)",
+    "applyKey": "Filter by key",
+    "clearKey": "All keys",
+    "keyPrivacy": "The key is hashed locally and cleared after applying. Only its fingerprint is sent.",
+    "coverage": "Covers HTTP forwarding, instrumented Yibu MCPs and key-pool attempts. Missing key records cannot be backfilled. No matching records does not imply zero usage in other MCPs.",
+    "incomplete": "Some log sources could not be read; totals are incomplete."
   },
   "runtime": {
     "mcpVersion": "MCP version",

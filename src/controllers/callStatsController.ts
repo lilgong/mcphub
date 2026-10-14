@@ -1,3 +1,4 @@
+import { getUpstreamStats } from '../services/upstreamStatsService.js';
 import type { Request, Response } from 'express';
 import { requireAdmin } from '../utils/requireAdmin.js';
 import { getCallStats } from '../services/callStatsService.js';
@@ -25,14 +26,30 @@ export async function callStats(req: Request, res: Response): Promise<void> {
   }
   const read = (key: string) =>
     typeof req.query[key] === 'string' ? (req.query[key] as string).slice(0, 160) : undefined;
+  const metric = read('metric') || 'tool';
+  const credentialId = read('credentialId');
+  if (
+    !['tool', 'upstream'].includes(metric) ||
+    (req.query.credentialId !== undefined &&
+      (typeof req.query.credentialId !== 'string' ||
+        !/^[a-f0-9]{16}$/.test(req.query.credentialId))) ||
+    (credentialId && metric !== 'upstream')
+  ) {
+    res
+      .status(400)
+      .json({ success: false, message: 'Invalid statistics metric or credential fingerprint' });
+    return;
+  }
   res.setHeader('Cache-Control', 'no-store');
   try {
     res.json({
       success: true,
-      data: await getCallStats({
+      data: await (metric === 'upstream' ? getUpstreamStats : getCallStats)({
         start: start.toISOString(),
         end: end.toISOString(),
         server: read('server'),
+        credentialId,
+        metric,
       }),
     });
   } catch {

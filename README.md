@@ -206,3 +206,7 @@ Administrators can start/stop the built-in residential relay and reset its token
 HTTP APIs can be managed through [HTTP forwarding](docs/features/http-forwarding.mdx), preserving existing client requests while sharing Hub authorization, rate limits and audit logs.
 
 Calling groups are owned by users. Ordinary users manage their own groups and scoped keys; administrators manage accounts and groups in one directory. See [owned calling groups](docs/features/user-groups.mdx).
+
+### Upstream key statistics
+
+Call statistics can count completed upstream API attempts separately from tool calls, and administrators can filter by an upstream key hashed locally in the browser. Coverage includes HTTP forwarding resources (including separately registered `serper-a`/`serper-b`), instrumented Yibu MCP requests and key-pool attempts. Full keys are not sent to the statistics endpoint. Uninstrumented MCPs and historical records without credential fingerprints remain outside per-key coverage. See [HTTP forwarding](docs/features/http-forwarding.mdx).

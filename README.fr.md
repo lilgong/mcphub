@@ -193,3 +193,7 @@ Les administrateurs peuvent démarrer/arrêter le relais résidentiel intégré 
 Les API HTTP peuvent utiliser le [transfert HTTP](docs/features/http-forwarding.mdx), avec les autorisations, les limites et les journaux du Hub.
 
 Les groupes d’appel appartiennent aux utilisateurs ; les administrateurs gèrent les comptes et groupes dans un seul annuaire. Voir les [groupes d’appel](docs/features/user-groups.mdx).
+
+### Statistiques par clé en amont
+
+Les statistiques distinguent les appels d’outils des tentatives API terminées. Les administrateurs peuvent filtrer par empreinte de clé calculée dans le navigateur. La couverture comprend les ressources HTTP (dont `serper-a` et `serper-b`), les MCP Yibu instrumentés et les pools de clés. Les clés complètes ne sont pas envoyées ; les traces historiques sans empreinte et les MCP non instrumentés restent exclus. Voir [le transfert HTTP](docs/features/http-forwarding.mdx).

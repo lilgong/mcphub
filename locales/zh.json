@@ -1617,7 +1617,17 @@
     "total": "调用次数",
     "success": "成功次数",
     "errors": "错误次数",
-    "unavailable": "请启用持久化工具审计以收集统计。"
+    "unavailable": "请启用持久化工具审计以收集统计。",
+    "metric": "统计口径",
+    "toolCalls": "工具调用次数",
+    "upstreamCalls": "上游 API 请求次数",
+    "upstreamDescription": "统计已完成的上游 HTTP 请求，包含失败请求和重试。",
+    "upstreamKey": "上游 API key（可选）",
+    "applyKey": "按 key 查询",
+    "clearKey": "全部 key",
+    "keyPrivacy": "key 在浏览器计算指纹，查询后清空；仅发送指纹给 Hub。",
+    "coverage": "覆盖 HTTP 转发、已记录上游请求的一步 MCP 和多 key 适配请求。缺少 key 记录的历史无法补算；没有匹配记录不代表其他 MCP 没有使用此 key。",
+    "incomplete": "部分日志来源无法读取，当前统计不完整。"
   },
   "runtime": {
     "mcpVersion": "MCP 版本",

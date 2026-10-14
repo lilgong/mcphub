@@ -210,3 +210,7 @@ pnpm dev
 普通 HTTP API 可通过 [HTTP 转发](docs/features/http-forwarding.mdx)接入，保留客户端原有请求，并共用 Hub 权限、限速与调用日志。
 
 调用分组属于用户：普通用户管理自己的分组及组 key，管理员在“用户与分组”中统一管理。详见[调用分组](docs/features/user-groups.mdx)。
+
+### 上游 key 调用统计
+
+调用统计可分别查看工具调用次数和已完成的上游 API 请求次数。管理员可输入上游 key，浏览器仅发送本地计算的指纹。覆盖 HTTP 转发资源（包括独立注册的 `serper-a`、`serper-b`）、已适配日志的一步 MCP 和多 key 请求；未记录上游凭据的 MCP 及旧日志无法补算。详情见 [HTTP 转发](docs/features/http-forwarding.mdx)。

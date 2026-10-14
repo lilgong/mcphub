@@ -1,5 +1,4 @@
 import type { Request, Response } from 'express';
-import { createHash } from 'node:crypto';
 import { getServerDao, getUserDao, getBearerKeyDao, getGroupDao } from '../dao/index.js';
 import { validateBearerAuth } from '../services/sseService.js';
 import { authorizationService } from '../services/authorizationService.js';
@@ -115,14 +114,6 @@ export async function forwardHttp(req: Request, res: Response): Promise<void> {
                 const owner = config.owner ? await getUserDao().findByUsername(config.owner) : null;
                 const url = forwardingUrl(config.url!, path, query);
                 const log = captureToolDiagnostic(name);
-                // Persist the identity of every configured credential before making the request.
-                for (const [header, value] of Object.entries(config.headers ?? {})) {
-                  if (/authorization|key|token|secret/i.test(header))
-                    log('upstream_started', {
-                      credential_id: createHash('sha256').update(value).digest('hex').slice(0, 16),
-                      credential_suffix: value.slice(-4),
-                    });
-                }
                 try {
                   const response = await requestHttpUpstream(
                     config,

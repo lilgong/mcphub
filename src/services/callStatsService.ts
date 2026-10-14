@@ -6,6 +6,8 @@ export interface StatsQuery {
   start: string;
   end: string;
   server?: string;
+  credentialId?: string;
+  metric?: string;
 }
 export interface ServerCallStats {
   server: string;

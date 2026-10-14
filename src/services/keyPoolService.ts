@@ -192,6 +192,7 @@ export class KeyPoolService {
         target: server.split('@')[1],
         key_id: key.id,
         key_label: keySuffix(key.value),
+        credential_id: createHash('sha256').update(key.value.trim()).digest('hex').slice(0, 16),
         path: url.pathname,
       };
       // Durable admission is mandatory before the credential reaches an upstream request.

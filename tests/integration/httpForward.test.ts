@@ -140,7 +140,7 @@ it('preserves request bytes, path, query and response JSON; replaces client cred
   const logs = readdirSync(audit)
     .map((file) => readFileSync(join(audit, file), 'utf8'))
     .join('');
-  expect(logs).toContain('credential_id');
+  expect(logs).toContain('upstream_credentials');
   expect(logs).not.toContain('hub-test-token');
   expect(logs).not.toContain('upstream-test-secret');
   expect(logs).not.toContain('fixture');
@@ -303,4 +303,47 @@ it('uses the generated Bearer or API-key header upstream while retaining Hub cli
       expect(seen.secret).toBe('entered-key-1234');
     }
   }
+});
+
+it('audits normalized upstream credentials for serper suffix names without copying the Hub key', async () => {
+  permitted = true;
+  shared = true;
+  resource = {
+    ...resource,
+    name: 'serper-a',
+    headers: { Authorization: 'Bearer key-a', 'X-API-KEY': 'key-a' },
+  };
+  await request(app)
+    .post('/http/serper-a/search')
+    .set('Authorization', 'Bearer hub-test-token')
+    .send('{}')
+    .expect(200);
+  const records = readdirSync(audit).flatMap((file) =>
+    readFileSync(join(audit, file), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line)),
+  );
+  const started = records.find((r) => r.event === 'upstream_started');
+  const finished = records.find((r) => r.event === 'upstream_finished');
+  expect(started.server).toBe('serper-a');
+  expect(finished.upstream_request_id).toBe(started.upstream_request_id);
+  const credentials = JSON.parse(finished.upstream_credentials);
+  expect(credentials).toHaveLength(2);
+  expect(credentials[0].id).toBe(credentials[1].id);
+  const { createHash } = await import('node:crypto');
+  const id = createHash('sha256').update('key-a').digest('hex').slice(0, 16);
+  expect(credentials[0].id).toBe(id);
+  expect(finished.http_status).toBe(200);
+  const raw = JSON.stringify(records);
+  expect(raw).not.toContain('hub-test-token');
+  expect(raw).not.toContain('Bearer key-a');
+  const { getUpstreamStats } = await import('../../src/services/upstreamStatsService');
+  const now = new Date();
+  const stats = await getUpstreamStats({
+    start: new Date(+now - 60000).toISOString(),
+    end: new Date(+now + 60000).toISOString(),
+    credentialId: id,
+  });
+  expect(stats.rows.find((r) => r.server === 'serper-a')?.calls).toBe(1);
 });
