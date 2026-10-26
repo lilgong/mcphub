@@ -526,3 +526,33 @@ it('submits HTTP forwarding URL and headers without hidden MCP environment setti
   expect(payload.config.env).toBeUndefined();
   expect(payload.config.command).toBeUndefined();
 });
+
+it('preserves only allowlisted task startup values when the base connection form is hidden', () => {
+  const payload = buildServerPayload({
+    formData: {
+      name: 'pubmed',
+      command: 'node',
+      arguments: '',
+      args: [],
+      url: '',
+      env: [],
+      headers: [],
+      targets: [
+        { path: 'task/default', kind: 'task', startupEnvKeys: ['NCBI_API_KEY', 'NCBI_EMAIL'] },
+      ],
+    },
+    serverType: 'stdio',
+    envVars: [
+      { key: 'NCBI_API_KEY', value: 'synthetic-ncbi' },
+      { key: 'NCBI_EMAIL', value: 'test@example.test' },
+      { key: 'UNRELATED_SECRET', value: 'must-not-be-copied' },
+    ],
+    headerVars: [],
+  });
+  expect(payload.config.env).toEqual({
+    NCBI_API_KEY: 'synthetic-ncbi',
+    NCBI_EMAIL: 'test@example.test',
+  });
+  expect(payload.config.command).toBeUndefined();
+  expect(payload.config.args).toBeUndefined();
+});

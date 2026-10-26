@@ -1,3 +1,5 @@
+import LogCatalogFilter from './LogCatalogFilter';
+import LogServerIdentity from './LogServerIdentity';
 import { RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -5,6 +7,7 @@ import { apiGet } from '../utils/fetchInterceptor';
 import SecretInput from './SecretInput';
 import { credentialFingerprint } from '../utils/credentialFingerprint';
 interface Row {
+  catalog?: string;
   server: string;
   calls: number;
   success: number;
@@ -25,6 +28,7 @@ export default function CallStatistics() {
   const [start, setStart] = useState(month + '-01');
   const [end, setEnd] = useState(new Date().toISOString().slice(0, 10));
   const [server, setServer] = useState('');
+  const [catalog, setCatalog] = useState('*');
   const [metric, setMetric] = useState('tool');
   const [key, setKey] = useState('');
   const [fingerprint, setFingerprint] = useState('');
@@ -35,6 +39,7 @@ export default function CallStatistics() {
     let active = true;
     const query = new URLSearchParams({
       server,
+      ...(catalog !== '*' ? { catalog } : {}),
       metric,
       ...(metric === 'upstream' && fingerprint ? { credentialId: fingerprint } : {}),
       start: start + 'T00:00:00Z',
@@ -53,7 +58,7 @@ export default function CallStatistics() {
     return () => {
       active = false;
     };
-  }, [server, start, end, refresh, metric, fingerprint]);
+  }, [catalog, server, start, end, refresh, metric, fingerprint]);
   const input = 'hub-input';
   return (
     <section className="space-y-5">
@@ -61,6 +66,7 @@ export default function CallStatistics() {
         {t(metric === 'upstream' ? 'statistics.upstreamDescription' : 'statistics.description')}
       </p>
       <div className="hub-card flex flex-wrap items-end gap-3 p-4">
+        <LogCatalogFilter value={catalog} onChange={setCatalog} />
         <label className="hub-field">
           <span className="hub-label">{t('statistics.metric')}</span>
           <select
@@ -197,7 +203,13 @@ export default function CallStatistics() {
           <tbody>
             {data?.rows.map((row, i) => (
               <tr className="border-t border-[var(--hub-line)]" key={i}>
-                <td className="p-4 font-medium">{row.server}</td>
+                <td className="p-4 font-medium">
+                  <LogServerIdentity
+                    server={row.server}
+                    catalog={row.catalog}
+                    showCatalog={catalog === '*'}
+                  />
+                </td>
                 <td className="p-4 hub-num">{row.calls}</td>
                 <td className="p-4 hub-num">{row.success}</td>
                 <td className="p-4 hub-num">{row.errors}</td>

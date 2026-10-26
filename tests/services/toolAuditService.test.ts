@@ -4,12 +4,17 @@ import { join } from 'node:path';
 import { RequestContextService } from '../../src/services/requestContextService.js';
 import { captureToolDiagnostic, withToolAudit } from '../../src/services/toolAuditService.js';
 
+const mockActivity = jest.fn(async () => undefined);
+jest.mock('../../src/services/activityLoggingService.js', () => ({
+  getActivityLoggingService: () => ({ logToolCall: mockActivity }),
+}));
 jest.mock('../../src/utils/logger.js', () => ({ logger: { log: jest.fn() } }));
 
 describe('durable tool audit', () => {
   let directory: string;
   const previous = process.env.MCPHUB_AUDIT_LOG_DIR;
   beforeEach(() => {
+    mockActivity.mockClear();
     directory = mkdtempSync(join(tmpdir(), 'hub-tool-audit-'));
     process.env.MCPHUB_AUDIT_LOG_DIR = directory;
   });
@@ -23,6 +28,40 @@ describe('durable tool audit', () => {
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line));
+
+  it('persists opted-in direct calls once, retains their space, and leaves MCP activity to its existing logger', async () => {
+    await withToolAudit(
+      { server: 'atlas::exa', tool: 'search' },
+      async () => ({ isError: false }),
+      true,
+    );
+    expect(mockActivity).toHaveBeenCalledTimes(1);
+    expect(mockActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({ server: 'atlas::exa', status: 'success' }),
+    );
+    await withToolAudit(
+      { server: 'toolathlon::exa', tool: 'search' },
+      async () => ({ isError: true }),
+      true,
+    );
+    expect(mockActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({ server: 'toolathlon::exa', status: 'error' }),
+    );
+    await expect(
+      withToolAudit(
+        { server: 'atlas::exa', tool: 'search' },
+        async () => {
+          throw new Error('private');
+        },
+        true,
+      ),
+    ).rejects.toThrow('private');
+    expect(mockActivity).toHaveBeenCalledTimes(3);
+    expect(mockActivity).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'error' }));
+    expect(JSON.stringify(mockActivity.mock.calls)).not.toContain('private');
+    await withToolAudit({ server: 'atlas::exa', tool: 'search' }, async () => ({ isError: false }));
+    expect(mockActivity).toHaveBeenCalledTimes(3);
+  });
 
   it('persists start before invoking a tool and records one completion', async () => {
     await withToolAudit({ tool: 'brave-search-brave_web_search' }, async () => {

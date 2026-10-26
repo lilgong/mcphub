@@ -1,3 +1,4 @@
+import { validateServerKey, splitServerKey } from '../utils/catalog.js';
 import { toolCallScheduler } from '../services/toolCallSchedulerService.js';
 import {
   copyCredentialBindings,
@@ -66,7 +67,6 @@ import {
   isPrivilegedServerConfig,
   ServerConfigValidationError,
 } from '../utils/serverConfigValidation.js';
-import { validateServerName } from '../utils/serverNameValidation.js';
 import { setCachedSystemConfig } from '../utils/systemConfigCache.js';
 import { DEFAULT_INSTALL_BASE_URL, withResolvedInstallBaseUrl } from '../utils/installBaseUrl.js';
 import {
@@ -362,6 +362,27 @@ export const getAllServers = async (req: Request, res: Response): Promise<void> 
   }
 };
 
+/** Catalogs are namespaces derived from visible registrations, never tool aggregations. */
+export const getCatalogs = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const counts = new Map<string, number>();
+    for (const server of await getServerDao().findAll()) {
+      if (!canAccessServer(getRequestUser(req), server)) continue;
+      const { catalog } = splitServerKey(server.name);
+      counts.set(catalog, (counts.get(catalog) || 0) + 1);
+    }
+    res.json({
+      success: true,
+      data: [...counts]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, servers]) => ({ name, servers })),
+    });
+  } catch (error) {
+    logger.error('Failed to list catalogs', error);
+    res.status(500).json({ success: false, message: 'Failed to list catalogs' });
+  }
+};
+
 export const getServerShareCandidates = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name } = req.params;
@@ -584,7 +605,7 @@ export const previewOpenApiToolStatsHandler = async (
 export const createServer = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, config } = req.body as AddServerRequest;
-    const nameValidation = validateServerName(name);
+    const nameValidation = validateServerKey(name, (req.body as { catalog?: string }).catalog);
     if (!nameValidation.valid) {
       res.status(400).json({
         success: false,
@@ -689,6 +710,12 @@ export const createServer = async (req: Request, res: Response): Promise<void> =
 
     assignServerOwner(req, normalizedConfig);
 
+    if (await getServerDao().exists(serverName)) {
+      res
+        .status(400)
+        .json({ success: false, message: 'Server name already exists in this catalog' });
+      return;
+    }
     const result = await addServer(serverName, normalizedConfig);
     if (result.success) {
       res.json({
@@ -752,7 +779,7 @@ export const batchCreateServers = async (req: Request, res: Response): Promise<v
       name: string,
       config: ServerConfig,
     ): { valid: boolean; message?: string; normalizedName?: string } => {
-      const nameValidation = validateServerName(name);
+      const nameValidation = validateServerKey(name);
       if (!nameValidation.valid) {
         return { valid: false, message: nameValidation.message };
       }
@@ -780,7 +807,9 @@ export const batchCreateServers = async (req: Request, res: Response): Promise<v
       // Validate server type if specified
       if (
         normalizedConfig.type &&
-        !['stdio', 'sse', 'streamable-http', 'openapi', 'http-proxy'].includes(normalizedConfig.type)
+        !['stdio', 'sse', 'streamable-http', 'openapi', 'http-proxy'].includes(
+          normalizedConfig.type,
+        )
       ) {
         return {
           valid: false,
@@ -1173,7 +1202,10 @@ export const updateServer = async (req: Request, res: Response): Promise<void> =
     assignServerOwner(req, normalizedConfig, existingServer.owner);
 
     // Check if server name is being changed
-    const isRenaming = newName && newName !== name;
+    const scopedRename = newName
+      ? validateServerKey(newName, splitServerKey(name).catalog)
+      : undefined;
+    const isRenaming = newName && scopedRename?.normalized !== name;
 
     // Final server name used for the rest of the update flow (the new name when
     // renaming, otherwise the original name).
@@ -1182,7 +1214,7 @@ export const updateServer = async (req: Request, res: Response): Promise<void> =
     // If renaming, validate the new name and update references
     if (isRenaming) {
       const serverDao = getServerDao();
-      const nameValidation = validateServerName(newName);
+      const nameValidation = scopedRename!;
       if (!nameValidation.valid) {
         res.status(400).json({
           success: false,

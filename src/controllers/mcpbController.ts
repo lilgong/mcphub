@@ -1,3 +1,6 @@
+import { mcpbServerDirectoryName } from '../utils/mcpbPaths.js';
+import { getServerDao } from '../dao/DaoFactory.js';
+import { serverKey } from '../utils/catalog.js';
 import { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -20,10 +23,9 @@ const storage = multer.diskStorage({
   filename: (_req, file, cb) => {
     const timestamp = Date.now();
     // Sanitize the original name so the stored path cannot escape the upload directory
-    const safeOriginalName = path.parse(path.basename(file.originalname)).name.replace(
-      /[^A-Za-z0-9._-]/g,
-      '_',
-    );
+    const safeOriginalName = path
+      .parse(path.basename(file.originalname))
+      .name.replace(/[^A-Za-z0-9._-]/g, '_');
     cb(null, `${safeOriginalName}-${timestamp}.mcpb`);
   },
 });
@@ -61,7 +63,7 @@ const validateMcpbServerName = (serverName: unknown): string => {
 
 const resolveMcpbServerExtractDir = (baseDir: string, serverName: string): string => {
   const resolvedBaseDir = path.resolve(baseDir);
-  const resolvedTargetDir = path.resolve(resolvedBaseDir, `server-${serverName}`);
+  const resolvedTargetDir = path.resolve(resolvedBaseDir, mcpbServerDirectoryName(serverName));
   const relativeTargetPath = path.relative(resolvedBaseDir, resolvedTargetDir);
 
   if (relativeTargetPath.startsWith('..') || path.isAbsolute(relativeTargetPath)) {
@@ -75,7 +77,7 @@ const resolveMcpbServerExtractDir = (baseDir: string, serverName: string): strin
 const cleanupOldMcpbServer = (serverName: string): void => {
   try {
     const uploadDir = getMcpbUploadDir();
-    const serverPattern = `server-${serverName}`;
+    const serverPattern = mcpbServerDirectoryName(serverName);
 
     if (fs.existsSync(uploadDir)) {
       const files = fs.readdirSync(uploadDir);
@@ -125,18 +127,10 @@ export const uploadMcpbFile = async (req: Request, res: Response): Promise<void>
     const tempExtractDir = path.join(path.dirname(mcpbFilePath), `temp-extracted-${timestamp}`);
 
     try {
-      // Extract the MCPB file (which is a ZIP archive) to a temporary directory first
       const zip = new AdmZip(mcpbFilePath);
-      zip.extractAllTo(tempExtractDir, true);
-
-      // Read and validate the manifest.json
-      const manifestPath = path.join(tempExtractDir, 'manifest.json');
-      if (!fs.existsSync(manifestPath)) {
-        throw new Error('manifest.json not found in MCPB file');
-      }
-
-      const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
-      const manifest = JSON.parse(manifestContent);
+      const manifestEntry = zip.getEntry('manifest.json');
+      if (!manifestEntry) throw new Error('manifest.json not found in MCPB file');
+      const manifest = JSON.parse(zip.readAsText(manifestEntry));
 
       // Validate required fields in manifest
       if (!manifest.manifest_version) {
@@ -152,13 +146,38 @@ export const uploadMcpbFile = async (req: Request, res: Response): Promise<void>
         throw new Error('Invalid manifest: missing server configuration');
       }
 
-      const safeServerName = validateMcpbServerName(manifest.name);
+      const safeServerName = serverKey(validateMcpbServerName(manifest.name), req.body?.catalog);
 
       // Use server name as the final extract directory for automatic version management
       const finalExtractDir = resolveMcpbServerExtractDir(
         path.dirname(mcpbFilePath),
         safeServerName,
       );
+
+      if (req.body?.inspectOnly === 'true' || req.body?.skipExisting === 'true') {
+        const registered = await getServerDao().exists(safeServerName);
+        const legacyDir = path.join(
+          path.dirname(mcpbFilePath),
+          `server-${encodeURIComponent(safeServerName)}`,
+        );
+        const exists = registered || fs.existsSync(finalExtractDir) || fs.existsSync(legacyDir);
+        if (req.body?.inspectOnly === 'true') {
+          fs.unlinkSync(mcpbFilePath);
+          res.json({ success: true, data: { manifest, exists, registered } });
+          return;
+        }
+        if (exists) {
+          fs.unlinkSync(mcpbFilePath);
+          res.status(409).json({
+            success: false,
+            message: `MCP '${safeServerName}' now exists; inspect again and choose overwrite or skip`,
+          });
+          return;
+        }
+      }
+
+      // Inspection never extracts or replaces executable files.
+      zip.extractAllTo(tempExtractDir, true);
 
       // Clean up any existing version of this server
       cleanupOldMcpbServer(safeServerName);

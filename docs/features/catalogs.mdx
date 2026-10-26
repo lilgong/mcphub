@@ -1,0 +1,122 @@
+---
+title: 'Catalog namespaces'
+description: 'Keep public and benchmark MCP registrations separate without changing their tool names.'
+---
+
+Catalogs give each benchmark an independent MCP namespace. They do not aggregate tools, create containers, or manage benchmark task isolation.
+
+| Scope | Streamable HTTP endpoint | Management identity |
+| --- | --- | --- |
+| Public | `/mcp/arxiv` | `arxiv` |
+| Atlas | `/mcp/atlas/arxiv` | `atlas::arxiv` |
+| Toolathlon | `/mcp/toolathlon/arxiv` | `toolathlon::arxiv` |
+
+The dashboard displays the logical MCP name, its catalog, and the complete endpoint. The **Catalog** filter selects a namespace. When adding an MCP, leave **Catalog** empty for public use, or enter a benchmark name such as `atlas`. A catalog appears after its first registration and disappears when its last registration is removed. There is no separate empty-catalog record in this version.
+
+Catalog names begin with a lowercase letter and contain at most 48 lowercase letters, digits, underscores or hyphens. MCP names retain the existing validation rules. The catalog is fixed during editing; duplicate a registration to another catalog instead of moving live credentials and task leases implicitly.
+
+## Register and manage
+
+Existing server APIs remain available. Create a scoped registration using:
+
+```http
+POST /api/servers
+x-auth-token: DASHBOARD_TOKEN
+Content-Type: application/json
+
+{"catalog":"atlas","name":"arxiv","config":{"type":"streamable-http","url":"http://atlas-runtime:8080/mcp"}}
+```
+
+Management APIs and persisted settings use the canonical key `atlas::arxiv`. Existing public keys are unchanged. This makes all existing credential stores, connection caches, permissions, scheduler buckets, configuration export and database uniqueness checks distinguish identical logical names. JSON exports retain canonical keys and can be imported without losing the catalog. Database mode uses the existing unique server-name column; no schema migration is needed.
+
+`GET /api/catalogs` lists the current principal's visible catalogs and registration counts. It grants no additional permissions. Existing owner, visibility, calling-group and bearer-key checks still apply to each canonical server identity. Server-scoped keys should grant `atlas::arxiv`, not the public `arxiv` registration.
+
+The public `/mcp` and `/mcp/$smart` surfaces exclude catalog registrations. Direct catalog routes never fall back to a public server. Clients cannot reuse one catalog's session at another catalog's endpoint. The internal storage key is not a transport alias: use `/mcp/atlas/arxiv`, not `/mcp/atlas::arxiv`.
+
+Legacy explicit aggregate groups remain separate from catalogs. If a legacy aggregate group deliberately includes catalog members, their default prefixes include the catalog to prevent same-name collisions; an explicit group alias remains supported. A catalog is never automatically an aggregate group.
+
+## Targets, fixtures and tasks
+
+The route selects the MCP registration; `X-MCPHub-Target` continues to select an exact target inside that registration. Atlas fixtures can use targets such as `fixture-a` and `fixture-b`. Implementations and credentials never fall back to another catalog or target.
+
+Task callback registration accepts the logical name plus catalog:
+
+```http
+POST /api/task-connections
+Authorization: Bearer OPERATOR_KEY
+Content-Type: application/json
+
+{"catalog":"atlas","server":"arxiv","target":"fixture-a","taskId":"run-123","url":"http://atlas-runtime/internal/task-123","token":"CALLBACK_SECRET"}
+```
+
+Existing callers may alternatively supply `"server":"atlas::arxiv"`. Callback tools still use the logical prefix, such as `arxiv_search`; they do not contain the storage key. Leases, capability tokens, expiration, revocation and benchmark-controlled task isolation retain their existing behavior. Worker setup also accepts `/api/servers/arxiv/runtime?catalog=atlas&target=fixture-a`.
+
+## Runtime and relay
+
+The dashboard calls this a **namespace** (空间); the `catalog` API field remains compatible. Both JSON import and MCPB upload expose an explicit namespace input and inherit the current list selection. JSON previews show the destination MCP path; already scoped keys retain their namespace and conflicting destinations are rejected. Imported configurations preserve targets, relay settings and service controls.
+
+A catalog does not imply one process or one container. One namespace can connect to several containers. Toolathlon, for example, has benchmark-managed task containers plus mail, Canvas, and WordPress/MySQL backend services; Kubernetes tasks can create Kind node containers. Operators can run compatible shared MCPs together; benchmarks retain responsibility for their existing task environments. Hub connects to the supplied endpoints. No Docker socket or automatic container provisioning is introduced.
+
+Hub tool-call limits are independent per canonical MCP registration and continue to span that registration's targets and callers. Compatible wrappers in multiple catalogs can use the same external relay so actual HTTP requests share the existing upstream-category limits. Renaming a catalog or adding a fixture does not create extra upstream quota. Native wrappers that do not implement the fetch relay adapter cannot be made relay-aware by enabling a switch.
+
+This version preserves the existing managed/external relay behavior. It does not start a new relay, change production egress, or add a distributed quota system. An external relay can run in its own container independently of Hub. Multi-Hub deployments need a shared quota coordinator before treating in-process tool-call limits as a fleet-wide limit.
+
+
+## Batch operations
+
+The MCPB picker accepts multiple files through selection or drag and drop. Choose a namespace and **Check files** to validate package manifests and detect existing registrations or bundle directories. Inspection (`inspectOnly=true` on the upload request) only reads the archive manifest, deletes the temporary upload, and never extracts or replaces executable files. It returns `manifest`, `exists` and `registered`.
+
+Conflicting packages default to **Skip**. Choose **Update MCPB (keep settings)** to replace a package. Actions can be set per package or for all conflicts. **Install uploaded MCPs** executes the chosen actions sequentially. Overwrites replace the package command and arguments while preserving existing environment values, targets, credential bindings and service limits; new bundle defaults fill missing environment values. Repeated names inside one batch are reported as errors. A new conflict discovered after inspection stops that item and sets it to Skip; the user can choose to update it on retry. One item's failure does not prevent other items from completing. The file is submitted again for installation, so inspection does not leave large staged bundles on disk.
+
+
+Checkboxes are integrated into each server card; selected cards use an accent border and background. Select individual MCPs or the current page in the server list, then choose **Delete selected**. The confirmation lists the namespace and name of every selected registration. Deletion uses the existing authorized server-delete endpoint for each item; successful deletions close their connections. Failed items remain selected for retry. Changing namespace, status filter or search clears the selection, while pagination preserves it.
+
+JSON import also accepts a configuration file through **Choose JSON file**, including HTTP forwarding configurations such as `serper.json`. The file is loaded into the editor for namespace selection and preview before import.
+
+MCPB directories use `server-atlas~weather` for a scoped registration and retain `server-weather` for public registrations. Literal percent escapes are avoided because some package launchers dynamically import absolute filesystem paths, which Node interprets as URLs. Legacy percent-encoded directories remain detectable during conflict inspection.
+
+Relay forwarding can connect to an external Relay started by another Hub or deployed independently. Configure its service URL and its Relay token; local IP pool proxy credentials are required only to start a Hub-owned Relay. External relays cannot be stopped or have their token reset by this Hub. Health checks use the current form address, validate a Relay health response, and do not verify the token or save configuration. Save errors report the actual validation or credential-storage failure without returning token values.
+
+
+## Task-only MCPs without fixture selectors
+
+In the server editor, **Connection mode and workspaces → Per-task connections** configures one internal default task route. The benchmark owns task environments and registers callbacks with `{catalog, server, taskId, url, token}`; no fixture or target selector is needed. The internal route is `task/default`. This default is accepted only when it is the registration's sole task target; legacy multi-target definitions continue to require an exact selector. Existing caller permissions, callback-origin restrictions, lease tokens and expiration still apply. The worker runtime endpoint can likewise omit `target`. Only explicitly allowed `startupEnvKeys` from the server environment are delegated; task targets never persist arbitrary provider credentials.
+
+The editor exposes **Request options** outside the advanced fold, including timeout and progress reset controls, and exposes each target's optional version note. These notes never install or change package versions. Relay saves verify the stored configuration and token binding after reconnecting; the dashboard also reads back the persisted state before displaying success.
+
+
+## Dashboard layout
+
+The server list uses inline status tabs, without nested status panels. The editor has three connection modes: **Single connection**, **Accounts / workspaces**, and **Per-task connections**. Only the active mode's transport fields are displayed. Account workspaces keep their existing exact route selectors; their visible names are the final path segment. **Copy account** duplicates the connection and credentials under a unique name and enables the new workspace on save. Existing workspace state is preserved. Switching modes edits only the form until saved, and draft account/task definitions are retained when switching back.
+
+Call controls distinguish dispatch frequency/concurrency, queue waiting and request timeout. Static workspace request timeouts are edited inside the corresponding workspace, while the MCP's dispatch limits apply across all its workspaces and tasks. Task startup values explicitly permitted by `startupEnvKeys` survive editor saves without copying unrelated hidden credentials.
+
+The Relay page separates **Use an external Relay** (address, token, health and connection save) from **Run Relay with Hub** (local process controls). Selecting a tab never starts, stops or takes over a process. The actual runtime state is displayed separately. Upstream HTTP rate limits use a single table and have their own save action; changing them affects every MCP/namespace using that Relay. Hub API access protection is explained as a separate layer, rather than presented as an additional MCP call quota.
+
+Task-only registrations are counted separately on the dashboard and server list. With no task running, arxiv/pubmed have no resident root client and are waiting for task registration; they are not classified as offline MCP failures. Static or mixed-target failures remain in the inactive filter.
+
+Relay settings show the selected endpoint and whether the forwarding configuration plus token and health check are ready. Compatible server cards distinguish forwarding enabled, task-startup delegation, and Relay not ready. These badges describe routing configuration, not evidence that a specific upstream request has completed. The Hub-managed view shows no local-process actions when another process owns the active Relay.
+
+## Provider cache isolation
+
+Slack's default relative user/channel caches are replaced by automatic paths under
+`$XDG_CACHE_HOME/mcphub/slack` (or the settings directory's `data/.cache/mcphub/slack`
+when XDG cache storage is unset). Each canonical registration, account target and
+credential combination has a separate hashed directory. Tokens are never included
+in filenames. Reconnecting with the same credentials reuses its cache; replacing
+credentials starts a fresh cache. Explicit per-connection `SLACK_MCP_USERS_CACHE`
+and `SLACK_MCP_CHANNELS_CACHE` paths remain operator overrides.
+
+Old shared Slack caches are not copied into these directories, because they may
+belong to a different workspace. The first connection fetches its own user/channel
+metadata again. Provider quota state is separate: isolating these caches does not
+create a new upstream rate allowance.
+
+TwelveData's output-schema compatibility applies to namespaced and renamed
+registrations declaring the provider adapter, including single-key connections.
+Enabling key rotation is not required and no extra rate limit is introduced.
+
+Relay upstream limits are shared by all namespaces using the same Relay process.
+For example, arXiv requests use that process's common arXiv controller. Requests
+that bypass Relay, or use independent Relay processes, do not share that queue.
+Catalog-specific MCP tool-call limits remain separate from these HTTP limits.

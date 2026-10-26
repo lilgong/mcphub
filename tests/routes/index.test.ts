@@ -17,6 +17,7 @@ jest.mock('../../src/controllers/atlasController.js', () => ({
 
 jest.mock('../../src/controllers/serverController.js', () => ({
   getAllServers: routeHandler,
+  getCatalogs: routeHandler,
   getAllSettings: routeHandler,
   getServerConfig: routeHandler,
   getServerShareCandidates: routeHandler,
@@ -326,6 +327,7 @@ describe('initRoutes authenticated API rate limiting', () => {
       ) ?? -1;
 
     expect(authenticatedLimiterIndex).toBeGreaterThanOrEqual(0);
+    expect(routerContainsRoute(protectedRouter!, 'get', '/catalogs')).toBe(true);
     expect(routerContainsRoute(protectedRouter!, 'get', '/servers/:name/share-candidates')).toBe(
       true,
     );

@@ -45,6 +45,22 @@ const baseInfo = (overrides: Partial<ServerInfo>): ServerInfo =>
   }) as ServerInfo;
 
 describe('serverCostFromInfo', () => {
+  it('counts exposed catalog definition names while retaining internal item identities', async () => {
+    const tool = {
+      name: 'arxiv-search',
+      description: 'Search',
+      inputSchema: { type: 'object' },
+      enabled: true,
+    };
+    const plain = await serverCostFromInfo(baseInfo({ name: 'arxiv', tools: [tool] }));
+    const scoped = await serverCostFromInfo(
+      baseInfo({ name: 'atlas::arxiv', tools: [{ ...tool, name: 'atlas::arxiv-search' }] }),
+    );
+    expect(scoped.exposed).toBe(plain.exposed);
+    expect(scoped.gross).toBe(plain.gross);
+    expect(scoped.items[0].name).toBe('atlas::arxiv-search');
+  });
+
   it('reports connected=false and zero footprint for a disconnected server', async () => {
     const cost = await serverCostFromInfo(baseInfo({ status: 'disconnected' }));
     expect(cost.connected).toBe(false);

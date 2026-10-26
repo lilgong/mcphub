@@ -11,7 +11,13 @@ type Result = {
   data?: { token?: string; reconnectFailed?: string[] };
 };
 
-export default function RelayRuntime({ onChange }: { onChange: () => void }) {
+export default function RelayRuntime({
+  onChange,
+  onExternal,
+}: {
+  onChange: () => void;
+  onExternal?: () => void;
+}) {
   const { t } = useTranslation();
   const [status, setStatus] = useState<RelayRuntimeStatus>();
   const [busy, setBusy] = useState(false);
@@ -56,6 +62,18 @@ export default function RelayRuntime({ onChange }: { onChange: () => void }) {
     }
   };
   const external = status?.state === 'external';
+  if (external)
+    return (
+      <section className="space-y-3">
+        <h2 className="hub-editor-heading">{t('relayIndicators.noOwnedProcess')}</h2>
+        <p className="hub-config-note">{t('relayIndicators.externalOwner')}</p>
+        {onExternal && (
+          <button type="button" className="hub-btn" onClick={onExternal}>
+            {t('uiLayout.relay_external')}
+          </button>
+        )}
+      </section>
+    );
   return (
     <section className="hub-card space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">

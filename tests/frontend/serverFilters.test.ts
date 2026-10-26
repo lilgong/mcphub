@@ -80,6 +80,7 @@ describe('serverFilters', () => {
     expect(getServerFilterCounts(servers)).toEqual({
       all: 4,
       online: 2,
+      tasks: 0,
       issues: 1,
       disabled: 2,
     });
@@ -175,5 +176,39 @@ describe('selectServerPage', () => {
     expect(servers).toEqual([]);
     expect(pagination.total).toBe(0);
     expect(pagination.totalPages).toBe(1);
+  });
+});
+
+describe('task-only status classification', () => {
+  const task: Server = {
+    name: 'atlas::arxiv',
+    status: 'disconnected',
+    enabled: true,
+    runtime: {
+      running: 0,
+      starting: 0,
+      targets: [{ path: 'task/default', kind: 'task', enabled: true, running: 0, starting: 0 }],
+      instances: [],
+    },
+  };
+  it('counts waiting task servers separately from connection failures', () => {
+    expect(getServerFilterCounts([task])).toMatchObject({ tasks: 1, issues: 0, online: 0 });
+    expect(filterServers([task], 'issues')).toEqual([]);
+    expect(filterServers([task], 'tasks')).toEqual([task]);
+    expect(filterServers([{ ...task, enabled: false }], 'tasks')).toEqual([]);
+  });
+  it('does not hide failed static or mixed connections', () => {
+    const mixed: Server = {
+      ...task,
+      runtime: {
+        ...task.runtime!,
+        targets: [
+          ...task.runtime!.targets,
+          { path: 'fixed/default', kind: 'static', enabled: true, running: 0, starting: 0 },
+        ],
+      },
+    };
+    expect(getServerFilterCounts([mixed])).toMatchObject({ tasks: 0, issues: 1 });
+    expect(filterServers([mixed], 'issues')).toEqual([mixed]);
   });
 });

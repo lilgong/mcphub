@@ -1,0 +1,44 @@
+name: mcphub-v2
+services:
+  db:
+    image: pgvector/pgvector:pg15
+    container_name: mcphub-v2-db
+    restart: unless-stopped
+    env_file: ../../data/v2-container/db.env
+    volumes:
+      - ../../data/v2-container/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options: { max-size: 20m, max-file: '3' }
+  hub:
+    image: mcphub-v2:local
+    build:
+      context: ../..
+      dockerfile: deploy/v2/Dockerfile
+    container_name: mcphub-v2
+    restart: unless-stopped
+    init: true
+    env_file: ../../data/v2-container/app.env
+    environment:
+      # Benchmarks use per-MCP policies and Relay HTTP limits, not a shared IP cap.
+      MCP_RATE_LIMIT_MAX: 'off'
+    ports:
+      - '${MCPHUB_V2_BIND:-127.0.0.1}:${MCPHUB_V2_PORT:-3003}:3000'
+    volumes:
+      - ../../data/v2-container/runtime:/app/data
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 20s
+      timeout: 10s
+      start_period: 180s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: 50m, max-file: '5' }

@@ -1,9 +1,15 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import AdmZip from 'adm-zip';
 import { Request, Response } from 'express';
 import { uploadMcpbFile } from '../../src/controllers/mcpbController.js';
+
+const mockServerExists = jest.fn();
+jest.mock('../../src/dao/DaoFactory.js', () => ({
+  getServerDao: () => ({ exists: mockServerExists }),
+}));
 
 describe('mcpbController - uploadMcpbFile', () => {
   let tempRoot: string;
@@ -61,6 +67,7 @@ describe('mcpbController - uploadMcpbFile', () => {
     }) as Request;
 
   beforeEach(() => {
+    mockServerExists.mockResolvedValue(false);
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mcpb-controller-'));
     cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(tempRoot);
     fs.mkdirSync(path.join(tempRoot, 'data/uploads/mcpb'), { recursive: true });
@@ -87,6 +94,130 @@ describe('mcpbController - uploadMcpbFile', () => {
         name,
       );
     }
+  });
+
+  it('keeps same-name MCPB uploads in separate catalog directories', async () => {
+    const uploadDir = path.join(tempRoot, 'data/uploads/mcpb');
+    fs.mkdirSync(path.join(uploadDir, 'server-weather'), { recursive: true });
+    fs.writeFileSync(path.join(uploadDir, 'server-weather', 'original.txt'), 'public');
+    for (const catalog of ['atlas', 'toolathlon']) {
+      const req = createAdminRequest(createMcpbFile('weather'));
+      req.body = { catalog };
+      const { response, json } = createResponse();
+      await uploadMcpbFile(req, response);
+      expect(json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+      expect(fs.existsSync(path.join(uploadDir, `server-${catalog}~weather`, 'server.js'))).toBe(
+        true,
+      );
+    }
+    expect(fs.readFileSync(path.join(uploadDir, 'server-weather', 'original.txt'), 'utf8')).toBe(
+      'public',
+    );
+  });
+
+  it('skips existing bundles in batch mode without replacing executable files', async () => {
+    const uploadDir = path.join(tempRoot, 'data/uploads/mcpb');
+    const existing = path.join(uploadDir, 'server-atlas~weather');
+    fs.mkdirSync(existing, { recursive: true });
+    fs.writeFileSync(path.join(existing, 'server.js'), 'original executable');
+    const uploaded = createMcpbFile('weather');
+    const request = createAdminRequest(uploaded);
+    request.body = { catalog: 'atlas', skipExisting: 'true' };
+    const { response, status, json } = createResponse();
+    await uploadMcpbFile(request, response);
+    expect(status).toHaveBeenCalledWith(409);
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+    expect(fs.readFileSync(path.join(existing, 'server.js'), 'utf8')).toBe('original executable');
+    expect(fs.existsSync(uploaded)).toBe(false);
+    expect(fs.readdirSync(uploadDir).some((name) => name.startsWith('temp-extracted-'))).toBe(
+      false,
+    );
+  });
+
+  it('inspects conflicts without extracting or changing existing executable files', async () => {
+    const uploadDir = path.join(tempRoot, 'data/uploads/mcpb');
+    const existing = path.join(uploadDir, 'server-atlas~weather');
+    fs.mkdirSync(existing, { recursive: true });
+    fs.writeFileSync(path.join(existing, 'server.js'), 'original');
+    const uploaded = createMcpbFile('weather');
+    const request = createAdminRequest(uploaded);
+    request.body = { catalog: 'atlas', inspectOnly: 'true' };
+    const { response, json } = createResponse();
+    await uploadMcpbFile(request, response);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({ exists: true, registered: false }),
+      }),
+    );
+    expect(fs.readFileSync(path.join(existing, 'server.js'), 'utf8')).toBe('original');
+    expect(fs.existsSync(uploaded)).toBe(false);
+    expect(fs.readdirSync(uploadDir)).toEqual(['server-atlas~weather']);
+  });
+
+  it('reports a registered MCP as a conflict even without an extracted bundle', async () => {
+    mockServerExists.mockResolvedValue(true);
+    const uploaded = createMcpbFile('weather');
+    const request = createAdminRequest(uploaded);
+    request.body = { catalog: 'atlas', inspectOnly: 'true' };
+    const { response, json } = createResponse();
+    await uploadMcpbFile(request, response);
+    expect(mockServerExists).toHaveBeenCalledWith('atlas::weather');
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ exists: true, registered: true }),
+      }),
+    );
+    expect(fs.readdirSync(path.join(tempRoot, 'data/uploads/mcpb'))).toEqual([]);
+  });
+
+  it('blocks a new registration collision discovered after inspection', async () => {
+    mockServerExists.mockResolvedValue(true);
+    const uploaded = createMcpbFile('weather');
+    const request = createAdminRequest(uploaded);
+    request.body = { skipExisting: 'true' };
+    const { response, status } = createResponse();
+    await uploadMcpbFile(request, response);
+    expect(status).toHaveBeenCalledWith(409);
+    expect(fs.readdirSync(path.join(tempRoot, 'data/uploads/mcpb'))).toEqual([]);
+  });
+
+  it('supports package launchers that dynamically import absolute filesystem paths', async () => {
+    const uploaded = createMcpbFile('weather');
+    const zip = new AdmZip(uploaded);
+    zip.addFile(
+      'entry.mjs',
+      Buffer.from(`import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+await import(join(dirname(fileURLToPath(import.meta.url)), 'implementation.mjs'));`),
+    );
+    zip.addFile('implementation.mjs', Buffer.from('console.log("weather-module-loaded");'));
+    zip.writeZip(uploaded);
+    const request = createAdminRequest(uploaded);
+    request.body = { catalog: 'atlas' };
+    const { response, json } = createResponse();
+    await uploadMcpbFile(request, response);
+    const extractDir = json.mock.calls[0][0].data.extractDir;
+    expect(path.basename(extractDir)).toBe('server-atlas~weather');
+    const child = spawnSync(process.execPath, [path.join(extractDir, 'entry.mjs')], {
+      encoding: 'utf8',
+      timeout: 10000,
+    });
+    expect(child.status).toBe(0);
+    expect(child.stdout).toContain('weather-module-loaded');
+  });
+
+  it('still detects legacy percent-encoded directories during inspection', async () => {
+    const uploadDir = path.join(tempRoot, 'data/uploads/mcpb');
+    fs.mkdirSync(path.join(uploadDir, 'server-atlas%3A%3Aweather'), { recursive: true });
+    const request = createAdminRequest(createMcpbFile('weather'));
+    request.body = { catalog: 'atlas', inspectOnly: 'true' };
+    const { response, json } = createResponse();
+    await uploadMcpbFile(request, response);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ exists: true }) }),
+    );
+    expect(fs.existsSync(path.join(uploadDir, 'server-atlas%3A%3Aweather'))).toBe(true);
   });
 
   it('rejects manifest names that attempt path traversal', async () => {

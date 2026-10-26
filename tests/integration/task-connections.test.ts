@@ -8,6 +8,10 @@ import {
 } from '../../src/controllers/taskConnectionController.js';
 import { taskConnections } from '../../src/services/taskConnectionService.js';
 import type { ServerConfig } from '../../src/types/index.js';
+const mockActivity = jest.fn(async () => undefined);
+jest.mock('../../src/services/activityLoggingService.js', () => ({
+  getActivityLoggingService: () => ({ logToolCall: mockActivity }),
+}));
 let mockDefinition: ServerConfig;
 let mockEnabledKey = true;
 jest.mock('../../src/dao/DaoFactory.js', () => ({
@@ -48,6 +52,7 @@ const register = (taskId: string, key = 'caller-a') =>
       token: 'upstream-test-token',
     });
 beforeEach(() => {
+  mockActivity.mockClear();
   mockEnabledKey = true;
   mockDefinition = {
     enabled: true,
@@ -99,6 +104,14 @@ test('task capabilities route only to their registered clients and never survive
   expect(fetch).not.toHaveBeenCalled();
   expect((await call(a).expect(200)).body.content[0].text).toBe('A');
   expect((await call(b).expect(200)).body.content[0].text).toBe('B');
+  expect(mockActivity).toHaveBeenCalledTimes(2);
+  expect(mockActivity).toHaveBeenCalledWith(
+    expect.objectContaining({
+      server: 'filesystem',
+      status: 'success',
+      hasCredentialTemplate: true,
+    }),
+  );
   await request(app)
     .delete(`/api/task-connections/${a.id}`)
     .set('x-test-admin', 'caller-b')
@@ -135,4 +148,36 @@ test('leases expire, targets removed from configuration reject forwarding', asyn
     -1,
   );
   expect(taskConnections.acquire(expired.id, expired.token)).toBeUndefined();
+});
+
+test('task-only MCPs register without fixture selectors and retain task authorization', async () => {
+  mockDefinition.targets = [{ path: 'task/default', kind: 'task', allowedKeyIds: ['caller-a'] }];
+  const body = {
+    server: 'filesystem',
+    taskId: 'targetless-a',
+    url: 'http://callback/targetless',
+    token: 'upstream-test-token',
+  };
+  await request(app)
+    .post('/api/task-connections')
+    .set('x-test-admin', 'caller-b')
+    .send(body)
+    .expect(403);
+  const a = await request(app)
+    .post('/api/task-connections')
+    .set('x-test-admin', 'caller-a')
+    .send(body)
+    .expect(200);
+  const b = await request(app)
+    .post('/api/task-connections')
+    .set('x-test-admin', 'caller-a')
+    .send({ ...body, taskId: 'targetless-b' })
+    .expect(200);
+  expect(a.body.data.id).not.toBe(b.body.data.id);
+  expect(a.body.data.token).not.toBe(b.body.data.token);
+  await request(app)
+    .post('/api/task-connections')
+    .set('x-test-admin', 'caller-a')
+    .send(body)
+    .expect(400);
 });

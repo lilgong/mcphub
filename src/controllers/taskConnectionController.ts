@@ -1,3 +1,5 @@
+import { resolveTaskTarget } from '../utils/taskTarget.js';
+import { validateServerKey, splitServerKey } from '../utils/catalog.js';
 import { getUserGroupPolicy, userGroupAllows } from '../services/userGroupService.js';
 import type { Request, Response } from 'express';
 import { getServerDao, getBearerKeyDao } from '../dao/DaoFactory.js';
@@ -15,18 +17,33 @@ const owner = (req: Request): string => {
 export async function registerTaskConnection(req: Request, res: Response): Promise<void> {
   if (!(await requireAdmin(req, res))) return;
   try {
-    const { server, target, taskId, url, token } = req.body ?? {};
+    const {
+      server: requestedServer,
+      catalog,
+      target: requestedTarget,
+      taskId,
+      url,
+      token,
+    } = req.body ?? {};
+    const validatedServer = validateServerKey(requestedServer, catalog);
+    const server = validatedServer.valid ? validatedServer.normalized : undefined;
     if (
-      [server, target, taskId, url, token].some(
+      [server, taskId, url, token].some(
         (value) => typeof value !== 'string' || !value || value.length > 2048,
       ) ||
       !/^[A-Za-z0-9_.:-]{1,160}$/.test(taskId)
     )
       throw new Error('Invalid registration');
+    if (!server) throw new Error('Invalid server');
+    if (
+      requestedTarget !== undefined &&
+      (typeof requestedTarget !== 'string' || !requestedTarget || requestedTarget.length > 2048)
+    )
+      throw new Error('Invalid target');
     const definition = await getServerDao().findById(server);
-    const connection = definition?.targets?.find(
-      (entry) => entry.path === target && entry.kind === 'task',
-    );
+    const connection = resolveTaskTarget(definition?.targets, requestedTarget);
+    if (requestedTarget === undefined && !connection)
+      throw new Error('A target is required for this registration');
     const identity = req as Request & {
       user?: { username: string; isAdmin: boolean };
       bearerKey?: { id: string };
@@ -51,7 +68,7 @@ export async function registerTaskConnection(req: Request, res: Response): Promi
       throw new Error('Invalid callback URL');
     const entry = taskConnections.register({
       server,
-      target,
+      target: connection.path,
       taskId,
       url: url.replace(/\/$/, ''),
       upstreamToken: token,
@@ -139,7 +156,7 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
     if (
       operation === 'call-tool' &&
       (typeof req.body?.tool_name !== 'string' ||
-        !req.body.tool_name.startsWith(`${entry.server}_`) ||
+        !req.body.tool_name.startsWith(`${splitServerKey(entry.server).name}_`) ||
         !req.body.tool_args ||
         typeof req.body.tool_args !== 'object' ||
         Array.isArray(req.body.tool_args))
@@ -198,7 +215,7 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
           (tool) =>
             tool &&
             typeof (tool as { name?: unknown }).name === 'string' &&
-            (tool as { name: string }).name.startsWith(`${entry.server}_`),
+            (tool as { name: string }).name.startsWith(`${splitServerKey(entry.server).name}_`),
         );
       }
       if (Array.isArray(result)) return { content: result, isError: false };
@@ -221,6 +238,9 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
                 tool: req.body.tool_name,
                 target: entry.target,
                 taskId: entry.taskId,
+                username: entry.owner,
+                keyId: entry.keyId,
+                sourceIp: req.ip,
               },
               () =>
                 toolCallScheduler.run(
@@ -229,6 +249,7 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
                   entry.owner,
                   abort.signal,
                 ),
+              true,
             ),
     );
     res.json(result);

@@ -1,3 +1,6 @@
+import { isOnline, isTaskOnlyServer } from '@/utils/serverFilters';
+import { relayDisplay } from '@/utils/relayDisplay';
+import { splitServerKey, mcpServerPath } from '../../../src/utils/catalog';
 import { Link } from 'react-router-dom';
 import { useState, useRef, useEffect, type CSSProperties, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -44,6 +47,11 @@ import {
 
 interface ServerCardProps {
   server: Server;
+  relayReady?: boolean;
+  relayMode?: 'enabled' | 'task';
+  selected?: boolean;
+  selectionDisabled?: boolean;
+  onSelect?: (selected: boolean) => void;
   cost?: ServerCost;
   onRemove: (serverName: string) => void;
   onEdit: (server: Server) => void;
@@ -155,6 +163,11 @@ const serverExposesMcpApp = (server: Server) => {
 
 const ServerCard = ({
   server,
+  relayReady,
+  relayMode,
+  selected = false,
+  selectionDisabled = false,
+  onSelect,
   cost,
   onRemove,
   onEdit,
@@ -168,6 +181,7 @@ const ServerCard = ({
   onOAuthDisconnect,
 }: ServerCardProps) => {
   const { t } = useTranslation();
+  const relayState = relayReady === undefined ? undefined : relayMode ? relayReady ? relayMode : 'unavailable' : relayDisplay(server.config, relayReady);
   const { showToast } = useToast();
   const { exportMCPSettings, installConfig } = useSettingsData();
   const { auth } = useAuth();
@@ -515,8 +529,11 @@ const ServerCard = ({
   })();
 
   const isHttpForward = server.config?.type === 'http-proxy';
-  const serverEndpoint = `${baseUrl}/${isHttpForward ? 'http' : 'mcp'}/${server.name}`;
-  const serverOpenApiEndpoint = `${baseUrl}/api/${server.name}`;
+  const catalogIdentity = splitServerKey(server.name);
+  const serverEndpoint = isHttpForward
+    ? `${baseUrl}/http/${encodeURIComponent(server.name)}`
+    : `${baseUrl}${mcpServerPath(server.name)}`;
+  const serverOpenApiEndpoint = `${baseUrl}/api/${encodeURIComponent(server.name)}`;
 
   const copyEndpoint = async (value: string) => {
     const ok = await copyText(value);
@@ -557,7 +574,7 @@ const ServerCard = ({
 
   return (
     <>
-      <div className="hub-card overflow-visible" style={{ marginBottom: 10 }}>
+      <div className="hub-card overflow-visible" style={{ marginBottom: 10, borderColor: selected ? 'var(--hub-accent)' : undefined, background: selected ? 'var(--hub-accent-soft)' : undefined }}>
         {/* Main row */}
         <div
           className="hub-server-card-row cursor-pointer px-4 py-3 transition-colors hover:bg-[var(--hub-surface-hover)]"
@@ -565,6 +582,13 @@ const ServerCard = ({
         >
           {/* Name + description */}
           <div className="flex items-center gap-2.5 min-w-0">
+            {onSelect && (
+              <label className="hub-checkbox-label shrink-0" onClick={(event) => event.stopPropagation()}>
+                <input type="checkbox" aria-label={t('serverBatch.select', { name: server.name })}
+                  checked={selected} disabled={selectionDisabled}
+                  onChange={(event) => onSelect(event.target.checked)} />
+              </label>
+            )}
             <ChevronRight
               size={12}
               style={{
@@ -578,14 +602,19 @@ const ServerCard = ({
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <span
                   className="hub-mono max-w-full flex-shrink-0"
-                  title={server.name}
+                  title={catalogIdentity.name}
                   style={{
                     fontSize: 13.5,
                     overflowWrap: 'anywhere',
                     color: enabled ? 'var(--hub-ink)' : 'var(--hub-ink-3)',
                   }}
                 >
-                  {server.name}
+                  {catalogIdentity.name}
+                  {catalogIdentity.catalog && (
+                    <span className="ml-2 text-xs font-normal text-[var(--hub-ink-3)]">
+                      {catalogIdentity.catalog}
+                    </span>
+                  )}
                 </span>
                 {displayVersion && (
                   <span
@@ -698,6 +727,7 @@ const ServerCard = ({
                   </div>
                 )}
               </div>
+              {relayState && <div className="mt-1 text-[11px]" style={{color:relayState === 'unavailable' ? 'var(--hub-ink-3)' : 'var(--hub-accent)'}} title={t('relayIndicators.configHint')}>{t(`relayIndicators.${relayState}`)}</div>}
               {!!server.config?.credentialTemplate?.length && (
                 <Link
                   className="hub-tag text-xs"
@@ -725,8 +755,9 @@ const ServerCard = ({
             style={server.runtime ? { display: 'block', height: 'auto' } : undefined}
           >
             <ServerStatusDot
+              taskManaged={isTaskOnlyServer(server)}
               targetManaged={server.targetManaged || !!server.config?.targets?.length}
-              status={server.status}
+              status={isOnline(server) ? 'connected' : server.status}
               enabled={server.enabled}
               startOnDemand={server.config?.startOnDemand === true}
               onAuthClick={handleOAuth}
@@ -848,7 +879,7 @@ const ServerCard = ({
                 onCheckedChange={handleToggle}
                 disabled={isToggling || !canManage}
                 size="compact"
-                aria-label={`${t(enabled ? 'server.disable' : 'server.enable')} ${server.name}`}
+                aria-label={`${t(enabled ? 'server.disable' : 'server.enable')} ${catalogIdentity.name}`}
               />
             </LoadingControl>
           </div>
@@ -1045,7 +1076,9 @@ const ServerCard = ({
                     title={serverEndpoint}
                     style={{ maxWidth: 200 }}
                   >
-                    {server.name}
+                    {catalogIdentity.catalog
+                      ? `${catalogIdentity.catalog}/${catalogIdentity.name}`
+                      : catalogIdentity.name}
                   </div>
                   <button
                     type="button"
@@ -1067,7 +1100,7 @@ const ServerCard = ({
                       title={serverOpenApiEndpoint}
                       style={{ maxWidth: 200 }}
                     >
-                      {server.name}
+                      {catalogIdentity.name}
                     </div>
                     <button
                       type="button"

@@ -1,6 +1,6 @@
 import { Server } from '@/types';
 
-export type ServerFilter = 'all' | 'online' | 'issues' | 'disabled';
+export type ServerFilter = 'all' | 'online' | 'tasks' | 'issues' | 'disabled';
 
 export interface ServerPageInfo {
   page: number;
@@ -11,14 +11,22 @@ export interface ServerPageInfo {
   hasPrevPage: boolean;
 }
 
-const isOnline = (server: Server): boolean =>
+export const isTaskOnlyServer = (server: Server): boolean => {
+  const targets = server.config?.targets ?? server.runtime?.targets;
+  return !!targets?.length && targets.every((target) => target.kind === 'task');
+};
+
+export const isOnline = (server: Server): boolean =>
   server.status === 'connected' ||
   server.runtime?.instances.some((instance) => instance.status === 'connected') === true;
 
 export const getServerFilterCounts = (servers: Server[]) => ({
   all: servers.length,
   online: servers.filter(isOnline).length,
-  issues: servers.filter((server) => !isOnline(server) && server.enabled !== false).length,
+  tasks: servers.filter((server) => server.enabled !== false && isTaskOnlyServer(server)).length,
+  issues: servers.filter(
+    (server) => !isOnline(server) && !isTaskOnlyServer(server) && server.enabled !== false,
+  ).length,
   disabled: servers.filter((server) => server.enabled === false).length,
 });
 
@@ -27,7 +35,12 @@ export const filterServers = (servers: Server[], filter: ServerFilter, search = 
 
   return servers.filter((server) => {
     if (filter === 'online' && !isOnline(server)) return false;
-    if (filter === 'issues' && (isOnline(server) || server.enabled === false)) return false;
+    if (filter === 'tasks' && (!isTaskOnlyServer(server) || server.enabled === false)) return false;
+    if (
+      filter === 'issues' &&
+      (isOnline(server) || isTaskOnlyServer(server) || server.enabled === false)
+    )
+      return false;
     if (filter === 'disabled' && server.enabled !== false) return false;
     if (!query) return true;
 

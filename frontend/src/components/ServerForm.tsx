@@ -1,3 +1,4 @@
+import { splitServerKey, validateServerKey } from '../../../src/utils/catalog';
 import HttpForwardEditor from './HttpForwardEditor';
 import {
   supportsFetchRelay,
@@ -39,6 +40,7 @@ import {
 } from '../utils/serverName';
 
 interface ServerFormProps {
+  defaultCatalog?: string;
   onSubmit: (payload: any) => void;
   onCancel: () => void;
   initialData?: Server | null;
@@ -68,9 +70,13 @@ const ServerForm = ({
   formError = null,
   mode,
   shareCandidatesFrom = null,
+  defaultCatalog = '',
 }: ServerFormProps) => {
   const { t } = useTranslation();
   const { auth } = useAuth();
+  const [catalog, setCatalog] = useState(
+    () => splitServerKey(initialData?.name || '').catalog || defaultCatalog,
+  );
 
   // Native `pattern`/`maxLength` on the name field are enforced on create and
   // on edit of an already-valid name. Editing a legacy (invalid) name without
@@ -138,7 +144,7 @@ const ServerForm = ({
     keyPool: initialData?.config?.keyPool ?? undefined,
     rateLimit: initialData?.config?.rateLimit ?? undefined,
     relay: initialData?.config?.relay ?? undefined,
-    name: (initialData && initialData.name) || '',
+    name: splitServerKey(initialData?.name || '').name,
     description: (initialData && initialData.config && initialData.config.description) || '',
     url: (initialData && initialData.config && initialData.config.url) || '',
     command: (initialData && initialData.config && initialData.config.command) || '',
@@ -620,7 +626,12 @@ const ServerForm = ({
         headerVars,
       });
 
-      onSubmit(payload);
+      const identity = validateServerKey(formData.name, catalog);
+      if (!identity.valid) {
+        setError(identity.message || 'Invalid catalog');
+        return;
+      }
+      onSubmit({ ...payload, catalog });
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -639,7 +650,32 @@ const ServerForm = ({
         <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{formError || error}</div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="hub-editor">
+        <div className="mb-4">
+          <label
+            htmlFor="server-catalog"
+            className="block text-sm font-medium mb-1.5 text-[var(--hub-ink-2)]"
+          >
+            {t('catalog.label')}
+          </label>
+          <input
+            id="server-catalog"
+            className="hub-input w-full"
+            value={catalog}
+            onChange={(event) => setCatalog(event.target.value)}
+            disabled={isEdit}
+            placeholder={t('catalog.placeholder')}
+            pattern="[a-z][a-z0-9_-]{0,47}"
+            maxLength={48}
+            list="catalog-suggestions"
+          />
+          <datalist id="catalog-suggestions">
+            <option value="atlas" />
+            <option value="toolathlon" />
+          </datalist>
+          <p className="hub-sub mt-1 text-xs">{t('catalog.help')}</p>
+        </div>
+
         {/* ─── Section 1: Basic Info ─── */}
         <div className="mb-5">
           <h3 className="text-sm font-semibold text-[var(--hub-ink)] mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
@@ -835,6 +871,21 @@ const ServerForm = ({
         {serverType !== 'http-proxy' && (
           <TargetConnectionEditor
             value={formData.targets}
+            catalog={catalog}
+            onUseSingle={(connection) => {
+              if (!connection) return;
+              const { env, headers, type, ...settings } = connection;
+              setFormData((previous) => ({
+                ...previous,
+                ...settings,
+                type: type ?? previous.type,
+                targets: undefined,
+              }));
+              if (type) setServerType(type);
+              if (env) setEnvVars(Object.entries(env).map(([key, value]) => ({ key, value })));
+              if (headers)
+                setHeaderVars(Object.entries(headers).map(([key, value]) => ({ key, value })));
+            }}
             currentConnection={
               serverType !== 'openapi' &&
               !initialData?.config?.credentialTemplate?.length &&
@@ -879,7 +930,7 @@ const ServerForm = ({
             {/* ─── Section 2: Connection ─── */}
             <div className="mb-5">
               <h3 className="text-sm font-semibold text-[var(--hub-ink)] mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
-                {t('server.sectionConnection', 'Connection')}
+                {t('uiLayout.launchAndCredentials')}
               </h3>
 
               <div className="mb-4">
@@ -2020,7 +2071,7 @@ const ServerForm = ({
                 onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
               >
                 <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
-                  {t('server.sectionAdvanced', 'Advanced Options')}
+                  {t('server.advancedOptions')}
                 </h3>
                 <span className="text-gray-500 text-sm">{isAdvancedExpanded ? '▼' : '▶'}</span>
               </div>
@@ -2160,7 +2211,7 @@ const ServerForm = ({
                       </div>
 
                       {isOAuthSectionExpanded && (
-                        <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-gray-50 dark:bg-gray-800 border-t-0">
+                        <div className="py-4">
                           <p className="text-xs text-gray-500 mb-3">
                             {t('server.oauth.sectionDescription')}
                           </p>
@@ -2212,126 +2263,6 @@ const ServerForm = ({
                                 autoComplete="off"
                               />
                             </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Request Options Configuration */}
-                  {serverType !== 'openapi' && serverType !== 'http-proxy' && (
-                    <div>
-                      <div
-                        className="flex items-center justify-between cursor-pointer bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 p-3 rounded border border-gray-200 dark:border-gray-700"
-                        onClick={() => setIsRequestOptionsExpanded(!isRequestOptionsExpanded)}
-                      >
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          {t('server.requestOptions')}
-                        </label>
-                        <span className="text-gray-500 text-sm">
-                          {isRequestOptionsExpanded ? '▼' : '▶'}
-                        </span>
-                      </div>
-
-                      {isRequestOptionsExpanded && (
-                        <div className="border border-gray-200 dark:border-gray-700 rounded-b p-4 bg-gray-50 dark:bg-gray-800 border-t-0">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {serverType === 'stdio' && (
-                              <div>
-                                <label
-                                  className="block text-gray-600 text-sm font-medium mb-1"
-                                  htmlFor="maxBufferSize"
-                                >
-                                  {t('server.maxBufferSize')}
-                                </label>
-                                <input
-                                  type="number"
-                                  id="maxBufferSize"
-                                  value={formData.options?.maxBufferSize ?? ''}
-                                  onChange={(e) =>
-                                    handleOptionsChange(
-                                      'maxBufferSize',
-                                      e.target.value === '' ? undefined : Number(e.target.value),
-                                    )
-                                  }
-                                  className="w-full py-2 px-3 form-input"
-                                  placeholder="10485760"
-                                  min="1"
-                                  step="1"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">
-                                  {t('server.maxBufferSizeDescription')}
-                                </p>
-                              </div>
-                            )}
-                            <div>
-                              <label
-                                className="block text-gray-600 text-sm font-medium mb-1"
-                                htmlFor="timeout"
-                              >
-                                {t('server.timeout')}
-                              </label>
-                              <input
-                                type="number"
-                                id="timeout"
-                                value={formData.options?.timeout || 60000}
-                                onChange={(e) =>
-                                  handleOptionsChange('timeout', parseInt(e.target.value) || 60000)
-                                }
-                                className="w-full py-2 px-3 form-input"
-                                placeholder="30000"
-                                min="1000"
-                                max="300000"
-                              />
-                              <p className="text-xs text-gray-500 mt-1">
-                                {t('server.timeoutDescription')}
-                              </p>
-                            </div>
-
-                            <div>
-                              <label
-                                className="block text-gray-600 text-sm font-medium mb-1"
-                                htmlFor="maxTotalTimeout"
-                              >
-                                {t('server.maxTotalTimeout')}
-                              </label>
-                              <input
-                                type="number"
-                                id="maxTotalTimeout"
-                                value={formData.options?.maxTotalTimeout || ''}
-                                onChange={(e) =>
-                                  handleOptionsChange(
-                                    'maxTotalTimeout',
-                                    e.target.value ? parseInt(e.target.value) : undefined,
-                                  )
-                                }
-                                className="w-full py-2 px-3 form-input"
-                                placeholder="Optional"
-                                min="1000"
-                              />
-                              <p className="text-xs text-gray-500 mt-1">
-                                {t('server.maxTotalTimeoutDescription')}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="mt-3">
-                            <label className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={formData.options?.resetTimeoutOnProgress ?? true}
-                                onChange={(e) =>
-                                  handleOptionsChange('resetTimeoutOnProgress', e.target.checked)
-                                }
-                                className="mr-2"
-                              />
-                              <span className="text-gray-600 text-sm">
-                                {t('server.resetTimeoutOnProgress')}
-                              </span>
-                            </label>
-                            <p className="text-xs text-gray-500 mt-1 ml-6">
-                              {t('server.resetTimeoutOnProgressDescription')}
-                            </p>
                           </div>
                         </div>
                       )}
@@ -2519,6 +2450,132 @@ const ServerForm = ({
             </div>
           </>
         )}
+        <h3 className="hub-editor-heading">{t('uiLayout.execution')}</h3>
+        <p className="hub-config-note mb-4">{t('uiLayout.executionHint')}</p>
+        {formData.targets?.length && formData.targets.every((target) => target.kind === 'task') ? (
+          <p className="hub-config-note mb-5">{t('uiLayout.taskTimeout')}</p>
+        ) : null}
+        {formData.targets?.some((target) => target.kind === 'static') && (
+          <p className="hub-config-note mb-4">{t('uiLayout.workspaceTimeout')}</p>
+        )}
+        {/* Request Options Configuration */}
+        {serverType !== 'openapi' && serverType !== 'http-proxy' && !formData.targets?.length && (
+          <div>
+            <button
+              type="button"
+              aria-expanded={isRequestOptionsExpanded}
+              className="hub-editor-disclosure w-full"
+              onClick={() => setIsRequestOptionsExpanded(!isRequestOptionsExpanded)}
+            >
+              <span className="text-sm font-medium text-[var(--hub-ink-2)]">
+                {t('server.requestOptions')}
+              </span>
+              <span className="text-gray-500 text-sm">{isRequestOptionsExpanded ? '▼' : '▶'}</span>
+            </button>
+
+            {isRequestOptionsExpanded && (
+              <div className="py-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {serverType === 'stdio' && (
+                    <div>
+                      <label
+                        className="block text-gray-600 text-sm font-medium mb-1"
+                        htmlFor="maxBufferSize"
+                      >
+                        {t('server.maxBufferSize')}
+                      </label>
+                      <input
+                        type="number"
+                        id="maxBufferSize"
+                        value={formData.options?.maxBufferSize ?? ''}
+                        onChange={(e) =>
+                          handleOptionsChange(
+                            'maxBufferSize',
+                            e.target.value === '' ? undefined : Number(e.target.value),
+                          )
+                        }
+                        className="w-full py-2 px-3 form-input"
+                        placeholder="10485760"
+                        min="1"
+                        step="1"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {t('server.maxBufferSizeDescription')}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <label
+                      className="block text-gray-600 text-sm font-medium mb-1"
+                      htmlFor="timeout"
+                    >
+                      {t('server.timeout')}
+                    </label>
+                    <input
+                      type="number"
+                      id="timeout"
+                      value={formData.options?.timeout || 60000}
+                      onChange={(e) =>
+                        handleOptionsChange('timeout', parseInt(e.target.value) || 60000)
+                      }
+                      className="w-full py-2 px-3 form-input"
+                      placeholder="30000"
+                      min="1000"
+                      max="300000"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">{t('server.timeoutDescription')}</p>
+                  </div>
+
+                  <div>
+                    <label
+                      className="block text-gray-600 text-sm font-medium mb-1"
+                      htmlFor="maxTotalTimeout"
+                    >
+                      {t('server.maxTotalTimeout')}
+                    </label>
+                    <input
+                      type="number"
+                      id="maxTotalTimeout"
+                      value={formData.options?.maxTotalTimeout || ''}
+                      onChange={(e) =>
+                        handleOptionsChange(
+                          'maxTotalTimeout',
+                          e.target.value ? parseInt(e.target.value) : undefined,
+                        )
+                      }
+                      className="w-full py-2 px-3 form-input"
+                      placeholder="Optional"
+                      min="1000"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      {t('server.maxTotalTimeoutDescription')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={formData.options?.resetTimeoutOnProgress ?? true}
+                      onChange={(e) =>
+                        handleOptionsChange('resetTimeoutOnProgress', e.target.checked)
+                      }
+                      className="mr-2"
+                    />
+                    <span className="text-gray-600 text-sm">
+                      {t('server.resetTimeoutOnProgress')}
+                    </span>
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1 ml-6">
+                    {t('server.resetTimeoutOnProgressDescription')}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <ServiceControls
           rateLimit={formData.rateLimit}
           relay={formData.relay}
@@ -2526,7 +2583,7 @@ const ServerForm = ({
           relaySupported={relaySupported}
           onChange={(value) => setFormData((previous) => ({ ...previous, ...value }))}
         />
-        <div className="flex justify-end mt-6">
+        <div className="hub-editor-actions flex justify-end">
           <button type="button" onClick={onCancel} className="hub-btn mr-2">
             {t('server.cancel')}
           </button>

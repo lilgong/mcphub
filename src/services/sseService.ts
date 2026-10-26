@@ -1,3 +1,4 @@
+import { splitServerKey } from '../utils/catalog.js';
 import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
 import { Request, Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
@@ -221,6 +222,7 @@ const attachSessionGroupToRequest = (req: Request): void => {
 };
 
 const resolveGroupRouteReference = async (reference: string) => {
+  if (splitServerKey(reference).catalog) return null;
   const groupDao = getGroupDao();
   const byName = await groupDao.findByName(reference);
   if (byName || !isValidUUID(reference)) return byName;
@@ -287,7 +289,9 @@ const isBearerKeyAllowedForRequest = async (req: Request, key: BearerKey): Promi
     const serverDao = getServerDao();
 
     // Step 1: Try to match as a group (by name or id), since group has higher priority
-    let matchedGroup = await groupDao.findByName(paramValue);
+    let matchedGroup = splitServerKey(paramValue).catalog
+      ? null
+      : await groupDao.findByName(paramValue);
     if (!matchedGroup && isValidUUID(paramValue)) {
       // Only try findById if the parameter is a valid UUID
       matchedGroup = await groupDao.findById(paramValue);

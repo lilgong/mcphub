@@ -1,3 +1,5 @@
+import { resolveTaskTarget } from '../utils/taskTarget.js';
+import { validateServerKey } from '../utils/catalog.js';
 import { getUserGroupPolicy, userGroupAllows } from '../services/userGroupService.js';
 import type { Request, Response } from 'express';
 import { getServerDao } from '../dao/DaoFactory.js';
@@ -14,10 +16,19 @@ export async function connectionRuntime(req: Request, res: Response): Promise<vo
     user?: { username: string; isAdmin: boolean };
     bearerKey?: { id: string };
   };
-  const server = String(req.params.name);
+  const identityKey = validateServerKey(String(req.params.name), req.query.catalog);
+  if (!identityKey.valid) {
+    res.status(400).json({ success: false, message: identityKey.message });
+    return;
+  }
+  const server = identityKey.normalized!;
   const definition = await getServerDao().findById(server);
-  const path = typeof req.query.target === 'string' ? req.query.target : undefined;
-  const target = definition?.targets?.find((value) => value.path === path);
+  const requested = typeof req.query.target === 'string' ? req.query.target : undefined;
+  const target =
+    requested === undefined
+      ? resolveTaskTarget(definition?.targets)
+      : definition?.targets?.find((value) => value.path === requested);
+  const path = target?.path ?? requested;
   const policy = await getUserGroupPolicy(identity.user, identity.bearerKey?.id);
   if (
     !userGroupAllows(policy, server, path) ||

@@ -118,3 +118,37 @@ test('target environments preserve toolchain variables but require explicit prov
     process.env = before;
   }
 });
+
+describe('namespaced TwelveData schema compatibility without key rotation', () => {
+  it.each(['twelvedata', 'atlas::twelvedata', 'toolathlon::twelvedata'])(
+    'keeps the single-key credential and injects compatibility for %s',
+    async (name) => {
+      const env = await getServerEnvironment(
+        { owner: 'admin', env: { TWELVE_DATA_API_KEY: 'single-key' } },
+        name,
+      );
+      expect(env.MCPHUB_TWELVEDATA_COMPAT).toBe('true');
+      expect(env.PYTHONPATH).toContain('key_pool_python');
+      expect(env.TWELVE_DATA_API_KEY).toBe('single-key');
+      expect(env.MCPHUB_KEY_POOL_URL).toBeUndefined();
+    },
+  );
+
+  it('uses the declared provider for renamed MCPs and account targets', async () => {
+    const env = await getServerEnvironment(
+      {
+        owner: 'admin',
+        env: {
+          MCPHUB_CONNECTION_TARGET: 'account-a',
+          MCPHUB_KEY_POOL_ADAPTER: 'twelvedata',
+          TWELVE_DATA_API_KEY: 'single-key',
+        },
+      },
+      'another-bench::prices',
+    );
+    expect(env.MCPHUB_TWELVEDATA_COMPAT).toBe('true');
+    expect(env.PYTHONPATH).toContain('key_pool_python');
+    expect(env.TWELVE_DATA_API_KEY).toBe('single-key');
+    expect(env.MCPHUB_KEY_POOL_URL).toBeUndefined();
+  });
+});

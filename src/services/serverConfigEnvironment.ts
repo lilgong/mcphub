@@ -1,3 +1,7 @@
+import { slackCacheEnvironment } from './slackCacheService.js';
+import { splitServerKey } from '../utils/catalog.js';
+import { getKeyPoolProvider } from '../utils/keyPoolCompatibility.js';
+import { scopedUsageDirectory } from './usageLogDirectories.js';
 import { join } from 'node:path';
 import runtimeConfig from '../config/index.js';
 import { keyPoolToken } from './keyPoolService.js';
@@ -85,7 +89,13 @@ export const getServerEnvironment = async (
         delete environment[key];
     }
   }
-  if (trusted && (name === 'twelvedata' || config.keyPool?.provider === 'twelvedata')) {
+  Object.assign(environment, await slackCacheEnvironment(name, config, environment));
+  if (
+    trusted &&
+    (splitServerKey(name).name === 'twelvedata' ||
+      getKeyPoolProvider(config) === 'twelvedata' ||
+      config.keyPool?.provider === 'twelvedata')
+  ) {
     environment.PYTHONPATH = [
       join(process.cwd(), 'scripts', 'key_pool_python'),
       environment.PYTHONPATH,
@@ -109,6 +119,9 @@ export const getServerEnvironment = async (
     } else {
       environment.TWELVE_DATA_API_KEY = 'hub-managed';
     }
+  }
+  if (trusted && name && process.env.MCP_USAGE_LOG_DIR) {
+    environment.MCP_USAGE_LOG_DIR = scopedUsageDirectory(process.env.MCP_USAGE_LOG_DIR, name);
   }
   return environment;
 };

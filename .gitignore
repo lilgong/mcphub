@@ -44,3 +44,7 @@ temp-test-config/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Slack runtime caches contain workspace/account metadata.
+.channels_cache*.json
+.users_cache*.json

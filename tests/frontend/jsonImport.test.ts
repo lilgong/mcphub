@@ -50,3 +50,36 @@ it('accepts the distributable HTTP forwarding template without losing URL or tim
     options: { timeout: 60000 },
   });
 });
+
+it('scopes plain names without dropping target and relay configuration', () => {
+  const config = {
+    command: 'node',
+    enabled: false,
+    targets: [{ id: 'fixture-a', enabled: true, command: 'node', args: ['fixture.mjs'] }],
+    relay: { enabled: true, upstream: 'arxiv' },
+  };
+  const { servers, issues } = normalizeImportedServers({ mcpServers: { arxiv: config } } as any, 'atlas');
+  expect(issues).toEqual([]);
+  expect(servers[0]).toMatchObject({ name: 'atlas::arxiv', config });
+});
+
+it('preserves exported namespaces and rejects a conflicting destination', () => {
+  const input = { mcpServers: { 'atlas::arxiv': { command: 'node' } } };
+  expect(normalizeImportedServers(input, '').servers[0].name).toBe('atlas::arxiv');
+  expect(normalizeImportedServers(input, 'toolathlon')).toMatchObject({
+    servers: [], issues: [{ name: 'atlas::arxiv', message: expect.stringContaining('atlas') }],
+  });
+});
+
+it('reports duplicate destinations when plain and scoped names converge', () => {
+  const input = { mcpServers: { arxiv: { command: 'node' }, 'atlas::arxiv': { command: 'node' } } };
+  const result = normalizeImportedServers(input, 'atlas');
+  expect(result.servers).toHaveLength(1);
+  expect(result.issues[0].message).toContain('Duplicate destination');
+});
+
+it('rejects invalid namespace names before importing servers', () => {
+  const result = normalizeImportedServers({ mcpServers: { arxiv: { command: 'node' } } }, '../atlas');
+  expect(result.servers).toEqual([]);
+  expect(result.issues).toHaveLength(1);
+});

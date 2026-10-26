@@ -25,6 +25,7 @@
               "features/http-forwarding",
               "features/per-user-credentials",
               "features/target-connections",
+              "features/catalogs",
               "features/group-management",
               "features/user-groups",
               "features/smart-routing",

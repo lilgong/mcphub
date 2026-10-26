@@ -82,6 +82,7 @@ jest.mock('../../src/services/vectorSearchService.js', () => ({
 }));
 
 jest.mock('../../src/config/index.js', () => ({
+  __esModule: true,
   loadSettings: jest.fn(),
   expandEnvVars: jest.fn((val: string) => val),
   replaceEnvVars: jest.fn((val: any) => val),

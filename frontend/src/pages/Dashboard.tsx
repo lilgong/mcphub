@@ -1,3 +1,5 @@
+import { mcpServerPath, splitServerKey } from '../../../src/utils/catalog';
+import { isTaskOnlyServer, isOnline } from '@/utils/serverFilters';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -11,11 +13,11 @@ import { Server } from '@/types';
 import { EndpointCopy } from '@/components/ui/EndpointCopy';
 import { ServerStatusDot } from '@/components/ui/StatusDot';
 
-const Stat: React.FC<{ label: string; value: React.ReactNode; tone?: 'ok' | 'warn' | 'err' | 'muted' | 'default' }> = ({
-  label,
-  value,
-  tone = 'default',
-}) => {
+const Stat: React.FC<{
+  label: string;
+  value: React.ReactNode;
+  tone?: 'ok' | 'warn' | 'err' | 'muted' | 'default';
+}> = ({ label, value, tone = 'default' }) => {
   const toneColor =
     tone === 'ok'
       ? 'oklch(0.4 0.13 145)'
@@ -84,10 +86,15 @@ const DashboardPage: React.FC = () => {
   const stats = useMemo(
     () => ({
       total: allServers.length,
-      online: allServers.filter((s: Server) => s.status === 'connected').length,
+      online: allServers.filter(isOnline).length,
+      tasks: allServers.filter((s) => s.enabled !== false && isTaskOnlyServer(s)).length,
       disabled: allServers.filter((s: Server) => s.enabled === false).length,
       offline: allServers.filter(
-        (s: Server) => s.status === 'disconnected' && s.enabled !== false,
+        (s: Server) =>
+          s.status === 'disconnected' &&
+          !isOnline(s) &&
+          !isTaskOnlyServer(s) &&
+          s.enabled !== false,
       ).length,
       connecting: allServers.filter(
         (s: Server) =>
@@ -158,8 +165,8 @@ const DashboardPage: React.FC = () => {
 
       {/* Stat row */}
       {showSkeleton ? (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+          {Array.from({ length: 7 }).map((_, i) => (
             <div
               key={i}
               className="hub-card animate-pulse"
@@ -168,10 +175,15 @@ const DashboardPage: React.FC = () => {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
           <Stat label={t('pages.dashboard.totalServers')} value={stats.total} />
           <Stat label={t('pages.dashboard.onlineServers')} value={stats.online} tone="ok" />
-          <Stat label={t('pages.dashboard.connectingServers')} value={stats.connecting} tone="warn" />
+          <Stat label={t('uiLayout.mode_task')} value={stats.tasks} tone="muted" />
+          <Stat
+            label={t('pages.dashboard.connectingServers')}
+            value={stats.connecting}
+            tone="warn"
+          />
           <Stat label={t('pages.dashboard.offlineServers')} value={stats.offline} tone="err" />
           <Stat label={t('pages.dashboard.disabledServers')} value={stats.disabled} tone="muted" />
           <Stat label={t('cost.totalFootprint')} value={formatTokens(footprint)} />
@@ -217,14 +229,29 @@ const DashboardPage: React.FC = () => {
               <div className="flex items-center gap-2 min-w-0">
                 <span
                   className="hub-mono truncate"
-                  style={{ fontSize: 13, color: s.enabled === false ? 'var(--hub-ink-3)' : 'var(--hub-ink)' }}
+                  style={{
+                    fontSize: 13,
+                    color: s.enabled === false ? 'var(--hub-ink-3)' : 'var(--hub-ink)',
+                  }}
                 >
-                  {s.name}
+                  {splitServerKey(s.name).name}
                 </span>
-                {s.error && <AlertCircle size={13} className="text-[var(--hub-err)] flex-shrink-0" />}
+                {splitServerKey(s.name).catalog && (
+                  <span className="text-xs text-[var(--hub-ink-3)]">
+                    {splitServerKey(s.name).catalog}
+                  </span>
+                )}
+                {s.error && (
+                  <AlertCircle size={13} className="text-[var(--hub-err)] flex-shrink-0" />
+                )}
               </div>
               <div className="min-w-0">
-                <ServerStatusDot status={s.status} enabled={s.enabled} />
+                <ServerStatusDot
+                  status={isOnline(s) ? 'connected' : s.status}
+                  enabled={s.enabled}
+                  taskManaged={isTaskOnlyServer(s)}
+                  targetManaged={s.targetManaged || !!s.config?.targets?.length}
+                />
               </div>
               <div className="min-w-0">
                 {s.config?.type ? (
@@ -238,13 +265,22 @@ const DashboardPage: React.FC = () => {
               <div className="hub-num hub-mono" style={{ fontSize: 12.5 }}>
                 {s.tools?.length || 0}
               </div>
-              <div className="hub-num hub-mono" style={{ fontSize: 12.5, color: 'var(--hub-ink-2)' }}>
+              <div
+                className="hub-num hub-mono"
+                style={{ fontSize: 12.5, color: 'var(--hub-ink-2)' }}
+              >
                 {s.prompts?.length || 0}
               </div>
-              <div className="hub-num hub-mono" style={{ fontSize: 12.5, color: 'var(--hub-ink-2)' }}>
+              <div
+                className="hub-num hub-mono"
+                style={{ fontSize: 12.5, color: 'var(--hub-ink-2)' }}
+              >
                 {s.resources?.length || 0}
               </div>
-              <div className="text-[12px]" style={{ color: s.enabled !== false ? 'var(--hub-ok)' : 'var(--hub-ink-3)' }}>
+              <div
+                className="text-[12px]"
+                style={{ color: s.enabled !== false ? 'var(--hub-ok)' : 'var(--hub-ink-3)' }}
+              >
                 {s.enabled !== false ? '✓' : '—'}
               </div>
             </div>
@@ -252,7 +288,7 @@ const DashboardPage: React.FC = () => {
         </div>
       )}
 
-            {/* Endpoint quick-access */}
+      {/* Endpoint quick-access */}
       <div className="hub-card mb-5" style={{ padding: 16 }}>
         <div className="flex justify-between items-start gap-3 mb-3">
           <div>
@@ -280,7 +316,7 @@ const DashboardPage: React.FC = () => {
           ))}
           {/* Pad with first server endpoint if there's space */}
           {groups.length < 2 && allServers[0] && (
-            <EndpointCopy label="SERVER" url={`${baseUrl}/mcp/${allServers[0].name}`} />
+            <EndpointCopy label="SERVER" url={`${baseUrl}${mcpServerPath(allServers[0].name)}`} />
           )}
         </div>
       </div>

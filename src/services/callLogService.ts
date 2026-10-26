@@ -1,3 +1,5 @@
+import { usageLogDirectories } from './usageLogDirectories.js';
+import { splitServerKey } from '../utils/catalog.js';
 import { open, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { keyPoolLogDirectory } from './keyPoolService.js';
@@ -6,6 +8,7 @@ export interface CallLog {
   id: string;
   timestamp: string;
   source: 'tool' | 'yibu' | 'relay' | 'key_pool';
+  catalog?: string;
   target?: string;
   taskId?: string;
   keyLabel?: string;
@@ -20,6 +23,7 @@ export interface CallLog {
   attempts?: number;
 }
 export interface CallLogQuery {
+  catalog?: string;
   date: string;
   status: string;
   errorsOnly: boolean;
@@ -70,6 +74,7 @@ const safeNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 export function matchesCallLog(row: CallLog, query: CallLogQuery): boolean {
+  if (query.catalog !== undefined && query.catalog !== row.catalog) return false;
   if (!row.timestamp.startsWith(query.date)) return false;
   if (query.errorsOnly && row.outcome !== 'error') return false;
   if (query.source !== 'all' && row.source !== query.source) return false;
@@ -136,40 +141,43 @@ export async function getCallLogs(
       const root = process.env.MCP_USAGE_LOG_DIR;
       if (!root) unavailableSources.push('yibu');
       else {
-        const directory = join(root, query.date.slice(0, 7));
-        let files: string[] = [];
-        try {
-          files = await readdir(directory);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
-        const selected = files.filter((name) =>
-          name.endsWith(`_${query.date.replace(/-/g, '')}.jsonl`),
-        );
-        for (const name of selected.slice(0, 32)) {
-          for (const record of await load(join(directory, name))) {
-            if (record.event !== 'finished') continue;
-            const status = safeNumber(record.status);
-            rows.push({
-              id: safeString(record.request_id),
-              timestamp: safeString(record.ts),
-              source: 'yibu',
-              server: safeString(record.service),
-              operation: 'HTTP',
-              outcome: record.error || !status || status >= 400 ? 'error' : 'success',
-              ...(status && status >= 100 ? { httpStatus: status } : {}),
-              category: record.error
-                ? 'network_error'
-                : status === 429
-                  ? 'rate_limit'
-                  : status && status >= 400
-                    ? 'upstream_error'
-                    : undefined,
-              durationMs: safeNumber(record.duration_ms),
-            });
+        for (const identity of await usageLogDirectories(root)) {
+          const directory = join(identity.directory, query.date.slice(0, 7));
+          let files: string[] = [];
+          try {
+            files = await readdir(directory);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
           }
+          const selected = files.filter((name) =>
+            name.endsWith(`_${query.date.replace(/-/g, '')}.jsonl`),
+          );
+          for (const name of selected.slice(0, 32)) {
+            for (const record of await load(join(directory, name))) {
+              if (record.event !== 'finished') continue;
+              const status = safeNumber(record.status);
+              rows.push({
+                id: safeString(record.request_id),
+                timestamp: safeString(record.ts),
+                source: 'yibu',
+                server: identity.server || safeString(record.service),
+                catalog: identity.catalog,
+                operation: 'HTTP',
+                outcome: record.error || !status || status >= 400 ? 'error' : 'success',
+                ...(status && status >= 100 ? { httpStatus: status } : {}),
+                category: record.error
+                  ? 'network_error'
+                  : status === 429
+                    ? 'rate_limit'
+                    : status && status >= 400
+                      ? 'upstream_error'
+                      : undefined,
+                durationMs: safeNumber(record.duration_ms),
+              });
+            }
+          }
+          truncated ||= selected.length > 32;
         }
-        truncated ||= selected.length > 32;
       }
     } catch {
       unavailableSources.push('yibu');
@@ -248,8 +256,23 @@ export async function getCallLogs(
       unavailableSources.push('key_pool');
     }
   }
+  for (const row of rows) row.catalog ??= splitServerKey(row.server).catalog;
+  const seen = new Set<string>();
   const filtered = rows
-    .filter((row) => matchesCallLog(row, query))
+    .filter((row) => {
+      if (!matchesCallLog(row, query)) return false;
+      if (!row.id) return true;
+      const key = JSON.stringify([
+        row.source,
+        row.catalog,
+        row.server,
+        row.id,
+        row.source === 'relay' ? row.attempts : undefined,
+      ]);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   return {
     rows: filtered.slice((query.page - 1) * query.limit, query.page * query.limit),

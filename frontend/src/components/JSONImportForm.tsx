@@ -1,21 +1,49 @@
+import CatalogInput from './CatalogInput';
+import { mcpServerPath } from '../../../src/utils/catalog';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiPost } from '@/utils/fetchInterceptor';
 import { ImportJsonFormat, normalizeImportedServers } from '../utils/jsonImport';
 
 interface JSONImportFormProps {
+  defaultCatalog?: string;
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-const JSONImportForm: React.FC<JSONImportFormProps> = ({ onSuccess, onCancel }) => {
+const JSONImportForm: React.FC<JSONImportFormProps> = ({
+  onSuccess,
+  onCancel,
+  defaultCatalog = '',
+}) => {
   const { t } = useTranslation();
+  const [catalog, setCatalog] = useState(defaultCatalog);
   const [jsonInput, setJsonInput] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [readingFile, setReadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [previewServers, setPreviewServers] = useState<Array<{ name: string; config: any }> | null>(
     null,
   );
+
+  const readJsonFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setPreviewServers(null);
+    setReadingFile(true);
+    try {
+      const content = await file.text();
+      setJsonInput(content.replace(/^\uFEFF/, ''));
+      setFileName(file.name);
+    } catch {
+      setError(t('jsonImport.fileReadFailed'));
+    } finally {
+      setReadingFile(false);
+      event.target.value = '';
+    }
+  };
 
   const examplePlaceholder = `{
   "mcpServers": {
@@ -66,10 +94,11 @@ All servers will be imported in a single efficient batch operation.`;
 
   const handlePreview = () => {
     setError(null);
+    setPreviewServers(null);
     const parsed = parseAndValidateJson(jsonInput);
     if (!parsed) return;
 
-    const { servers, issues } = normalizeImportedServers(parsed);
+    const { servers, issues } = normalizeImportedServers(parsed, catalog);
 
     if (issues.length > 0) {
       const details = issues.map((issue) => `${issue.name}: ${issue.message}`).join('\n');
@@ -139,8 +168,31 @@ All servers will be imported in a single efficient batch operation.`;
           </div>
         )}
 
+        <CatalogInput
+          value={catalog}
+          onChange={(value) => {
+            setCatalog(value);
+            setPreviewServers(null);
+          }}
+          disabled={isImporting}
+        />
+
         {!previewServers ? (
           <div>
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <label className="hub-btn cursor-pointer">
+                {t('jsonImport.chooseFile')}
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  className="sr-only"
+                  aria-label={t('jsonImport.chooseFile')}
+                  disabled={readingFile}
+                  onChange={readJsonFile}
+                />
+              </label>
+              <span className="hub-sub text-xs">{fileName || t('jsonImport.fileHelp')}</span>
+            </div>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {t('jsonImport.inputLabel')}
@@ -155,15 +207,12 @@ All servers will be imported in a single efficient batch operation.`;
             </div>
 
             <div className="flex justify-end space-x-4">
-              <button
-                onClick={onCancel}
-                className="hub-btn"
-              >
+              <button onClick={onCancel} className="hub-btn">
                 {t('common.cancel')}
               </button>
               <button
                 onClick={handlePreview}
-                disabled={!jsonInput.trim()}
+                disabled={readingFile || !jsonInput.trim()}
                 className="hub-btn primary"
               >
                 {t('jsonImport.preview')}
@@ -178,10 +227,14 @@ All servers will be imported in a single efficient batch operation.`;
               </h3>
               <div className="space-y-3">
                 {previewServers.map((server, index) => (
-                  <div key={index} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div
+                    key={index}
+                    className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700"
+                  >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <h4 className="font-medium text-gray-900">{server.name}</h4>
+                        <code>{mcpServerPath(server.name)}</code>
                         <div className="mt-2 space-y-1 text-sm text-gray-600">
                           <div>
                             <strong>{t('server.type')}:</strong> {server.config.type || 'stdio'}
@@ -231,11 +284,7 @@ All servers will be imported in a single efficient batch operation.`;
               >
                 {t('common.back')}
               </button>
-              <button
-                onClick={handleImport}
-                disabled={isImporting}
-                className="hub-btn primary"
-              >
+              <button onClick={handleImport} disabled={isImporting} className="hub-btn primary">
                 {isImporting ? (
                   <>
                     <svg

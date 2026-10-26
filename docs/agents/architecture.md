@@ -39,7 +39,9 @@ Bearer keys have explicit kinds. Legacy and operator-created keys use `kind: 'sy
 
 ## Routing surface
 
-- `/mcp/{group|server}` routes to a group, server, or `$smart`.
+- `/mcp/{group|server}` retains public and legacy aggregate routes.
+- `/mcp/{catalog}/{server}` selects one scoped registration. Catalogs never imply aggregation or container provisioning. See [catalog namespaces](../features/catalogs.mdx).
+- Canonical keys are `catalog::server`; public keys remain unchanged. Use the canonical key for storage, credentials, permissions, schedulers and task leases; use the logical name on downstream tools and benchmark callbacks. Never fall back from a catalog to a public registration.
 - `/:user/mcp/{group|server}` and `/:user/sse/{group}` are user-scoped variants.
 - `AppServer.initialize()` in `src/server.ts` is the route-registration entry point.
 - Authentication spans dashboard JWT/bcrypt, bearer keys, MCPHub's OAuth authorization server, and optional Better Auth. Inspect the current middleware and route code before changing auth behavior.

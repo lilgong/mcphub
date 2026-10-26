@@ -15,7 +15,16 @@ const PageFallback: React.FC = () => (
 );
 
 const MainLayout: React.FC = () => {
-  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(
+    () => window.matchMedia('(max-width: 767px)').matches,
+  );
+
+  React.useEffect(() => {
+    const viewport = window.matchMedia('(max-width: 767px)');
+    const update = () => setSidebarCollapsed(viewport.matches);
+    viewport.addEventListener('change', update);
+    return () => viewport.removeEventListener('change', update);
+  }, []);
 
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);

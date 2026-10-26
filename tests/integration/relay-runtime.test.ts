@@ -114,13 +114,26 @@ test('external relay is never stopped, reset or replaced', async () => {
   external.get('/health', (_req, res) => res.json({ status: 'ok' }));
   const server = external.listen(port, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
+  const proxyEnvironment = { ...process.env };
+  for (const key of [
+    'IPWO_PROXY_HOST',
+    'IPWO_PROXY_PORT',
+    'IPWO_PROXY_USERNAME',
+    'IPWO_PROXY_PASSWORD',
+  ])
+    delete process.env[key];
   try {
-    expect((await service.status()).state).toBe('external');
+    expect(await service.status()).toMatchObject({
+      state: 'external',
+      configured: true,
+      missing: [],
+    });
     await expect(service.start()).rejects.toThrow('external relay');
     await expect(service.stop()).rejects.toThrow('External relay');
     await expect(service.resetToken()).rejects.toThrow('External relay');
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
+    process.env = proxyEnvironment;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

@@ -1,3 +1,4 @@
+import { splitServerKey, validateServerKey } from '../utils/catalog.js';
 import { resolveMcpbPackageVersion, resolveMcpbVersions } from '../utils/mcpbVersion.js';
 import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
 import { TargetRuntimeService } from './targetRuntimeService.js';
@@ -66,7 +67,6 @@ import {
 import { expandEnvVars, replaceEnvVars, getNameSeparator } from '../config/index.js';
 import config from '../config/index.js';
 import { validateMaxBufferSize } from '../utils/stdioOptions.js';
-import { validateServerName } from '../utils/serverNameValidation.js';
 import { getGroup } from './sseService.js';
 import { getServerConfigInGroup, normalizeGroupServers } from './groupService.js';
 import {
@@ -360,7 +360,11 @@ export const initUpstreamServers = async (): Promise<void> => {
   await registerAllTools(true);
 
   // Initialize smart routing service with references to mcpService functions
-  initSmartRoutingService(getVisibleServerInfos, filterToolsByConfig, filterToolsByGroup);
+  initSmartRoutingService(
+    () => getVisibleServerInfos().filter((info) => !splitServerKey(info.name).catalog),
+    filterToolsByConfig,
+    filterToolsByGroup,
+  );
 };
 
 type McpServerDescriptor = {
@@ -2077,7 +2081,7 @@ export const initializeClientsFromSettings = async (
       // configs on upgrade), but a strict client may drop the whole tools/list
       // if the server name produces a non-conforming downstream tool name.
       if (isInit) {
-        const nameValidation = validateServerName(name);
+        const nameValidation = validateServerKey(name);
         if (!nameValidation.valid) {
           logger.warn(
             `Server name '${name}' does not match the MCP tool-name charset (${nameValidation.message}); downstream tool names may be rejected by strict clients`,
@@ -3138,7 +3142,9 @@ const filterToolsByConfig = async (serverName: string, tools: Tool[]): Promise<T
 const getServerByTool = (toolName: string): ServerInfo | undefined => {
   return getVisibleServerInfos().find(
     (serverInfo) =>
-      serverInfo.enabled !== false && serverInfo.tools.some((tool) => tool.name === toolName),
+      !splitServerKey(serverInfo.name).catalog &&
+      serverInfo.enabled !== false &&
+      serverInfo.tools.some((tool) => tool.name === toolName),
   );
 };
 
@@ -3814,7 +3820,8 @@ const getGroupLookupName = (group: string | undefined): string | undefined => {
 };
 
 const getExposedServerName = (serverName: string, serverConfig?: IGroupServerConfig): string => {
-  return serverConfig?.alias?.trim() || serverName;
+  const { catalog, name } = splitServerKey(serverName);
+  return serverConfig?.alias?.trim() || (catalog && serverConfig ? `${catalog}--${name}` : name);
 };
 
 const replacePrefixedServerName = (
@@ -4265,6 +4272,7 @@ const handleCallToolRequestCore = async (request: any, extra: any) => {
         // their cached tool list — include them as candidates.
         targetServerInfo = getVisibleServerInfos().find(
           (serverInfo) =>
+            !splitServerKey(serverInfo.name).catalog &&
             serverInfo.enabled !== false &&
             (serverInfo.status === 'connected' || serverInfo.config?.startOnDemand === true) &&
             serverInfo.tools.some((tool) => tool.name === toolName),
@@ -4804,6 +4812,7 @@ const handleGetPromptRequestImpl = async (request: any, extra: any) => {
       // Find the first server that has this prompt
       server = getVisibleServerInfos().find(
         (serverInfo) =>
+          !splitServerKey(serverInfo.name).catalog &&
           serverInfo.status === 'connected' &&
           serverInfo.enabled !== false &&
           serverInfo.prompts.find((prompt) => prompt.name === name),
@@ -5608,7 +5617,7 @@ export const createMcpServer = (
   // If no group, use default name (global routing)
 
   const server = new Server(
-    { name: serverName, version },
+    { name: splitServerKey(serverName).name, version },
     {
       supportedProtocolVersions: LEGACY_PROTOCOL_VERSIONS,
       capabilities: {
@@ -5644,7 +5653,7 @@ export const getFilteredServerInfosForGroup = async (
   // Resolve raw groups so legacy routing remains compatible, then enforce explicit visibility.
   let matchedGroup = false;
   let serverConfigs: IGroupServerConfig[] = [];
-  if (group) {
+  if (group && !splitServerKey(group).catalog) {
     const groupDao = getGroupDao();
     let foundGroup = await groupDao.findByName(group);
     if (!foundGroup) {
@@ -5683,6 +5692,7 @@ export const getFilteredServerInfosForGroup = async (
     if (options?.requireClient && !serverInfo.client) continue;
 
     if (!group) {
+      if (splitServerKey(serverInfo.name).catalog) continue;
       filteredServerInfos.push(serverInfo);
       continue;
     }

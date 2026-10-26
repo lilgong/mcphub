@@ -39,3 +39,6 @@ _Avoid_: hot tool, always-exposed tool, favourite
 **Progressive Disclosure**:
 A global Smart Routing mode that adds the `describe_tool` Meta-tool and keeps tool schemas out of search results, fetching them on demand. It raises the upfront Smart Routing Footprint by one Meta-tool while shrinking each search response — a trade this feature measures only on the upfront (definition) side.
 _Avoid_: lazy disclosure, deferred schema, PD (in UI copy)
+
+**Catalog**:
+A namespace for MCP registrations, such as `atlas` or `toolathlon`. Each catalog owns independently configured MCPs and targets. It does not aggregate tools or provision task environments. Empty catalog names designate public registrations.

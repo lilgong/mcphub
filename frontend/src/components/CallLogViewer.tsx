@@ -1,8 +1,11 @@
+import LogCatalogFilter from './LogCatalogFilter';
+import LogServerIdentity from './LogServerIdentity';
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, FileSearch, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { apiGet } from '../utils/fetchInterceptor';
 interface Row {
+  catalog?: string;
   id: string;
   timestamp: string;
   source: string;
@@ -44,6 +47,7 @@ export default function CallLogViewer() {
   const [status, setStatus] = useState('all');
   const [source, setSource] = useState('tool');
   const [server, setServer] = useState('');
+  const [catalog, setCatalog] = useState('*');
   const [errorsOnly, setErrorsOnly] = useState(true);
   const [page, setPage] = useState(1);
   const [refresh, setRefresh] = useState(0);
@@ -52,7 +56,7 @@ export default function CallLogViewer() {
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     setPage(1);
-  }, [date, status, source, server, errorsOnly]);
+  }, [catalog, date, status, source, server, errorsOnly]);
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -63,6 +67,7 @@ export default function CallLogViewer() {
           status,
           source,
           server,
+          ...(catalog !== '*' ? { catalog } : {}),
           errorsOnly: String(errorsOnly),
           page: String(page),
           limit: '50',
@@ -87,12 +92,13 @@ export default function CallLogViewer() {
       active = false;
       clearInterval(timer);
     };
-  }, [date, status, source, server, errorsOnly, page, refresh]);
+  }, [catalog, date, status, source, server, errorsOnly, page, refresh]);
   const inputClass = 'hub-input';
   return (
     <section className="space-y-4 p-4">
       <p className="text-sm text-[var(--hub-ink-2)]">{t('callLogs.description')}</p>
       <div className="flex flex-wrap items-end gap-3">
+        <LogCatalogFilter value={catalog} onChange={setCatalog} />
         <label className="hub-field">
           <span className="hub-label">{t('callLogs.date')}</span>
           <input
@@ -236,7 +242,13 @@ export default function CallLogViewer() {
                   <td className="whitespace-nowrap p-2">
                     {new Date(row.timestamp).toLocaleString()}
                   </td>
-                  <td className="p-2">{row.server}</td>
+                  <td className="p-2">
+                    <LogServerIdentity
+                      server={row.server}
+                      catalog={row.catalog}
+                      showCatalog={catalog === '*'}
+                    />
+                  </td>
                   <td className="max-w-xs break-all p-2">{row.operation}</td>
                   <td className="whitespace-nowrap p-3">
                     <span

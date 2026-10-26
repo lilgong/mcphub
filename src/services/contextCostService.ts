@@ -1,3 +1,4 @@
+import { splitServerKey } from '../utils/catalog.js';
 /**
  * Context Footprint aggregation.
  *
@@ -35,12 +36,30 @@ export async function serverCostFromInfo(info: ServerInfo): Promise<ServerCost> 
     return { name: info.name, connected: false, exposed: 0, gross: 0, items: [] };
   }
 
+  // Internal namespace keys are not emitted in downstream definition names.
+  const { catalog, name } = splitServerKey(info.name);
+  const prefix = `${info.name}${getNameSeparator()}`;
+  const exposedName = (value: string) =>
+    catalog && value.startsWith(prefix)
+      ? `${name}${getNameSeparator()}${value.slice(prefix.length)}`
+      : value;
+
   // Resources have no per-item enabled flag upstream, so resource exposed == gross by design.
   // Tools and prompts carry an explicit `enabled` boolean set by getServersInfo.
   // Count all three kinds concurrently rather than awaiting each batch in sequence.
   const [tools, prompts, resources] = await Promise.all([
-    Promise.all((info.tools ?? []).map((t) => itemCostForTool(t))),
-    Promise.all((info.prompts ?? []).map((p) => itemCostForPrompt(p))),
+    Promise.all(
+      (info.tools ?? []).map(async (t) => ({
+        ...(await itemCostForTool({ ...t, name: exposedName(t.name) })),
+        name: t.name,
+      })),
+    ),
+    Promise.all(
+      (info.prompts ?? []).map(async (p) => ({
+        ...(await itemCostForPrompt({ ...p, name: exposedName(p.name) })),
+        name: p.name,
+      })),
+    ),
     Promise.all((info.resources ?? []).map((r) => itemCostForResource(r))),
   ]);
   const items: ItemCost[] = [...tools, ...prompts, ...resources];

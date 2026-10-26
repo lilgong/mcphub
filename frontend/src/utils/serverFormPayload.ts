@@ -267,6 +267,17 @@ export const buildServerPayload = ({
   // Target connections own their transport and credentials. The hidden base
   // form may still contain marketplace placeholders after conversion.
   if (formData.targets?.length) {
+    // Task workers receive only explicitly allowlisted startup variables.
+    // Keep those values when saving the editor even though the base transport is hidden.
+    const delegated = new Set(
+      formData.targets
+        .filter((target) => target.kind === 'task')
+        .flatMap((target) => target.startupEnvKeys ?? []),
+    );
+    const startupEnv = Object.fromEntries(
+      Object.entries(env).filter(([name]) => delegated.has(name)),
+    );
+    if (Object.keys(startupEnv).length) config.env = startupEnv;
     return { name: formData.name.trim(), config };
   }
 

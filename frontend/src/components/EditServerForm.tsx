@@ -1,3 +1,4 @@
+import { splitServerKey } from '../../../src/utils/catalog';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Server } from '@/types';
@@ -20,7 +21,7 @@ const EditServerForm = ({ server, onEdit, onCancel }: EditServerFormProps) => {
       const encodedServerName = encodeURIComponent(server.name);
 
       // Check if name is being changed
-      const isRenaming = payload.name && payload.name !== server.name;
+      const isRenaming = payload.name && payload.name !== splitServerKey(server.name).name;
 
       // Build the request body
       const requestBody = {
@@ -35,7 +36,7 @@ const EditServerForm = ({ server, onEdit, onCancel }: EditServerFormProps) => {
         if (result && result.message) {
           setError(result.message);
         } else {
-          setError(t('server.updateError', { serverName: server.name }));
+          setError(t('server.updateError', { serverName: splitServerKey(server.name).name }));
         }
         return;
       }
@@ -53,7 +54,7 @@ const EditServerForm = ({ server, onEdit, onCancel }: EditServerFormProps) => {
       ) {
         setError(t('errors.serverConnection'));
       } else {
-        setError(t('errors.serverUpdate', { serverName: server.name }));
+        setError(t('errors.serverUpdate', { serverName: splitServerKey(server.name).name }));
       }
     }
   };
@@ -74,7 +75,7 @@ const EditServerForm = ({ server, onEdit, onCancel }: EditServerFormProps) => {
         onSubmit={handleSubmit}
         onCancel={onCancel}
         initialData={server}
-        modalTitle={t('server.editTitle', { serverName: server.name })}
+        modalTitle={t('server.editTitle', { serverName: splitServerKey(server.name).name })}
         formError={error}
       />
     </div>

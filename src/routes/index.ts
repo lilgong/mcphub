@@ -36,6 +36,7 @@ import { check } from 'express-validator';
 import config from '../config/index.js';
 import {
   getAllServers,
+  getCatalogs,
   getAllSettings,
   getServerConfig,
   getServerShareCandidates,
@@ -326,6 +327,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.put('/atlas', updateAtlasSettings);
   authenticatedRouter.post('/atlas/relay-health', checkAtlasRelay);
   app.get(`${config.basePath}/atlas/relay-runtime`, mcpConnectionRateLimiter, getAtlasRelayRuntime);
+  authenticatedRouter.get('/catalogs', getCatalogs);
   authenticatedRouter.get('/servers', getAllServers);
   authenticatedRouter.get('/servers/:name/share-candidates', getServerShareCandidates);
   authenticatedRouter.get('/servers/:name/runtime', connectionRuntime);

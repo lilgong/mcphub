@@ -4,12 +4,16 @@ import { randomUUID } from 'node:crypto';
 import { openSync, writeSync, fsyncSync, closeSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { logger } from '../utils/logger.js';
+import { getActivityLoggingService } from './activityLoggingService.js';
 
 type AuditMetadata = {
   tool: string;
   server?: string;
   group?: string;
   username?: string;
+  keyId?: string;
+  keyName?: string;
+  sourceIp?: string;
   target?: string;
   taskId?: string;
 };
@@ -86,9 +90,35 @@ export function captureToolDiagnostic(server: string): (event: string, fields: D
 export async function withToolAudit<T extends { isError?: boolean }>(
   metadata: AuditMetadata,
   call: () => Promise<T>,
+  persistActivity = false,
 ): Promise<T> {
+  // MCP calls already persist their own activity. Direct HTTP/task entry points opt in.
+  const invoke = async (): Promise<T> => {
+    if (!persistActivity) return call();
+    const started = Date.now();
+    let failed = true;
+    try {
+      const result = await call();
+      failed = !!result.isError;
+      return result;
+    } finally {
+      await getActivityLoggingService().logToolCall({
+        server: metadata.server || 'unknown',
+        tool: metadata.tool,
+        username: metadata.username,
+        keyId: metadata.keyId,
+        keyName: metadata.keyName,
+        sourceIp: metadata.sourceIp,
+        group: metadata.group,
+        duration: Date.now() - started,
+        status: failed ? 'error' : 'success',
+        // Callback and HTTP responses can echo credentials; retain metadata only.
+        hasCredentialTemplate: true,
+      });
+    }
+  };
   const directory = process.env.MCPHUB_AUDIT_LOG_DIR;
-  if (!directory) return call();
+  if (!directory) return invoke();
   const requestId = randomUUID();
   const started = Date.now();
   const file = join(directory, `${new Date(started).toISOString().slice(0, 10)}.jsonl`);
@@ -128,7 +158,7 @@ export async function withToolAudit<T extends { isError?: boolean }>(
   return diagnostics.run(write, async () => {
     let result: T;
     try {
-      result = await call();
+      result = await invoke();
     } catch (error) {
       write('finished', {
         status: 'error',

@@ -1,11 +1,11 @@
+import { DEFAULT_TASK_TARGET } from '../../../src/utils/taskTarget';
 import { useState } from 'react';
 import SecretInput from './SecretInput';
 import {
   supportsFetchRelay,
   isRelayEnvironmentVariable,
 } from '../../../src/utils/relayCompatibility';
-import { Layers, Plus, X } from 'lucide-react';
-import ConfigurationSection from './ConfigurationSection';
+import { Plus, X } from 'lucide-react';
 import { getKeyPoolProvider, isPooledCredential } from '../../../src/utils/keyPoolCompatibility';
 import { useTranslation } from 'react-i18next';
 import type { TargetConnection, TargetConnectionConfig } from '../../../src/types/targetConnection';
@@ -15,27 +15,108 @@ export default function TargetConnectionEditor({
   value,
   onChange,
   currentConnection,
+  catalog = '',
+  onUseSingle,
 }: {
   value?: TargetConnection[];
   onChange: (value: TargetConnection[]) => void;
   currentConnection?: TargetConnectionConfig;
+  catalog?: string;
+  onUseSingle?: (connection?: TargetConnectionConfig) => void;
 }) {
   const { t } = useTranslation();
   const targets = value || [];
+  const taskOnly =
+    targets.length === 1 && targets[0].path === DEFAULT_TASK_TARGET && targets[0].kind === 'task';
+  const [previousTask, setPreviousTask] = useState<TargetConnection[] | undefined>();
+  const [previousTargets, setPreviousTargets] = useState<TargetConnection[]>([]);
   const patch = (index: number, changes: Partial<TargetConnection>) =>
     onChange(targets.map((target, i) => (i === index ? { ...target, ...changes } : target)));
   const input = 'hub-input';
   return (
-    <ConfigurationSection
-      title={t(targets.length ? 'targets.title' : 'targets.optionalTitle')}
-      icon={Layers}
-      open={targets.length > 0 ? true : undefined}
-    >
+    <section className="hub-editor-section">
+      <h3 className="hub-editor-heading">{t('uiLayout.connection')}</h3>
+      <div className="hub-mode-tabs" role="group" aria-label={t('targets.mode')}>
+        {(['single', 'accounts', 'task'] as const).map((mode) => {
+          const active = mode === (taskOnly ? 'task' : targets.length ? 'accounts' : 'single');
+          return (
+            <button
+              key={mode}
+              type="button"
+              className={`hub-mode-tab ${active ? 'is-active' : ''}`}
+              aria-pressed={active}
+              onClick={() => {
+                if (active) return;
+                if (taskOnly) setPreviousTask(targets);
+                if (targets.length && !taskOnly) setPreviousTargets(targets);
+                if (mode === 'single') {
+                  onUseSingle?.(
+                    currentConnection ?? targets.find((target) => target.kind === 'static')?.config,
+                  );
+                  onChange([]);
+                }
+                if (mode === 'accounts')
+                  onChange(
+                    previousTargets.length
+                      ? previousTargets
+                      : [
+                          {
+                            path: `${catalog || 'workspace'}/official`,
+                            kind: 'static',
+                            enabled: true,
+                            config: structuredClone(
+                              currentConnection ?? targets[0]?.config ?? { type: 'stdio' },
+                            ),
+                          },
+                        ],
+                  );
+                if (mode === 'task')
+                  onChange(
+                    previousTask ?? [
+                      {
+                        path: DEFAULT_TASK_TARGET,
+                        kind: 'task',
+                        enabled: true,
+                        config: structuredClone(targets[0]?.config ?? currentConnection ?? {}),
+                        startupEnvKeys: targets[0]?.startupEnvKeys ?? [],
+                      },
+                    ],
+                  );
+              }}
+            >
+              {t(`uiLayout.mode_${mode}`)}
+            </button>
+          );
+        })}
+      </div>
       <p className="hub-config-description">
-        {t(targets.length ? 'targets.description' : 'targets.singleDescription')}
+        {t(`uiLayout.help_${taskOnly ? 'task' : targets.length ? 'accounts' : 'single'}`)}
       </p>
       {targets.map((target, index) => (
         <fieldset key={index} className="hub-target-card space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="text-sm font-medium">
+              {taskOnly
+                ? t('uiLayout.mode_task')
+                : target.path.split('/').slice(-1)[0] || t('uiLayout.workspaceName')}
+            </h4>
+            {!taskOnly && (
+              <button
+                type="button"
+                className="hub-btn"
+                onClick={() => {
+                  let suffix = 1;
+                  let path: string;
+                  do {
+                    path = `${target.path.slice(0, 145)}-copy-${suffix++}`;
+                  } while (targets.some((item) => item.path === path));
+                  onChange([...targets, { ...structuredClone(target), path, enabled: true }]);
+                }}
+              >
+                {t('uiLayout.copyAccount')}
+              </button>
+            )}
+          </div>
           <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
             <label className="hub-config-toggle sm:col-span-2">
               <span>{t('targets.enabled')}</span>
@@ -46,41 +127,38 @@ export default function TargetConnectionEditor({
                 onChange={(e) => patch(index, { enabled: e.target.checked })}
               />
             </label>
-            <label>
-              {t('targets.application')}
-              <input
-                className={input}
-                aria-label={`${t('targets.application')} ${index + 1}`}
-                value={target.path.split('/')[0] ?? ''}
-                placeholder="atlas"
-                pattern="[A-Za-z0-9_-]+"
-                required
-                onChange={(e) =>
-                  patch(index, {
-                    path: `${e.target.value}/${target.path.split('/').slice(1).join('/')}`,
-                  })
-                }
-              />
-            </label>
-            <label>
-              {t('targets.category')}
-              <input
-                className={input}
-                aria-label={`${t('targets.category')} ${index + 1}`}
-                value={target.path.split('/').slice(1).join('/')}
-                placeholder="official / syn-1 / default"
-                pattern="[A-Za-z0-9_-]+"
-                required
-                onChange={(e) =>
-                  patch(index, { path: `${target.path.split('/')[0] ?? ''}/${e.target.value}` })
-                }
-              />
-            </label>
-            <p className="hub-config-note sm:col-span-2">
-              {t('targets.path')}:{' '}
-              <code className="hub-mono">{target.path || 'benchmark/category'}</code>
-            </p>
+            {!taskOnly && (
+              <label className="sm:col-span-2">
+                {t('uiLayout.workspaceName')}
+                <input
+                  className={input}
+                  aria-label={`${t('uiLayout.workspaceName')} ${index + 1}`}
+                  value={target.path.split('/').slice(-1)[0] || ''}
+                  required
+                  pattern="[A-Za-z0-9_-]+"
+                  onChange={(event) => {
+                    const prefix = target.path.includes('/')
+                      ? target.path.slice(0, target.path.lastIndexOf('/'))
+                      : catalog || 'workspace';
+                    patch(index, { path: `${prefix}/${event.target.value}` });
+                  }}
+                />
+                <span className="hub-config-note">
+                  {t('uiLayout.routeSelector')}: {target.path}
+                </span>
+              </label>
+            )}
           </div>
+          <label className="hub-field">
+            <span className="hub-label">{t('targets.version')}</span>
+            <input
+              className="hub-input"
+              aria-label={`${t('targets.version')} ${index + 1}`}
+              value={target.version || ''}
+              onChange={(event) => patch(index, { version: event.target.value || undefined })}
+            />
+            <span className="hub-sub text-xs">{t('targets.versionHint')}</span>
+          </label>
           {target.kind === 'static' && (
             <>
               <div className="space-y-4">
@@ -257,35 +335,88 @@ export default function TargetConnectionEditor({
             </>
           )}
           {target.kind === 'task' && (
-            <ServiceControls
-              hideRateLimit
-              stdio
-              relaySupported={
-                supportsFetchRelay(target.config ?? {}) ||
-                supportsFetchRelay(currentConnection ?? {})
-              }
-              relay={target.config?.relay}
-              onChange={(changes) =>
-                patch(index, { config: { ...target.config, relay: changes.relay } })
-              }
-            />
+            <>
+              <label className="hub-field">
+                <span className="hub-label">{t('targets.startupNames')}</span>
+                <textarea
+                  className="hub-input"
+                  rows={3}
+                  style={{ height: 'auto', minHeight: 88 }}
+                  value={(target.startupEnvKeys || []).join('\n')}
+                  onChange={(event) =>
+                    patch(index, {
+                      startupEnvKeys: event.target.value
+                        .split('\n')
+                        .map((value) => value.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                />
+              </label>
+              <ServiceControls
+                hideRateLimit
+                stdio
+                relaySupported={
+                  supportsFetchRelay(target.config ?? {}) ||
+                  supportsFetchRelay(currentConnection ?? {})
+                }
+                relay={target.config?.relay}
+                onChange={(changes) =>
+                  patch(index, { config: { ...target.config, relay: changes.relay } })
+                }
+              />
+            </>
           )}
-          <p className="hub-config-note">{t('targets.accessManagedHint')}</p>
+          {target.kind === 'static' && (
+            <details className="hub-config-advanced">
+              <summary>{t('server.requestOptions')}</summary>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label className="hub-field">
+                  <span className="hub-label">{t('server.timeout')} (ms)</span>
+                  <input
+                    className="hub-input"
+                    type="number"
+                    min="1000"
+                    aria-label={`${t('server.timeout')} ${index + 1}`}
+                    value={target.config?.options?.timeout ?? 60000}
+                    onChange={(event) =>
+                      patch(index, {
+                        config: {
+                          ...target.config,
+                          options: {
+                            ...target.config?.options,
+                            timeout: Number(event.target.value),
+                          },
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label className="hub-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={target.config?.options?.resetTimeoutOnProgress ?? false}
+                    onChange={(event) =>
+                      patch(index, {
+                        config: {
+                          ...target.config,
+                          options: {
+                            ...target.config?.options,
+                            resetTimeoutOnProgress: event.target.checked,
+                          },
+                        },
+                      })
+                    }
+                  />
+                  {t('server.resetTimeoutOnProgress')}
+                </label>
+              </div>
+            </details>
+          )}
+          <p className="hub-config-note">
+            {t(taskOnly ? 'uiLayout.taskAccess' : 'targets.accessManagedHint')}
+          </p>
 
-          <button
-            type="button"
-            className="hub-btn mr-2 mb-2"
-            onClick={() => {
-              let suffix = 1;
-              let path: string;
-              do {
-                path = `${target.path.slice(0, 145)}-copy-${suffix++}`;
-              } while (targets.some((item) => item.path === path));
-              onChange([...targets, { ...structuredClone(target), path, enabled: false }]);
-            }}
-          >
-            {t('targets.duplicate')}
-          </button>
           <button
             type="button"
             className="hub-btn danger mb-2"
@@ -295,47 +426,49 @@ export default function TargetConnectionEditor({
           </button>
         </fieldset>
       ))}
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="hub-btn"
-          onClick={() =>
-            onChange([
-              ...targets,
-              {
-                path: '',
-                kind: 'static',
-                enabled: true,
-                config: structuredClone(
-                  targets[0]?.config ?? currentConnection ?? { type: 'streamable-http' },
-                ),
-              },
-            ])
-          }
-        >
-          <Plus size={14} aria-hidden />
-          {t('targets.add')}
-        </button>
-        {currentConnection && !targets.length && (
+      {!taskOnly && targets.length > 0 && (
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             className="hub-btn"
             onClick={() =>
               onChange([
+                ...targets,
                 {
                   path: '',
                   kind: 'static',
                   enabled: true,
-                  config: structuredClone(currentConnection),
+                  config: structuredClone(
+                    targets[0]?.config ?? currentConnection ?? { type: 'streamable-http' },
+                  ),
                 },
               ])
             }
           >
-            {t('targets.fromCurrent')}
+            <Plus size={14} aria-hidden />
+            {t('targets.add')}
           </button>
-        )}
-      </div>
-    </ConfigurationSection>
+          {currentConnection && !targets.length && (
+            <button
+              type="button"
+              className="hub-btn"
+              onClick={() =>
+                onChange([
+                  {
+                    path: '',
+                    kind: 'static',
+                    enabled: true,
+                    config: structuredClone(currentConnection),
+                  },
+                ])
+              }
+            >
+              {t('targets.fromCurrent')}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

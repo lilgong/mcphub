@@ -1,8 +1,12 @@
+import { CredentialBindingError } from '../utils/credentialTemplate.js';
+import { logger } from '../utils/logger.js';
 import type { Request, Response } from 'express';
 import { getServerDao, getBearerKeyDao, getUserDao } from '../dao/DaoFactory.js';
 import { requireAdmin } from '../utils/requireAdmin.js';
 import {
   getAtlasConfig,
+  AtlasConfigValidationError,
+  validateAtlasConfig,
   saveAtlasConfig,
   hasRelayToken,
   getRelayEnvironment,
@@ -19,6 +23,25 @@ export async function getAtlasSettings(req: Request, res: Response): Promise<voi
   if (!(await requireAdmin(req, res))) return;
   res.setHeader('Cache-Control', 'no-store');
   const config = await getAtlasConfig();
+  const servers = await getServerDao().findAll();
+  const serverRelay = Object.fromEntries(
+    servers.flatMap((server) => {
+      if (server.targets?.length) {
+        const targets = server.targets.filter(
+          (target) =>
+            target.enabled !== false &&
+            supportsFetchRelay(target.config ?? {}) &&
+            target.config?.relay?.enabled !== false,
+        );
+        return targets.length
+          ? [[server.name, targets.every((target) => target.kind === 'task') ? 'task' : 'enabled']]
+          : [];
+      }
+      return supportsFetchRelay(server) && server.relay?.enabled !== false
+        ? [[server.name, 'enabled']]
+        : [];
+    }),
+  );
   res.json({
     success: true,
     data: {
@@ -26,7 +49,8 @@ export async function getAtlasSettings(req: Request, res: Response): Promise<voi
       hasRelayToken: await hasRelayToken(),
       basePolicy: BASE_POLICY,
       stats: toolCallScheduler.stats(),
-      servers: (await getServerDao().findAll()).map((s) => s.name),
+      servers: servers.map((s) => s.name),
+      serverRelay,
     },
   });
 }
@@ -43,10 +67,18 @@ export async function updateAtlasSettings(req: Request, res: Response): Promise<
   }
   try {
     await saveAtlasConfig(req.body.config, req.body.relayToken, req.body.clearRelayToken === true);
-  } catch {
-    res.status(400).json({
+  } catch (error) {
+    const expected =
+      error instanceof AtlasConfigValidationError || error instanceof CredentialBindingError;
+    if (!expected)
+      logger.error('Unable to save Relay settings', {
+        category: error instanceof Error ? error.name : 'unknown',
+      });
+    res.status(expected ? 400 : 500).json({
       success: false,
-      message: 'Invalid Atlas settings, missing relay credentials, or a busy scope change',
+      message: expected
+        ? error.message
+        : 'Unable to persist Relay settings; check the Hub server logs',
     });
     return;
   }
@@ -56,6 +88,23 @@ export async function updateAtlasSettings(req: Request, res: Response): Promise<
     Boolean(req.body.relayToken) ||
     req.body.clearRelayToken === true;
   const failed = relayChanged ? await reconnectRelayServers() : [];
+  const persisted = await getAtlasConfig();
+  const tokenConfigured = await hasRelayToken();
+  if (
+    JSON.stringify(persisted.relay) !== JSON.stringify(current.relay) ||
+    (current.relay.enabled && !tokenConfigured)
+  ) {
+    res.status(409).json({
+      success: false,
+      message:
+        'Relay settings were not retained after reconnecting. Reload this page and save again',
+    });
+    return;
+  }
+  logger.info('Relay settings saved and verified', {
+    enabled: persisted.relay.enabled,
+    tokenConfigured,
+  });
   res.json({ success: true, data: { reconnectFailed: failed } });
 }
 
@@ -82,17 +131,40 @@ export async function reconnectRelayServers(): Promise<string[]> {
 export async function checkAtlasRelay(req: Request, res: Response): Promise<void> {
   if (!(await requireAdmin(req, res))) return;
   try {
-    const { relay } = await getAtlasConfig();
-    if (!relay.enabled) throw new Error('Disabled');
+    const { relay } = req.body?.config
+      ? validateAtlasConfig(req.body.config)
+      : await getAtlasConfig();
+    if (!relay.enabled)
+      throw new AtlasConfigValidationError(
+        'Enable Relay forwarding before checking the connection',
+      );
     const url = `${relay.url}/health`;
     await assertSafeUrl(url, { allowInternal: true });
     const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(5000) });
-    res.json({
+    const health = (await response.json().catch(() => null)) as { status?: string } | null;
+    if (!health || !['ok', 'blocked'].includes(health.status || '')) {
+      res.status(400).json({
+        success: false,
+        message:
+          'This address is not a Relay health endpoint. Use the Relay service port, not the MCPHub dashboard port',
+      });
+      return;
+    }
+    res.status(response.ok ? 200 : 502).json({
       success: response.ok,
-      data: { reachable: response.ok, httpStatus: response.status },
+      ...(response.ok
+        ? {}
+        : {
+            message: 'Relay is reachable but reports unhealthy; check the external Relay service',
+          }),
+      data: { reachable: true, httpStatus: response.status },
     });
-  } catch {
-    res.status(502).json({ success: false, message: 'Relay health check failed' });
+  } catch (error) {
+    res.status(error instanceof AtlasConfigValidationError ? 400 : 502).json({
+      success: false,
+      message:
+        error instanceof AtlasConfigValidationError ? error.message : 'Relay health check failed',
+    });
   }
 }
 

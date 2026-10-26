@@ -19,6 +19,8 @@ It works with MCP clients such as Claude Code, Cursor, Cherry Studio, OpenWebUI,
 
 Custom MCP implementations and dependencies can be imported as independent MCPB packages. The Hub image does not depend on MCP-Atlas. Use explicit targets for multiple versions / workspaces; key rotation is shown only for compatible adapters. See [independent packages and target configuration](docs/features/atlas-integration.mdx).
 
+Catalog namespaces keep public MCPs at `/mcp/{server}` and benchmark MCPs at `/mcp/{catalog}/{server}`. Logical MCP names stay the same, while connections, credentials, targets and limits remain scoped. See [catalog namespaces](docs/features/catalogs.mdx).
+
 ## 🌐 Website, Demo & Docs
 
 - **Website**: [mcphub.app](https://www.mcphub.app/)

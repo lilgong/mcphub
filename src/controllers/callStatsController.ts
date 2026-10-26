@@ -48,6 +48,7 @@ export async function callStats(req: Request, res: Response): Promise<void> {
         start: start.toISOString(),
         end: end.toISOString(),
         server: read('server'),
+        catalog: read('catalog'),
         credentialId,
         metric,
       }),

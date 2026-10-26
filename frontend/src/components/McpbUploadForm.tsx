@@ -1,10 +1,15 @@
+import { convertMcpbToMcpConfig } from '../utils/mcpbConfig';
+import McpbBatchUpload from './McpbBatchUpload';
+import { validateServerKey } from '../../../src/utils/catalog';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiPost, apiGet, apiPut, fetchWithInterceptors } from '@/utils/fetchInterceptor';
 import { getApiUrl } from '@/utils/runtime';
+import CatalogInput from './CatalogInput';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 interface McpbUploadFormProps {
+  catalog?: string;
   onSuccess: (serverConfig: any) => void;
   onCancel: () => void;
 }
@@ -18,11 +23,13 @@ interface McpbUploadResponse {
   message?: string;
 }
 
-const McpbUploadForm: React.FC<McpbUploadFormProps> = ({ onSuccess, onCancel }) => {
+const McpbUploadForm: React.FC<McpbUploadFormProps> = ({ onSuccess, onCancel, catalog: defaultCatalog = '' }) => {
   const { t } = useTranslation();
+  const [catalog, setCatalog] = useState(defaultCatalog);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showServerForm, setShowServerForm] = useState(false);
   const [manifestData, setManifestData] = useState<any>(null);
@@ -44,29 +51,21 @@ const McpbUploadForm: React.FC<McpbUploadFormProps> = ({ onSuccess, onCancel }) 
     e.preventDefault();
     setIsDragging(false);
 
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
-      if (file.name.endsWith('.mcpb')) {
-        setSelectedFile(file);
-        setError(null);
-      } else {
-        setError(t('mcpb.invalidFileType'));
-      }
+    selectFiles(Array.from(e.dataTransfer.files));
+  };
+
+  const selectFiles = (files: File[]) => {
+    if (files.some((file) => !file.name.endsWith('.mcpb'))) {
+      setError(t('mcpb.invalidFileType'));
+      return;
     }
+    setError(null);
+    setBatchFiles(files.length > 1 ? files : []);
+    setSelectedFile(files[0] || null);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      if (file.name.endsWith('.mcpb')) {
-        setSelectedFile(file);
-        setError(null);
-      } else {
-        setError(t('mcpb.invalidFileType'));
-      }
-    }
+    selectFiles(Array.from(e.target.files || []));
   };
 
   const handleUpload = async () => {
@@ -75,12 +74,18 @@ const McpbUploadForm: React.FC<McpbUploadFormProps> = ({ onSuccess, onCancel }) 
       return;
     }
 
+    const identity = validateServerKey('upload', catalog);
+    if (!identity.valid) {
+      setError(identity.message || t('catalog.label'));
+      return;
+    }
     setIsUploading(true);
     setError(null);
 
     try {
       const formData = new FormData();
       formData.append('mcpbFile', selectedFile);
+      formData.append('catalog', catalog);
 
       const response = await fetchWithInterceptors(getApiUrl('/mcpb/upload'), {
         method: 'POST',
@@ -108,11 +113,14 @@ const McpbUploadForm: React.FC<McpbUploadFormProps> = ({ onSuccess, onCancel }) 
     }
   };
 
-  const handleInstallServer = async (serverName: string, forceOverride: boolean = false) => {
+  const handleInstallServer = async (requestedName: string, forceOverride: boolean = false) => {
     setIsUploading(true);
     setError(null);
 
     try {
+      const validation = validateServerKey(requestedName, catalog);
+      if (!validation.valid) throw new Error(validation.message);
+      const serverName = validation.normalized!;
       // Convert MCPB manifest to MCPHub stdio server configuration
       const serverConfig = convertMcpbToMcpConfig(manifestData, extractDir, serverName);
 
@@ -174,44 +182,10 @@ const McpbUploadForm: React.FC<McpbUploadFormProps> = ({ onSuccess, onCancel }) 
     setIsUploading(false);
   };
 
-  const convertMcpbToMcpConfig = (manifest: any, extractPath: string, _serverName: string) => {
-    const mcpConfig = manifest.server?.mcp_config || {};
 
-    // Convert MCPB manifest to MCPHub stdio configuration
-    const config: any = {
-      type: 'stdio',
-      command: mcpConfig.command || 'node',
-      args: (mcpConfig.args || []).map((arg: string) => arg.replace('${__dirname}', extractPath)),
-    };
-
-    // Bundles may declare a longer request timeout for slow upstream tools.
-    if (mcpConfig.options && typeof mcpConfig.options === 'object') {
-      config.options = {};
-      for (const field of ['timeout', 'maxTotalTimeout', 'maxBufferSize']) {
-        const value = mcpConfig.options[field];
-        if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-          config.options[field] = value;
-        }
-      }
-      if (typeof mcpConfig.options.resetTimeoutOnProgress === 'boolean') {
-        config.options.resetTimeoutOnProgress = mcpConfig.options.resetTimeoutOnProgress;
-      }
-    }
-
-    // Add environment variables if they exist
-    if (mcpConfig.env && Object.keys(mcpConfig.env).length > 0) {
-      config.env = { ...mcpConfig.env };
-
-      // Replace ${__dirname} in environment variables
-      Object.keys(config.env).forEach((key) => {
-        if (typeof config.env[key] === 'string') {
-          config.env[key] = config.env[key].replace('${__dirname}', extractPath);
-        }
-      });
-    }
-
-    return config;
-  };
+  if (batchFiles.length > 1) {
+    return <McpbBatchUpload files={batchFiles} defaultCatalog={catalog} onSuccess={onSuccess} onCancel={onCancel} />;
+  }
 
   if (showServerForm && manifestData) {
     return (
@@ -245,6 +219,7 @@ const McpbUploadForm: React.FC<McpbUploadFormProps> = ({ onSuccess, onCancel }) 
             )}
 
             <div className="space-y-6">
+              <p className="hub-sub">{t('catalog.label')}: {catalog || t('catalog.public')}</p>
               {/* Extension Info */}
               <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                 <h3 className="font-medium text-gray-900 mb-2">{t('mcpb.extensionInfo')}</h3>
@@ -359,6 +334,9 @@ const McpbUploadForm: React.FC<McpbUploadFormProps> = ({ onSuccess, onCancel }) 
           </div>
         )}
 
+        <CatalogInput value={catalog} onChange={setCatalog} disabled={isUploading} />
+
+        <p className="hub-sub text-sm mb-3">{t('mcpb.batchHelp')}</p>
         {/* File Drop Zone */}
         <div
           className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
@@ -417,6 +395,7 @@ const McpbUploadForm: React.FC<McpbUploadFormProps> = ({ onSuccess, onCancel }) 
           <input
             type="file"
             accept=".mcpb"
+            multiple
             onChange={handleFileSelect}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />

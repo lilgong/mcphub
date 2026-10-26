@@ -1,3 +1,4 @@
+import { splitServerKey, validateServerKey } from '../../../src/utils/catalog';
 import type { ServerConfig } from '../types';
 
 export interface ImportJsonFormat {
@@ -46,6 +47,15 @@ const KNOWN_KEYS = new Set<keyof ServerConfig | string>([
   'prompts',
   'passthroughHeaders',
   'proxy',
+  'targets',
+  'keyPool',
+  'rateLimit',
+  'relay',
+  'credentialTemplate',
+  'startOnDemand',
+  'idleTimeoutMs',
+  'resources',
+  'sharedWithUsers',
 ]);
 
 /**
@@ -56,11 +66,27 @@ const KNOWN_KEYS = new Set<keyof ServerConfig | string>([
  * `oauth`. That produced opaque "Failed to import servers" errors downstream.
  * We now validate up-front and name the exact server/field at fault.
  */
-export const normalizeImportedServers = (parsed: ImportJsonFormat): NormalizeResult => {
+export const normalizeImportedServers = (parsed: ImportJsonFormat, catalog?: string): NormalizeResult => {
   const servers: NormalizedServer[] = [];
   const issues: ImportIssue[] = [];
 
+  const seen = new Set<string>();
   for (const [name, rawConfig] of Object.entries(parsed.mcpServers)) {
+    const existing = splitServerKey(name);
+    if (catalog && existing.catalog && existing.catalog !== catalog) {
+      issues.push({ name, message: `Server belongs to namespace "${existing.catalog}", not "${catalog}".` });
+      continue;
+    }
+    const identity = validateServerKey(name, catalog || undefined);
+    if (!identity.valid) {
+      issues.push({ name, message: identity.message || 'Invalid server identity' });
+      continue;
+    }
+    if (seen.has(identity.normalized!)) {
+      issues.push({ name, message: `Duplicate destination "${identity.normalized}".` });
+      continue;
+    }
+    seen.add(identity.normalized!);
     const config = (rawConfig ?? {}) as ServerConfig & Record<string, unknown>;
     const normalizedConfig: Partial<ServerConfig> = {};
 
@@ -140,7 +166,7 @@ export const normalizeImportedServers = (parsed: ImportJsonFormat): NormalizeRes
       continue;
     }
 
-    servers.push({ name, config: normalizedConfig });
+    servers.push({ name: identity.normalized!, config: { ...config, ...normalizedConfig } });
   }
 
   return { servers, issues };

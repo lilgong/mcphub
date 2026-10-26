@@ -19,6 +19,8 @@ MCPHub 是 AI 客户端与 MCP 服务器之间的统一控制点。一次连接�
 
 自定义 MCP 的依赖与 wrapper 应作为独立 MCPB 包导入；Hub 镜像不依赖 MCP-Atlas。单版本使用普通连接，多版本 / 工作区使用明确目标；多 key 轮询只显示在兼容适配器上。参见 [独立包与目标配置](docs/zh/features/atlas-integration.mdx)。
 
+Catalog 命名空间保留公共入口 `/mcp/{server}`，并新增评测入口 `/mcp/{catalog}/{server}`。MCP 名称保持不变，连接、凭据、target 和调用限速按空间区分；catalog 不自动聚合工具或创建任务容器。详见 [Catalog 命名空间](docs/features/catalogs.mdx)。
+
 ## 🌐 官网、演示与文档
 
 - **官网**: [mcphub.app](https://www.mcphub.app/zh)

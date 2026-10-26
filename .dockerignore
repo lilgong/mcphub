@@ -34,3 +34,7 @@ mcp_usage_log
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Local Slack runtime caches contain account metadata.
+.channels_cache*.json
+.users_cache*.json

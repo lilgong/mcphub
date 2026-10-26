@@ -1,3 +1,4 @@
+import { catalogRouteMiddleware } from './middlewares/catalog.js';
 import { migrateOwnedCallGroups } from './services/userGroupService.js';
 import express from 'express';
 import { relayRuntimeService } from './services/relayRuntimeService.js';
@@ -119,30 +120,35 @@ export class AppServer {
           this.app.get(
             `${this.basePath}/sse/:group(.*)?`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             (req, res) => handleSseConnection(req, res),
           );
           this.app.post(
             `${this.basePath}/messages`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             handleSseMessage,
           );
           this.app.post(
             `${this.basePath}/mcp/:group(.*)?`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             handleMcpPostRequest,
           );
           this.app.get(
             `${this.basePath}/mcp/:group(.*)?`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             handleMcpOtherRequest,
           );
           this.app.delete(
             `${this.basePath}/mcp/:group(.*)?`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             handleMcpOtherRequest,
           );
@@ -151,30 +157,35 @@ export class AppServer {
           this.app.get(
             `${this.basePath}/:user/sse/:group(.*)?`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             (req, res) => handleSseConnection(req, res),
           );
           this.app.post(
             `${this.basePath}/:user/messages`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             handleSseMessage,
           );
           this.app.post(
             `${this.basePath}/:user/mcp/:group(.*)?`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             handleMcpPostRequest,
           );
           this.app.get(
             `${this.basePath}/:user/mcp/:group(.*)?`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             handleMcpOtherRequest,
           );
           this.app.delete(
             `${this.basePath}/:user/mcp/:group(.*)?`,
             mcpConnectionRateLimiter,
+            catalogRouteMiddleware,
             sseUserContextMiddleware,
             handleMcpOtherRequest,
           );

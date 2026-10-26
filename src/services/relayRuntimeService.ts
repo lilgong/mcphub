@@ -81,14 +81,15 @@ export class RelayRuntimeService {
 
   async status(): Promise<RelayRuntimeStatus> {
     const options = this.options();
-    const missing = PROXY_KEYS.filter((key) => !process.env[key]?.trim());
-    if (!(await getRelayToken())) missing.push('MCP_RELAY_TOKEN');
+    const hasToken = Boolean(await getRelayToken());
     const local = await this.health(options.local);
     const owned =
       Boolean(this.child?.pid) && this.child?.exitCode === null && this.child?.signalCode === null;
     const external = !owned
       ? local || (await this.health((await getAtlasConfig()).relay.url))
       : undefined;
+    const missing = external ? [] : PROXY_KEYS.filter((key) => !process.env[key]?.trim());
+    if (!hasToken) missing.push('MCP_RELAY_TOKEN');
     return {
       state: owned ? 'running' : external ? 'external' : this.lastError ? 'failed' : 'stopped',
       healthy: owned

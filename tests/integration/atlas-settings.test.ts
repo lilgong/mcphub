@@ -13,6 +13,7 @@ import {
 } from '../../src/dao/DaoFactory.js';
 import {
   relayLimits,
+  checkAtlasRelay,
   getAtlasSettings,
   updateAtlasSettings,
   getAtlasRelayRuntime,
@@ -24,6 +25,8 @@ import {
 } from '../../src/services/atlasConfigService.js';
 import { closeServer, initializeClientsFromSettings } from '../../src/services/mcpService.js';
 import { getServerEnvironment } from '../../src/services/serverConfigEnvironment.js';
+import { relayRuntimeService } from '../../src/services/relayRuntimeService.js';
+import { getAtlasConfig } from '../../src/services/atlasConfigService.js';
 import { clearSettingsCache } from '../../src/config/index.js';
 import { setCachedSystemConfig } from '../../src/utils/systemConfigCache.js';
 
@@ -41,6 +44,7 @@ app.use((req, _res, next) => {
   };
   next();
 });
+app.post('/api/relay/health', checkAtlasRelay);
 app.get('/api/relay/limits', relayLimits);
 app.put('/api/relay/limits', relayLimits);
 app.get('/api/atlas', getAtlasSettings);
@@ -242,4 +246,115 @@ test('relay settings reconnect compatible implementations by capability, includi
   expect(closeServer).toHaveBeenCalledWith('other-suite-search');
   expect(initializeClientsFromSettings).toHaveBeenCalledWith(false, 'other-suite-search');
   expect(closeServer).not.toHaveBeenCalledWith('wikipedia');
+});
+
+test('external relay settings save without local proxy credentials', async () => {
+  const snapshot = { ...process.env };
+  for (const key of [
+    'IPWO_PROXY_HOST',
+    'IPWO_PROXY_PORT',
+    'IPWO_PROXY_USERNAME',
+    'IPWO_PROXY_PASSWORD',
+  ])
+    delete process.env[key];
+  const status = jest.spyOn(relayRuntimeService, 'status').mockResolvedValue({
+    state: 'external',
+    healthy: true,
+    configured: true,
+    missing: [],
+    port: 3986,
+  });
+  try {
+    const response = await request(app)
+      .put('/api/atlas')
+      .set('x-test-admin', 'yes')
+      .send({ config, relayToken: '  external-test-token  ' })
+      .expect(200);
+    expect(response.body.success).toBe(true);
+    expect(await getRelayEnvironment('pubmed')).toHaveProperty(
+      'MCP_RELAY_TOKEN',
+      'external-test-token',
+    );
+  } finally {
+    status.mockRestore();
+    process.env = snapshot;
+    await saveAtlasConfig(config, 'synthetic-relay-secret');
+  }
+});
+
+test('save reports a missing token explicitly without persisting enabled relay settings', async () => {
+  const previous = await getAtlasConfig();
+  await getCredentialBindingDao().delete({ serverName: '$atlas-relay', username: '$system' });
+  try {
+    const response = await request(app)
+      .put('/api/atlas')
+      .set('x-test-admin', 'yes')
+      .send({ config, relayToken: '' })
+      .expect(400);
+    expect(response.body.message).toBe('A relay token is required');
+    expect(await getAtlasConfig()).toEqual(previous);
+    const invalid = await request(app)
+      .put('/api/atlas')
+      .set('x-test-admin', 'yes')
+      .send({ config, relayToken: 'Bearer do-not-echo-this-token' })
+      .expect(400);
+    expect(invalid.body.message).toContain('without the Bearer prefix');
+    expect(JSON.stringify(invalid.body)).not.toContain('do-not-echo-this-token');
+  } finally {
+    await saveAtlasConfig(config, 'synthetic-relay-secret');
+  }
+});
+
+test('health checks the unsaved form address and rejects a Hub health response', async () => {
+  const previous = await getAtlasConfig();
+  const originalFetch = global.fetch;
+  const mock = jest
+    .fn()
+    .mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: 'ok' }) });
+  global.fetch = mock as unknown as typeof fetch;
+  const draft = {
+    ...config,
+    relay: { enabled: true, url: 'http://127.0.0.1:19123', timeoutSeconds: 90 },
+  };
+  try {
+    await request(app).post('/api/relay/health').send({ config: draft }).expect(403);
+    await request(app)
+      .post('/api/relay/health')
+      .set('x-test-admin', 'yes')
+      .send({ config: draft })
+      .expect(200);
+    expect(mock.mock.calls[0][0]).toBe('http://127.0.0.1:19123/health');
+    expect(await getAtlasConfig()).toEqual(previous);
+    mock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: 'healthy' }) });
+    const wrong = await request(app)
+      .post('/api/relay/health')
+      .set('x-test-admin', 'yes')
+      .send({ config: draft })
+      .expect(400);
+    expect(wrong.body.message).toContain('not a Relay');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('admin relay status reports per-server routing metadata without exposing provider values', async () => {
+  await getServerDao().create({
+    name: 'atlas::relay-status-task',
+    enabled: true,
+    targets: [
+      { path: 'task/default', kind: 'task', config: { env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1' } } },
+    ],
+  });
+  await getServerDao().create({
+    name: 'atlas::relay-status-disabled',
+    enabled: true,
+    command: 'node',
+    env: { MCPHUB_RELAY_ADAPTER: 'fetch-v1', PROVIDER_KEY: 'status-must-not-return-me' },
+    relay: { enabled: false },
+  });
+  const response = await request(app).get('/api/atlas').set('x-test-admin', 'yes').expect(200);
+  expect(response.body.data.serverRelay['atlas::relay-status-task']).toBe('task');
+  expect(response.body.data.serverRelay['atlas::relay-status-disabled']).toBeUndefined();
+  expect(JSON.stringify(response.body)).not.toContain('status-must-not-return-me');
+  await request(app).get('/api/atlas').expect(403);
 });

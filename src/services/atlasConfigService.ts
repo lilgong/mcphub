@@ -5,6 +5,8 @@ import { toolCallScheduler } from './toolCallSchedulerService.js';
 import type { FetchRelayConfig } from '../types/serviceControls.js';
 import type { AtlasConfig, ToolCallPolicy } from '../types/atlas.js';
 
+export class AtlasConfigValidationError extends Error {}
+
 const RELAY_BINDING = { serverName: '$atlas-relay', username: '$system' };
 export const RELAY_SERVERS = new Set(['arxiv', 'pubmed', 'osm-mcp-server', 'wikipedia']);
 export const BASE_POLICY: ToolCallPolicy = {
@@ -19,17 +21,19 @@ export const BASE_POLICY: ToolCallPolicy = {
 };
 
 export function validateAtlasConfig(value: unknown): AtlasConfig {
-  if (!value || typeof value !== 'object') throw new Error('Invalid Atlas settings');
+  if (!value || typeof value !== 'object')
+    throw new AtlasConfigValidationError('Invalid Atlas settings');
   const data = value as AtlasConfig;
   if (!data.policies || typeof data.policies !== 'object' || Array.isArray(data.policies))
-    throw new Error('Invalid service policies');
+    throw new AtlasConfigValidationError('Invalid service policies');
   const policies: Record<string, ToolCallPolicy> = Object.create(null);
-  if (Object.keys(data.policies).length > 500) throw new Error('Too many service policies');
+  if (Object.keys(data.policies).length > 500)
+    throw new AtlasConfigValidationError('Too many service policies');
   for (const [name, item] of Object.entries(data.policies)) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(name) || !item || typeof item !== 'object')
-      throw new Error('Invalid service policy');
+      throw new AtlasConfigValidationError('Invalid service policy');
     if (typeof item.enabled !== 'boolean' || !['server', 'principal'].includes(item.scope))
-      throw new Error('Invalid policy scope');
+      throw new AtlasConfigValidationError('Invalid policy scope');
     const ranges = {
       concurrency: [1, 100],
       minIntervalMs: [0, 600000],
@@ -41,10 +45,10 @@ export function validateAtlasConfig(value: unknown): AtlasConfig {
     for (const [field, [min, max]] of Object.entries(ranges)) {
       const number = item[field as keyof typeof ranges];
       if (!Number.isInteger(number) || number < min || number > max)
-        throw new Error(`Invalid ${field}`);
+        throw new AtlasConfigValidationError(`Invalid ${field}`);
     }
     if (item.maxBackoffMs < item.rateLimitBackoffMs)
-      throw new Error('Maximum cooldown must cover base cooldown');
+      throw new AtlasConfigValidationError('Maximum cooldown must cover base cooldown');
     policies[name] = { ...item };
   }
   const relay = data.relay;
@@ -57,10 +61,17 @@ export function validateAtlasConfig(value: unknown): AtlasConfig {
     relay.timeoutSeconds < 1 ||
     relay.timeoutSeconds > 600
   )
-    throw new Error('Invalid relay settings');
+    throw new AtlasConfigValidationError(
+      'Relay settings require an HTTP(S) URL and a whole-number timeout between 1 and 600 seconds',
+    );
   const url = relay.url.trim().replace(/\/+$/, '');
   if (url) {
-    const parsed = new URL(url);
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new AtlasConfigValidationError('Relay URL must be a valid HTTP(S) address');
+    }
     if (
       !['http:', 'https:'].includes(parsed.protocol) ||
       parsed.username ||
@@ -68,8 +79,10 @@ export function validateAtlasConfig(value: unknown): AtlasConfig {
       parsed.search ||
       parsed.hash
     )
-      throw new Error('Relay must use an HTTP(S) URL without embedded credentials');
-  } else if (relay.enabled) throw new Error('Relay URL is required');
+      throw new AtlasConfigValidationError(
+        'Relay must use an HTTP(S) URL without embedded credentials',
+      );
+  } else if (relay.enabled) throw new AtlasConfigValidationError('Relay URL is required');
   return { policies, relay: { enabled: relay.enabled, url, timeoutSeconds: relay.timeoutSeconds } };
 }
 
@@ -84,6 +97,9 @@ export async function saveAtlasConfig(
   clearToken = false,
 ): Promise<void> {
   config = validateAtlasConfig(config);
+  if (token !== undefined && typeof token !== 'string')
+    throw new AtlasConfigValidationError('Relay Token must be text');
+  token = token?.trim();
   const old = await getAtlasConfig();
   const busy = toolCallScheduler.stats();
   for (const [name, policy] of Object.entries(config.policies)) {
@@ -92,21 +108,25 @@ export async function saveAtlasConfig(
       old.policies[name].scope !== policy.scope &&
       (busy[name]?.active || busy[name]?.queued)
     )
-      throw new Error('Wait for the service to become idle before changing credential scope');
+      throw new AtlasConfigValidationError(
+        'Wait for the service to become idle before changing credential scope',
+      );
   }
   if (
     token !== undefined &&
     token !== '' &&
     (!token.trim() || /\s/.test(token) || token.length > 16384)
   )
-    throw new Error('Invalid relay token');
+    throw new AtlasConfigValidationError(
+      'Relay Token must not contain whitespace; enter the token without the Bearer prefix',
+    );
   if (
     config.relay.enabled &&
     (clearToken ||
       (!token &&
         !(await getCredentialBindingDao().get(RELAY_BINDING.serverName, RELAY_BINDING.username))))
   )
-    throw new Error('A relay token is required');
+    throw new AtlasConfigValidationError('A relay token is required');
   if (token)
     await getCredentialBindingDao().save({
       ...RELAY_BINDING,

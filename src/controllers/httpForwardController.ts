@@ -104,7 +104,14 @@ export async function forwardHttp(req: Request, res: Response): Promise<void> {
       },
       () =>
         withToolAudit(
-          { server: name, tool: `HTTP ${req.method}`, username: principal.username },
+          {
+            server: name,
+            tool: `HTTP ${req.method}`,
+            username: principal.username,
+            keyId: auth.keyId,
+            keyName: auth.keyName,
+            sourceIp: req.ip,
+          },
           () =>
             toolCallScheduler.run(
               name,
@@ -151,6 +158,7 @@ export async function forwardHttp(req: Request, res: Response): Promise<void> {
               principal.username,
               abort.signal,
             ),
+          true,
         ),
     );
     if (!res.destroyed) {

@@ -43,6 +43,7 @@ interface ServerStatusDotProps {
   enabled?: boolean;
   startOnDemand?: boolean;
   targetManaged?: boolean;
+  taskManaged?: boolean;
   onAuthClick?: (e: React.MouseEvent) => void;
   className?: string;
 }
@@ -51,7 +52,7 @@ export const ServerStatusDot: React.FC<ServerStatusDotProps> = ({
   status,
   enabled,
   startOnDemand,
-  targetManaged,
+  taskManaged,
   onAuthClick,
   className,
 }) => {
@@ -61,8 +62,8 @@ export const ServerStatusDot: React.FC<ServerStatusDotProps> = ({
       <StatusDot kind="muted" label={t('server.disable') || 'Disabled'} className={className} />
     );
   }
-  if (targetManaged)
-    return <StatusDot kind="muted" label={t('targets.managed')} className={className} />;
+  if (taskManaged)
+    return <StatusDot kind="muted" label={t('targets.taskOnlyTitle')} className={className} />;
   // On-demand servers that are disconnected are "sleeping", not offline
   if (startOnDemand && status === 'disconnected') {
     return (

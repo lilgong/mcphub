@@ -1,3 +1,5 @@
+import { matchesLogScope } from './usageLogDirectories.js';
+import { splitServerKey } from '../utils/catalog.js';
 import { createReadStream } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
@@ -6,11 +8,13 @@ export interface StatsQuery {
   start: string;
   end: string;
   server?: string;
+  catalog?: string;
   credentialId?: string;
   metric?: string;
 }
 export interface ServerCallStats {
   server: string;
+  catalog?: string;
   calls: number;
   success: number;
   errors: number;
@@ -63,11 +67,11 @@ export async function getCallStats(query: StatsQuery): Promise<{
         const server = text('server') || calls.get(id) || text('group') || 'unknown';
         calls.delete(id);
         const ts = text('ts');
-        if (ts < query.start || ts > query.end || (query.server && server !== query.server))
-          continue;
+        if (ts < query.start || ts > query.end || !matchesLogScope(server, query)) continue;
         const key = server;
         const row = groups.get(key) || {
           server,
+          catalog: splitServerKey(server).catalog,
           calls: 0,
           success: 0,
           errors: 0,

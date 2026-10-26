@@ -6,6 +6,10 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+const mockActivity = jest.fn(async () => undefined);
+jest.mock('../../src/services/activityLoggingService.js', () => ({
+  getActivityLoggingService: () => ({ logToolCall: mockActivity }),
+}));
 let resource: Record<string, unknown>;
 let permitted = true;
 let valid = true;
@@ -129,6 +133,15 @@ const search = () =>
 it('preserves request bytes, path, query and response JSON; replaces client credentials', async () => {
   const response = await search();
   expect(response.status).toBe(200);
+  expect(mockActivity).toHaveBeenCalledTimes(1);
+  expect(mockActivity).toHaveBeenCalledWith(
+    expect.objectContaining({
+      server: 'serper',
+      status: 'success',
+      keyId: 'group-key',
+      hasCredentialTemplate: true,
+    }),
+  );
   expect(response.text).toBe(upstreamBody.toString());
   expect(seen).toEqual({
     url: '/serper/search?flag=1',

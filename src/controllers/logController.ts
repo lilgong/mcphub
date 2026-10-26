@@ -93,6 +93,8 @@ export const getCallLogs = async (req: Request, res: Response): Promise<void> =>
       success: true,
       data: await service.getCallLogs({
         date,
+        catalog:
+          typeof req.query.catalog === 'string' ? req.query.catalog.slice(0, 160) : undefined,
         status,
         source,
         page,

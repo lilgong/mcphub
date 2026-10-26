@@ -8,6 +8,7 @@ import { useSettingsData } from '../hooks/useSettingsData'
 import { Server } from '../types'
 
 interface AddServerFormProps {
+  defaultCatalog?: string
   onAdd: () => void
   /**
    * Source server for the card's Duplicate action (#1187). Setting it opens the
@@ -22,6 +23,7 @@ const AddServerForm = ({
   onAdd,
   duplicateSource = null,
   onDuplicateCancel,
+  defaultCatalog = '',
 }: AddServerFormProps) => {
   const { t } = useTranslation()
   const { nameSeparator } = useSettingsData()
@@ -152,6 +154,7 @@ const AddServerForm = ({
               ServersPage request-id guard already drops superseded duplicate
               responses before they can swap the source mid-session. */}
           <ServerForm
+            defaultCatalog={defaultCatalog}
             key={duplicateSource?.name ?? 'add'}
             onSubmit={handleSubmit}
             onCancel={closeModal}

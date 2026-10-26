@@ -1,7 +1,20 @@
+import { useAuth } from '@/contexts/AuthContext';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { apiDelete, apiGet } from '@/utils/fetchInterceptor';
+import { splitServerKey } from '../../../src/utils/catalog';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Plus, RefreshCw, Search, Upload, FileCode, AlertCircle, X, ArrowDownAZ } from 'lucide-react';
+import {
+  Plus,
+  RefreshCw,
+  Search,
+  Upload,
+  FileCode,
+  AlertCircle,
+  X,
+  ArrowDownAZ,
+} from 'lucide-react';
 import { Server } from '@/types';
 import ServerCard from '@/components/ServerCard';
 import AddServerForm from '@/components/AddServerForm';
@@ -16,6 +29,36 @@ import { resolveDuplicateResponse } from '@/utils/serverDuplicate';
 
 const ServersPage: React.FC = () => {
   const { t } = useTranslation();
+  const { auth } = useAuth();
+  const [relayReady, setRelayReady] = useState<boolean>();
+  const [relayModes, setRelayModes] = useState<Record<string, 'enabled' | 'task'>>({});
+  useEffect(() => {
+    if (!auth.user?.isAdmin) return;
+    let active = true;
+    const load = async () => {
+      const [settings, runtime] = await Promise.all([
+        apiGet('/relay/config'),
+        apiGet('/relay/runtime'),
+      ]);
+      if (active && settings.success) setRelayModes(settings.data.serverRelay ?? {});
+      if (active)
+        setRelayReady(
+          !!(
+            settings.success &&
+            settings.data.relay.enabled &&
+            settings.data.hasRelayToken &&
+            runtime.success &&
+            runtime.data.healthy
+          ),
+        );
+    };
+    void load();
+    const timer = setInterval(() => void load(), 10000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [auth.user?.isAdmin]);
   const navigate = useNavigate();
   const {
     servers,
@@ -53,6 +96,49 @@ const ServersPage: React.FC = () => {
   const [showJsonImport, setShowJsonImport] = useState(false);
   const [filter, setFilter] = useState<ServerFilter>('all');
   const [search, setSearch] = useState('');
+  const [catalog, setCatalog] = useState('*');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [batchResult, setBatchResult] = useState('');
+  useEffect(() => {
+    setSelected(new Set());
+  }, [catalog, filter, search]);
+  const deleteSelected = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    const failed: string[] = [];
+    let removed = 0;
+    for (const name of selected) {
+      try {
+        const result = await apiDelete(`/servers/${encodeURIComponent(name)}`);
+        if (!result.success) throw new Error(result.message || t('serverBatch.failed'));
+        removed++;
+      } catch (cause) {
+        failed.push(name);
+        setError(`${name}: ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
+    }
+    setSelected(new Set(failed));
+    setBatchResult(t('serverBatch.result', { removed, failed: failed.length }));
+    setDeleting(false);
+    setConfirmBatchDelete(false);
+    triggerRefresh();
+  };
+  const catalogNames = useMemo(
+    () =>
+      [
+        ...new Set(allServers.map((server) => splitServerKey(server.name).catalog).filter(Boolean)),
+      ].sort(),
+    [allServers],
+  );
+  const catalogServers = useMemo(
+    () =>
+      allServers.filter(
+        (server) => catalog === '*' || splitServerKey(server.name).catalog === catalog,
+      ),
+    [allServers, catalog],
+  );
   const [sortByName, setSortByName] = useState(
     () => localStorage.getItem('mcphub_server_sort') === 'name',
   );
@@ -60,13 +146,16 @@ const ServersPage: React.FC = () => {
     localStorage.setItem('mcphub_server_sort', sortByName ? 'name' : 'default');
   }, [sortByName]);
   const orderedServers = useMemo(
-    () => sortByName
-      ? [...allServers].sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }))
-      : allServers,
-    [allServers, sortByName],
+    () =>
+      sortByName
+        ? [...catalogServers].sort((a, b) =>
+            a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }),
+          )
+        : catalogServers,
+    [catalogServers, sortByName],
   );
 
-  const counts = useMemo(() => getServerFilterCounts(allServers), [allServers]);
+  const counts = useMemo(() => getServerFilterCounts(catalogServers), [catalogServers]);
 
   // Filter against the full list and paginate the filtered result client-side,
   // so status filters reach servers that live on other pagination pages.
@@ -167,17 +256,11 @@ const ServersPage: React.FC = () => {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-end justify-between gap-4 mb-6">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="hub-h1">{t('pages.servers.title')}</h1>
-          <p className="hub-sub">
-            <span className="hub-num">{counts.all}</span> {t('nav.servers').toLowerCase()} ·{' '}
-            <span className="hub-num">{counts.online}</span> {t('status.online')} ·{' '}
-            <span className="hub-num">{counts.issues}</span>{' '}
-            {t('common.inactive') || 'issues'}
-          </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button className="hub-btn" onClick={() => navigate('/market')}>
             <Plus size={13} /> {t('nav.market')}
           </button>
@@ -197,6 +280,7 @@ const ServersPage: React.FC = () => {
             {t('common.refresh')}
           </button>
           <AddServerForm
+            defaultCatalog={catalog === '*' ? '' : catalog}
             onAdd={handleServerAdd}
             duplicateSource={duplicateServer}
             onDuplicateCancel={() => setDuplicateServer(null)}
@@ -228,16 +312,37 @@ const ServersPage: React.FC = () => {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center gap-3 mb-3">
+        <label htmlFor="catalog-filter" className="text-sm whitespace-nowrap">
+          {t('catalog.label')}
+        </label>
+        <select
+          id="catalog-filter"
+          className="hub-input"
+          style={{ width: 220, maxWidth: '40vw' }}
+          value={catalog}
+          onChange={(event) => {
+            setCatalog(event.target.value);
+            setCurrentPage(1);
+          }}
+        >
+          <option value="*">{t('catalog.all')}</option>
+          <option value="">{t('catalog.public')}</option>
+          {catalogNames.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
       {/* Toolbar */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <div
-          className="hub-card flex items-center"
-          style={{ padding: 2, borderRadius: 7, background: 'var(--hub-surface)' }}
-        >
+        <div className="hub-filter-tabs" role="group" aria-label={t('uiLayout.statusFilter')}>
           {(
             [
               ['all', t('common.all') || 'All', counts.all],
               ['online', t('status.online'), counts.online],
+              ['tasks', t('uiLayout.mode_task'), counts.tasks],
               ['issues', t('common.inactive') || 'Issues', counts.issues],
               ['disabled', t('pages.dashboard.disabledServers') || 'Disabled', counts.disabled],
             ] as [ServerFilter, string, number][]
@@ -245,25 +350,17 @@ const ServersPage: React.FC = () => {
             <button
               key={k}
               onClick={() => setFilter(k)}
-              className="inline-flex items-center gap-1.5 px-3 text-[12px]"
-              style={{
-                height: 24,
-                borderRadius: 5,
-                background: filter === k ? 'var(--hub-bg-2)' : 'transparent',
-                color: filter === k ? 'var(--hub-ink)' : 'var(--hub-ink-3)',
-                border: '1px solid ' + (filter === k ? 'var(--hub-line)' : 'transparent'),
-              }}
+              className={`hub-filter-tab ${filter === k ? 'is-active' : ''}`}
+              aria-pressed={filter === k}
             >
               {l}
-              <span className="hub-mono" style={{ fontSize: 11, color: 'var(--hub-ink-3)' }}>
-                {n}
-              </span>
+              <span className="hub-filter-count">{n}</span>
             </button>
           ))}
         </div>
 
         <div
-          className="hub-card flex items-center gap-2 px-2.5 flex-1"
+          className="hub-search-field flex items-center gap-2 px-2.5 flex-1"
           style={{ height: 30, background: 'var(--hub-surface)', maxWidth: 360 }}
         >
           <Search size={13} style={{ color: 'var(--hub-ink-3)' }} />
@@ -301,6 +398,74 @@ const ServersPage: React.FC = () => {
         </div>
       </div>
 
+      <div
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3 px-4 py-1.5 rounded-lg"
+        style={{ background: selected.size ? 'var(--hub-accent-soft)' : 'transparent' }}
+      >
+        <label className="hub-checkbox-label">
+          <input
+            type="checkbox"
+            disabled={deleting || visibleServers.length === 0}
+            checked={
+              visibleServers.length > 0 &&
+              visibleServers.every((server) => selected.has(server.name))
+            }
+            onChange={(event) =>
+              setSelected((current) => {
+                const next = new Set(current);
+                visibleServers.forEach((server) =>
+                  event.target.checked ? next.add(server.name) : next.delete(server.name),
+                );
+                return next;
+              })
+            }
+          />
+          {t('serverBatch.selectPage')}
+        </label>
+        <span className="hub-sub text-sm">
+          {t('serverBatch.selected', { count: selected.size })}
+        </span>
+        {selected.size > 0 && (
+          <button
+            className="hub-btn danger ml-auto"
+            disabled={deleting}
+            onClick={() => setConfirmBatchDelete(true)}
+          >
+            {t('serverBatch.delete')}
+          </button>
+        )}
+        {batchResult && (
+          <span role="status" className="text-sm">
+            {batchResult}
+          </span>
+        )}
+      </div>
+      <ConfirmDialog
+        isOpen={confirmBatchDelete}
+        variant="danger"
+        title={t('serverBatch.delete')}
+        confirmText={deleting ? t('serverBatch.deleting') : t('serverBatch.delete')}
+        confirmDisabled={deleting}
+        onClose={() => {
+          if (!deleting) setConfirmBatchDelete(false);
+        }}
+        onConfirm={deleteSelected}
+        message={
+          <div>
+            <p>{t('serverBatch.confirm', { count: selected.size })}</p>
+            <ul className="mt-3 max-h-60 overflow-y-auto">
+              {[...selected].map((name) => {
+                const identity = splitServerKey(name);
+                return (
+                  <li key={name}>
+                    {identity.catalog || t('catalog.public')} / {identity.name}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        }
+      />
       {/* List */}
       {isLoading && servers.length === 0 ? (
         <div className="hub-card p-6 flex items-center justify-center">
@@ -320,6 +485,18 @@ const ServersPage: React.FC = () => {
               <ServerCard
                 key={server.name}
                 server={server}
+                relayReady={relayReady}
+                relayMode={relayModes[server.name]}
+                selected={selected.has(server.name)}
+                selectionDisabled={deleting}
+                onSelect={(checked) =>
+                  setSelected((current) => {
+                    const next = new Set(current);
+                    if (checked) next.add(server.name);
+                    else next.delete(server.name);
+                    return next;
+                  })
+                }
                 cost={serverCosts.find((c) => c.name === server.name)}
                 onRemove={handleServerRemove}
                 onEdit={handleEditClick}
@@ -339,7 +516,10 @@ const ServersPage: React.FC = () => {
             <div className="flex-[2]">
               {t('common.showing', {
                 start: (clientPagination.page - 1) * clientPagination.limit + 1,
-                end: Math.min(clientPagination.page * clientPagination.limit, clientPagination.total),
+                end: Math.min(
+                  clientPagination.page * clientPagination.limit,
+                  clientPagination.total,
+                ),
                 total: clientPagination.total,
               })}
             </div>
@@ -385,6 +565,7 @@ const ServersPage: React.FC = () => {
       )}
       {showMcpbUpload && (
         <McpbUploadForm
+          catalog={catalog === '*' ? '' : catalog}
           onSuccess={() => {
             setShowMcpbUpload(false);
             triggerRefresh();
@@ -394,6 +575,7 @@ const ServersPage: React.FC = () => {
       )}
       {showJsonImport && (
         <JSONImportForm
+          defaultCatalog={catalog === '*' ? '' : catalog}
           onSuccess={() => {
             setShowJsonImport(false);
             triggerRefresh();

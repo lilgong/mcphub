@@ -15,7 +15,7 @@ export default function RelayLimits() {
         : await apiGet<{ success: boolean; data: { limits: Limits } }>('/relay/limits');
       if (!result.success) throw new Error();
       setLimits(result.data.limits);
-      setMessage(save ? t('atlas.saved') : '');
+      setMessage(save ? t('uiLayout.limitsSaved') : '');
     } catch {
       setMessage(t('relayLimits.failed'));
     } finally {
@@ -23,60 +23,70 @@ export default function RelayLimits() {
     }
   };
   return (
-    <section className="hub-card space-y-4 p-5">
-      <h2 className="hub-card-title">{t('relayLimits.title')}</h2>
-      <p className="text-sm text-[var(--hub-ink-2)]">{t('relayLimits.description')}</p>
+    <section className="space-y-4">
+      <h2 className="hub-editor-heading">{t('uiLayout.upstreamLimits')}</h2>
+      <p className="text-sm text-[var(--hub-ink-2)]">{t('uiLayout.upstreamScope')}</p>
       <button type="button" disabled={busy} className="hub-btn" onClick={() => request(false)}>
         {t('relayLimits.load')}
       </button>
       {limits && (
         <>
-          {Object.entries(limits).map(([name, value]) => (
-            <div
-              key={name}
-              className="grid grid-cols-1 items-end gap-3 border-t border-[var(--hub-line-2)] pt-4 sm:grid-cols-3"
-            >
-              <code className="text-xs text-[var(--hub-ink-2)] sm:self-center">{name}</code>
-              <label className="hub-field">
-                <span className="hub-label">{t('serviceControls.minIntervalMs')}</span>
-                <input
-                  aria-label={`${name} ${t('serviceControls.minIntervalMs')}`}
-                  className="hub-input"
-                  type="number"
-                  min="0"
-                  max="600000"
-                  value={value.minIntervalMs}
-                  onChange={(e) =>
-                    setLimits({
-                      ...limits,
-                      [name]: { ...value, minIntervalMs: Number(e.target.value) },
-                    })
-                  }
-                />
-              </label>
-              <label className="hub-field">
-                <span className="hub-label">{t('serviceControls.concurrency')}</span>
-                <input
-                  aria-label={`${name} ${t('serviceControls.concurrency')}`}
-                  className="hub-input"
-                  type="number"
-                  min="1"
-                  max="1000"
-                  placeholder={t('serviceControls.unset')}
-                  value={value.concurrency ?? ''}
-                  onChange={(e) =>
-                    setLimits({
-                      ...limits,
-                      [name]: {
-                        ...value,
-                        concurrency: e.target.value ? Number(e.target.value) : undefined,
-                      },
-                    })
-                  }
-                />
-              </label>
-            </div>
-          ))}
+          <div className="overflow-x-auto">
+            <table className="hub-relay-table">
+              <thead>
+                <tr>
+                  <th>{t('uiLayout.upstreamCategory')}</th>
+                  <th>{t('serviceControls.minIntervalMs')}</th>
+                  <th>{t('serviceControls.concurrency')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(limits).map(([name, value]) => (
+                  <tr key={name}>
+                    <td>{name}</td>
+                    <td>
+                      <input
+                        aria-label={`${name} ${t('serviceControls.minIntervalMs')}`}
+                        className="hub-input"
+                        type="number"
+                        min="0"
+                        max="600000"
+                        value={value.minIntervalMs}
+                        onChange={(event) =>
+                          setLimits({
+                            ...limits,
+                            [name]: { ...value, minIntervalMs: Number(event.target.value) },
+                          })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        aria-label={`${name} ${t('serviceControls.concurrency')}`}
+                        className="hub-input"
+                        type="number"
+                        min="1"
+                        max="1000"
+                        placeholder={t('serviceControls.unset')}
+                        value={value.concurrency ?? ''}
+                        onChange={(event) =>
+                          setLimits({
+                            ...limits,
+                            [name]: {
+                              ...value,
+                              concurrency: event.target.value
+                                ? Number(event.target.value)
+                                : undefined,
+                            },
+                          })
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <button type="button" disabled={busy} className="hub-btn" onClick={() => request(true)}>
             {t('relayLimits.save')}
           </button>
