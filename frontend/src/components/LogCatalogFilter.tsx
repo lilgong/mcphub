@@ -5,15 +5,17 @@ import { apiGet } from '@/utils/fetchInterceptor';
 export default function LogCatalogFilter({
   value,
   onChange,
+  refresh = 0,
 }: {
   value: string;
   onChange: (value: string) => void;
+  refresh?: number;
 }) {
   const { t } = useTranslation();
   const [names, setNames] = useState<string[]>([]);
   useEffect(() => {
     let active = true;
-    void apiGet('/catalogs')
+    void apiGet('/logs/catalogs')
       .then((result) => {
         if (active && result.success && Array.isArray(result.data))
           setNames(result.data.map((item: { name: string }) => item.name).filter(Boolean));
@@ -22,7 +24,7 @@ export default function LogCatalogFilter({
     return () => {
       active = false;
     };
-  }, []);
+  }, [refresh]);
   return (
     <label className="hub-field">
       <span className="hub-label">{t('catalog.label')}</span>
@@ -40,6 +42,7 @@ export default function LogCatalogFilter({
           </option>
         ))}
         <option value="_legacy">{t('catalog.legacyLogs')}</option>
+        <option value="_unassigned">{t('catalog.unassignedLogs')}</option>
       </select>
     </label>
   );

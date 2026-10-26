@@ -1562,6 +1562,7 @@
     "failed": "Impossible de charger les appels",
     "truncated": "Seuls les enregistrements récents sont affichés ; les précédents restent dans les fichiers.",
     "unavailable": "Sources indisponibles",
+    "relayUnavailable": "Les journaux Relay ne sont pas connectés ou sont illisibles ; une liste vide ne signifie pas qu’aucune requête n’a été effectuée.",
     "empty": "Aucun enregistrement correspondant",
     "key_pool": "HTTP des clés",
     "keyLabel": "Suffixe de clé",
@@ -1794,6 +1795,7 @@
   },
   "catalog": {
     "legacyLogs": "Historique (espace inconnu)",
+    "unassignedLogs": "Enregistrements non attribués",
     "label": "Espace",
     "all": "Tous les espaces",
     "public": "Public",

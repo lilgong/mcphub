@@ -120,3 +120,32 @@ Relay upstream limits are shared by all namespaces using the same Relay process.
 For example, arXiv requests use that process's common arXiv controller. Requests
 that bypass Relay, or use independent Relay processes, do not share that queue.
 Catalog-specific MCP tool-call limits remain separate from these HTTP limits.
+
+### Audit detail consistency
+
+Tool detail queries use each call's completion timestamp, matching call statistics.
+They also read the prior UTC day's bounded audit tail because existing writers keep
+an entire call lifecycle in its start-day file. Final records supply the authoritative
+outcome, total duration and error classification; diagnostic records only fill fields
+that the final record does not contain. Truncated tails remain explicitly marked.
+
+Relay logs require a readable, operator-configured local file (including a mounted
+external Relay log). An absent or unreadable file is reported as unavailable, not as
+proof of zero requests. Unattributed Relay records appear under **Unassigned records**
+and are excluded from public and named-space filters. Existing logs cannot acquire a
+namespace by guessing from their host or upstream category. This does not introduce
+remote log collection or change the tool-call versus HTTP-attempt counting model.
+
+Log filters discover namespace names through the admin-only `GET /api/logs/catalogs`
+endpoint, combining current registrations with retained tool, HTTP-forwarding,
+key-pool, provider and attributed Relay logs. Historical discovery streams records
+and caches namespace names for up to 30 seconds. Removing the last registration
+from a namespace does not remove its retained logs or its log-filter option.
+The regular `GET /api/catalogs` configuration selector still lists current
+registrations only; historical namespaces never become callable registrations.
+
+Relay detail rows represent individual HTTP attempts. Workflow timeout/cancellation
+summaries are omitted when their request ID matches an attempt's parent request ID.
+Retries remain separate HTTP attempts. Queue expiry before any HTTP attempt remains
+a visible failure record. When a bounded tail contains no matching attempt, its
+failure summary is retained rather than silently losing the only visible evidence.

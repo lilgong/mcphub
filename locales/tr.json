@@ -1561,6 +1561,7 @@
     "failed": "Çağrı günlükleri yüklenemedi",
     "truncated": "Yalnızca son kayıtlar gösteriliyor; önceki kayıtlar dosyalarda saklanır.",
     "unavailable": "Kullanılamayan kaynaklar",
+    "relayUnavailable": "Relay günlükleri bağlı değil veya okunamıyor; boş liste hiç istek yapılmadığı anlamına gelmez.",
     "empty": "Eşleşen kayıt yok",
     "key_pool": "Anahtar havuzu HTTP",
     "keyLabel": "Anahtar sonu",
@@ -1793,6 +1794,7 @@
   },
   "catalog": {
     "legacyLogs": "Geçmiş (alan bilinmiyor)",
+    "unassignedLogs": "Atanmamış kayıtlar",
     "label": "Alan",
     "all": "Tüm alanlar",
     "public": "Genel",

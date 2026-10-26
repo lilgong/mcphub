@@ -143,6 +143,8 @@ describe('catalog runtime isolation', () => {
         ADMIN_PASSWORD: 'Catalog-test-123!',
         MCPHUB_AUDIT_LOG_DIR: join(directory, 'audit'),
         MCP_USAGE_LOG_DIR: join(directory, 'usage'),
+        MCPHUB_KEY_POOL_LOG_DIR: join(directory, 'pool'),
+        MCPHUB_RELAY_LOG_FILE: join(directory, 'relay.jsonl'),
       },
     });
     child.stdout?.on('data', (chunk) => {
@@ -456,7 +458,10 @@ describe('catalog runtime isolation', () => {
           );
           expect(result.body.result.isError).not.toBe(true);
           const identity = JSON.parse(result.body.result.content[0].text);
-          expect(identity.cachedCredentials).toEqual([`${catalog}/${target}`, `${catalog}/${target}`]);
+          expect(identity.cachedCredentials).toEqual([
+            `${catalog}/${target}`,
+            `${catalog}/${target}`,
+          ]);
           for (const file of identity.cacheFiles) cacheFiles.add(file);
         }
       }
@@ -467,4 +472,40 @@ describe('catalog runtime isolation', () => {
     }
   });
 
+  it('keeps deleted namespaces selectable only in log history', async () => {
+    const created = await request('/api/servers', {
+      catalog: 'retired',
+      name: 'arxiv',
+      config: {
+        type: 'stdio',
+        command: process.execPath,
+        args: [resolve('tests/fixtures/catalog-server.mjs')],
+        env: { PERSONAL_KEY: 'retired-fixture' },
+        visibility: 'public',
+      },
+    });
+    expect(created.status).toBe(200);
+    // Cache discovery before this namespace has any completed calls.
+    expect((await request('/api/logs/catalogs')).status).toBe(200);
+    const path = '/mcp/retired/arxiv';
+    const session = await initialize(path);
+    expect(session.status).toBe(200);
+    const call = await rpc(
+      path,
+      'tools/call',
+      { name: 'arxiv-identity', arguments: {} },
+      session.session,
+    );
+    expect(call.status).toBe(200);
+    expect(
+      (await request('/api/servers/retired%3A%3Aarxiv', undefined, dashboard, 'DELETE')).status,
+    ).toBe(200);
+    const current = await request('/api/catalogs');
+    expect(current.body.data.map((item: { name: string }) => item.name)).not.toContain('retired');
+    const history = await request('/api/logs/catalogs');
+    expect(history.status).toBe(200);
+    expect(history.body.data.map((item: { name: string }) => item.name)).toContain('retired');
+    const statistics = await request('/api/logs/statistics?catalog=retired');
+    expect(statistics.body.data.total).toBe(1);
+  });
 });

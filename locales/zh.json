@@ -1566,6 +1566,7 @@
     "failed": "调用日志加载失败",
     "truncated": "当前只展示近期记录，较早的记录仍保留在日志文件中。",
     "unavailable": "日志来源暂不可用",
+    "relayUnavailable": "Relay 日志尚未接入或无法读取；空列表不代表没有请求。",
     "empty": "没有匹配的记录",
     "key_pool": "Key 池 HTTP",
     "keyLabel": "Key 后6位",
@@ -1798,6 +1799,7 @@
   },
   "catalog": {
     "legacyLogs": "历史记录（空间未知）",
+    "unassignedLogs": "未归属记录",
     "label": "空间",
     "all": "全部空间",
     "public": "公共",

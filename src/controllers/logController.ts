@@ -4,6 +4,29 @@ import logService from '../services/logService.js';
 import { logger } from '../utils/logger.js';
 import { requireAdmin } from '../utils/requireAdmin.js';
 
+/** History discovery has the same admin boundary as global call logs. */
+export const getLogCatalogs = async (req: Request, res: Response): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const { historicalLogCatalogs } = await import('../services/logCatalogService.js');
+    const { getServerDao } = await import('../dao/index.js');
+    const { splitServerKey } = await import('../utils/catalog.js');
+    const servers = await getServerDao().findAll();
+    // Registration changes invalidate the short history cache immediately,
+    // including when the final MCP of a namespace has just been deleted.
+    const revision = JSON.stringify(servers.map((server) => server.name).sort());
+    const names = new Set(await historicalLogCatalogs(revision));
+    for (const server of servers) {
+      const { catalog } = splitServerKey(server.name);
+      if (catalog) names.add(catalog);
+    }
+    res.json({ success: true, data: [...names].sort().map((name) => ({ name })) });
+  } catch {
+    res.status(500).json({ success: false, message: 'Log catalogs unavailable' });
+  }
+};
+
 // Get all logs
 export const getAllLogs = async (req: Request, res: Response): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;

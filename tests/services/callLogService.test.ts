@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getCallLogs, readAuditTail, CallLogQuery } from '../../src/services/callLogService.js';
+import { getCallStats } from '../../src/services/callStatsService.js';
 const query: CallLogQuery = {
   date: '2026-10-09',
   status: 'all',
@@ -169,6 +170,90 @@ describe('call log reader', () => {
     );
     expect((await getCallLogs({ ...query, status: '5xx', server: 'example' })).total).toBe(1);
   });
+
+  test.each(['upstream_timeout', 'client_cancelled', 'queue_timeout'])(
+    'counts HTTP attempts once for %s but retains queue-only failures',
+    async (category) => {
+      const timestamp = `${query.date}T10:00:00Z`;
+      const records = [
+        {
+          event: 'http_started',
+          request_id: 'attempt-1',
+          parent_request_id: 'flow',
+          host: 'export.arxiv.org',
+          path: '/api/query',
+          attempt: 1,
+        },
+        {
+          event: 'http_finished',
+          request_id: 'attempt-1',
+          parent_request_id: 'flow',
+          timestamp,
+          host: 'export.arxiv.org',
+          category: 'rate_limit',
+          status: 429,
+          attempt: 1,
+        },
+        {
+          event: 'http_started',
+          request_id: 'attempt-2',
+          parent_request_id: 'flow',
+          host: 'export.arxiv.org',
+          path: '/api/query',
+          attempt: 2,
+        },
+        {
+          event: 'http_finished',
+          request_id: 'attempt-2',
+          parent_request_id: 'flow',
+          timestamp,
+          host: 'export.arxiv.org',
+          category,
+          error_type: 'RelayRequestExpired',
+        },
+        {
+          event: 'http_completed',
+          request_id: 'flow',
+          timestamp,
+          upstream_group: 'arxiv',
+          category,
+          status: 504,
+          attempts: 2,
+        },
+        {
+          event: 'http_completed',
+          request_id: 'never-sent',
+          timestamp,
+          upstream_group: 'arxiv',
+          category: 'queue_timeout',
+          status: 504,
+          attempts: 0,
+        },
+        {
+          event: 'http_finished',
+          request_id: 'unrelated',
+          parent_request_id: 'other-flow',
+          timestamp,
+          host: 'export.arxiv.org',
+          category: 'success',
+          status: 200,
+        },
+      ];
+      // Duplicate records and summary ordering must not change the result.
+      await writeFile(join(root, 'relay.jsonl'), jsonl([...records, records[1]]));
+      const result = await getCallLogs({ ...query, source: 'relay', errorsOnly: false });
+      expect(result.total).toBe(4);
+      expect(new Set(result.rows.map((row) => row.id))).toEqual(
+        new Set(['attempt-1', 'attempt-2', 'never-sent', 'unrelated']),
+      );
+      expect(result.rows.find((row) => row.id === 'attempt-2')?.attempts).toBe(2);
+      expect(
+        (await getCallLogs({ ...query, source: 'relay', status: '504' })).rows.map((row) => row.id),
+      ).toEqual(['never-sent']);
+      await writeFile(join(root, 'relay.jsonl'), jsonl([...records].reverse()));
+      expect((await getCallLogs({ ...query, source: 'relay', errorsOnly: false })).total).toBe(4);
+    },
+  );
   test('shows key labels and recovery times while omitting secrets and admissions', async () => {
     await mkdir(join(root, 'keys'));
     await writeFile(
@@ -203,5 +288,169 @@ describe('call log reader', () => {
     await writeFile(file, 'x'.repeat(100) + '\n{"ok":true}\n{"partial":');
     expect(await readAuditTail(file, 40)).toEqual({ records: [{ ok: true }], truncated: true });
     expect(await readAuditTail(join(root, 'missing'))).toEqual({ records: [], truncated: false });
+  });
+
+  test.each([
+    ['2026-10-08', '2026-10-09'],
+    ['2026-10-31', '2026-11-01'],
+    ['2026-12-31', '2027-01-01'],
+  ])('matches statistics for calls completing across %s / %s UTC', async (start, finish) => {
+    const server = 'atlas::serper';
+    await writeFile(
+      join(root, `${start}.jsonl`),
+      jsonl([
+        { event: 'started', request_id: 'midnight', server, ts: `${start}T23:59:59Z` },
+        { event: 'dispatched', request_id: 'midnight', server, wait_ms: 100 },
+        {
+          event: 'upstream_finished',
+          request_id: 'midnight',
+          server,
+          http_status: 200,
+          duration_ms: 20,
+        },
+        {
+          event: 'finished',
+          request_id: 'midnight',
+          server,
+          tool: 'search',
+          ts: `${finish}T00:00:01Z`,
+          status: 'success',
+          duration_ms: 2000,
+        },
+        {
+          event: 'finished',
+          request_id: 'old',
+          server,
+          ts: `${start}T23:59:58Z`,
+          status: 'success',
+        },
+      ]),
+    );
+    const stats = await getCallStats({
+      start: `${finish}T00:00:00Z`,
+      end: `${finish}T23:59:59Z`,
+      catalog: 'atlas',
+    });
+    const logs = await getCallLogs({
+      ...query,
+      date: finish,
+      catalog: 'atlas',
+      source: 'tool',
+      errorsOnly: false,
+    });
+    expect(stats.total).toBe(1);
+    expect(logs.total).toBe(stats.total);
+    expect(logs.rows[0]).toMatchObject({
+      id: 'midnight',
+      timestamp: `${finish}T00:00:01Z`,
+      catalog: 'atlas',
+      durationMs: 2000,
+      waitMs: 100,
+      httpStatus: 200,
+    });
+    expect(
+      (
+        await getCallLogs({
+          ...query,
+          date: finish,
+          catalog: '',
+          source: 'tool',
+          errorsOnly: false,
+        })
+      ).total,
+    ).toBe(0);
+  });
+
+  test('uses the final outcome and duration while retaining diagnostic details', async () => {
+    await writeFile(
+      join(root, `${query.date}.jsonl`),
+      jsonl([
+        { event: 'dispatched', request_id: 'retry', server: 'atlas::serper', wait_ms: 500 },
+        {
+          event: 'upstream_finished',
+          request_id: 'retry',
+          server: 'atlas::serper',
+          status: 'error',
+          http_status: 503,
+          category: 'upstream_error',
+          duration_ms: 20,
+        },
+        {
+          event: 'finished',
+          request_id: 'retry',
+          server: 'atlas::serper',
+          ts: `${query.date}T10:00:00Z`,
+          tool: 'search',
+          status: 'error',
+          http_status: 504,
+          category: 'timeout',
+          duration_ms: 2000,
+        },
+      ]),
+    );
+    const logs = await getCallLogs({ ...query, source: 'tool' });
+    expect(logs.rows[0]).toMatchObject({
+      durationMs: 2000,
+      waitMs: 500,
+      httpStatus: 504,
+      category: 'timeout',
+      outcome: 'error',
+    });
+    expect(
+      (await getCallStats({ start: `${query.date}T00:00:00Z`, end: `${query.date}T23:59:59Z` }))
+        .rows[0].durationMs,
+    ).toBe(2000);
+  });
+
+  test('distinguishes an unavailable Relay log from an existing empty file', async () => {
+    const missing = await getCallLogs({ ...query, source: 'relay' });
+    expect(missing.total).toBe(0);
+    expect(missing.unavailableSources).toEqual(['relay']);
+    await writeFile(join(root, 'relay.jsonl'), '');
+    expect((await getCallLogs({ ...query, source: 'relay' })).unavailableSources).toEqual([]);
+    delete process.env.MCPHUB_RELAY_LOG_FILE;
+    expect((await getCallLogs({ ...query, source: 'relay' })).unavailableSources).toEqual([
+      'relay',
+    ]);
+  });
+
+  test('does not attribute unknown Relay records to public or guess a benchmark namespace', async () => {
+    await writeFile(
+      join(root, 'relay.jsonl'),
+      jsonl([
+        {
+          event: 'http_finished',
+          request_id: 'unknown',
+          timestamp: `${query.date}T10:00:00Z`,
+          upstream_group: 'arxiv',
+          status: 503,
+        },
+        {
+          event: 'http_finished',
+          request_id: 'scoped',
+          timestamp: `${query.date}T10:01:00Z`,
+          upstream_group: 'arxiv',
+          catalog: 'atlas',
+          status: 503,
+        },
+        {
+          event: 'http_finished',
+          request_id: 'public',
+          timestamp: `${query.date}T10:02:00Z`,
+          upstream_group: 'arxiv',
+          catalog: '',
+          status: 503,
+        },
+      ]),
+    );
+    for (const [catalog, id] of [
+      ['_unassigned', 'unknown'],
+      ['atlas', 'scoped'],
+      ['', 'public'],
+    ]) {
+      const result = await getCallLogs({ ...query, source: 'relay', catalog });
+      expect(result.total).toBe(1);
+      expect(result.rows[0]).toMatchObject({ id, catalog });
+    }
   });
 });

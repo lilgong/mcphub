@@ -19,7 +19,7 @@ import {
   dispatchTaskConnection,
 } from '../controllers/taskConnectionController.js';
 import { forwardKeyPool } from '../controllers/keyPoolController.js';
-import { getCallLogs } from '../controllers/logController.js';
+import { getCallLogs, getLogCatalogs } from '../controllers/logController.js';
 import {
   relayLimits,
   getAtlasSettings,
@@ -513,6 +513,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.get('/changelog/update-info', getChangelogUpdateInfoHandler);
 
   // Log routes
+  authenticatedRouter.get('/logs/catalogs', getLogCatalogs);
   authenticatedRouter.get('/logs/statistics', callStats);
   authenticatedRouter.get('/logs/calls', getCallLogs);
   authenticatedRouter.get('/logs', getAllLogs);

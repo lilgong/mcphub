@@ -1564,6 +1564,7 @@
     "failed": "Unable to load call logs",
     "truncated": "Showing recent records only; older records remain in the log files.",
     "unavailable": "Log sources unavailable",
+    "relayUnavailable": "Relay logs are not connected or cannot be read; an empty list does not mean there were no requests.",
     "empty": "No matching records",
     "key_pool": "Key pool HTTP",
     "keyLabel": "Key suffix",
@@ -1796,6 +1797,7 @@
   },
   "catalog": {
     "legacyLogs": "Legacy (unassigned space)",
+    "unassignedLogs": "Unassigned records",
     "label": "Namespace",
     "all": "All namespaces",
     "public": "Public",

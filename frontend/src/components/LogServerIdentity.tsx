@@ -14,7 +14,12 @@ export default function LogServerIdentity({
   const { t } = useTranslation();
   const identity = splitServerKey(server);
   const space = catalog ?? identity.catalog;
-  const label = space === '_legacy' ? t('catalog.legacyLogs') : space || t('catalog.public');
+  const label =
+    space === '_legacy'
+      ? t('catalog.legacyLogs')
+      : space === '_unassigned'
+        ? t('catalog.unassignedLogs')
+        : space || t('catalog.public');
 
   return (
     <span className="hub-log-server" title={server}>

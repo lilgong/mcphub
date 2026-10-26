@@ -17,6 +17,7 @@ import {
   getAllLogs,
   streamLogs,
   getCallLogs,
+  getLogCatalogs,
 } from '../../src/controllers/logController.js';
 
 const makeRes = () =>
@@ -36,7 +37,7 @@ const makeReq = () =>
 
 describe('logController authorization', () => {
   it('rejects non-admin access to log read, clear, and stream endpoints', async () => {
-    const handlers = [getAllLogs, clearLogs, streamLogs, getCallLogs];
+    const handlers = [getAllLogs, clearLogs, streamLogs, getCallLogs, getLogCatalogs];
 
     for (const handler of handlers) {
       const res = makeRes();

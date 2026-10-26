@@ -37,12 +37,13 @@ export interface CallLogQuery {
 export async function readAuditTail(
   path: string,
   maxBytes = 16 * 1024 * 1024,
+  options: { allowMissing?: boolean } = {},
 ): Promise<{ records: Record<string, unknown>[]; truncated: boolean }> {
   let handle;
   try {
     handle = await open(path, 'r');
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' && options.allowMissing !== false)
       return { records: [], truncated: false };
     throw error;
   }
@@ -93,8 +94,8 @@ export async function getCallLogs(
   const rows: CallLog[] = [];
   let truncated = false;
   const unavailableSources: string[] = [];
-  const load = async (path: string) => {
-    const result = await readAuditTail(path, 4 * 1024 * 1024);
+  const load = async (path: string, options?: { allowMissing?: boolean }) => {
+    const result = await readAuditTail(path, 4 * 1024 * 1024, options);
     truncated ||= result.truncated;
     return result.records;
   };
@@ -103,7 +104,15 @@ export async function getCallLogs(
       const root = process.env.MCPHUB_AUDIT_LOG_DIR;
       if (!root) unavailableSources.push('tool');
       else {
-        const records = await load(join(root, `${query.date}.jsonl`));
+        // A call's lifecycle stays in its start-day file; filter by completion
+        // timestamp after also reading the prior UTC day, as statistics do.
+        const previousDay = new Date(Date.parse(`${query.date}T00:00:00Z`) - 86400000)
+          .toISOString()
+          .slice(0, 10);
+        const records = [
+          ...(await load(join(root, `${previousDay}.jsonl`))),
+          ...(await load(join(root, `${query.date}.jsonl`))),
+        ];
         const calls = new Map<string, Record<string, unknown>>();
         for (const record of records) {
           const id = safeString(record.request_id);
@@ -112,7 +121,9 @@ export async function getCallLogs(
           if (record.event === 'upstream_finished') calls.set(id, { ...calls.get(id), ...record });
           if (record.event === 'completed') calls.set(id, { ...calls.get(id), ...record });
           if (record.event === 'finished') {
-            const item = { ...record, ...calls.get(id) };
+            // Diagnostics fill missing fields; the final outcome and total
+            // duration must never be replaced by an individual HTTP attempt.
+            const item = { ...calls.get(id), ...record };
             const status = safeNumber(item.http_status);
             rows.push({
               id,
@@ -189,8 +200,18 @@ export async function getCallLogs(
       if (!file) unavailableSources.push('relay');
       else {
         const starts = new Map<string, Record<string, unknown>>();
-        for (const raw of await load(file)) {
+        const records = await load(file, { allowMissing: false });
+        // Attempt IDs differ from workflow IDs. Suppress workflow timeout
+        // summaries only when an actual HTTP attempt represents that flow.
+        const finishedFlows = new Set(
+          records
+            .filter((record) => record.event === 'http_finished')
+            .map((record) => safeString(record.parent_request_id) || safeString(record.request_id))
+            .filter(Boolean),
+        );
+        for (const raw of records) {
           const id = safeString(raw.request_id);
+          if (raw.event === 'http_completed' && finishedFlows.has(id)) continue;
           if (raw.event === 'http_started') {
             starts.set(id, raw);
             continue;
@@ -214,6 +235,12 @@ export async function getCallLogs(
             id: safeString(record.request_id),
             timestamp: safeString(record.timestamp),
             source: 'relay',
+            // Unattributed Relay attempts must not masquerade as public MCPs.
+            catalog:
+              typeof record.catalog === 'string' &&
+              /^(?:[a-z][a-z0-9_-]{0,47})?$/.test(record.catalog)
+                ? record.catalog
+                : '_unassigned',
             server: safeString(record.upstream_group) || safeString(record.host) || 'relay',
             operation: safeString(record.path) || 'HTTP',
             outcome:

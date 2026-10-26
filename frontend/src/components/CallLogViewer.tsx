@@ -98,7 +98,7 @@ export default function CallLogViewer() {
     <section className="space-y-4 p-4">
       <p className="text-sm text-[var(--hub-ink-2)]">{t('callLogs.description')}</p>
       <div className="flex flex-wrap items-end gap-3">
-        <LogCatalogFilter value={catalog} onChange={setCatalog} />
+        <LogCatalogFilter value={catalog} onChange={setCatalog} refresh={refresh} />
         <label className="hub-field">
           <span className="hub-label">{t('callLogs.date')}</span>
           <input
@@ -189,10 +189,18 @@ export default function CallLogViewer() {
       </div>
       {error && <p role="alert">{t('callLogs.failed')}</p>}
       {data?.truncated && <p>{t('callLogs.truncated')}</p>}
-      {!!data?.unavailableSources.length && (
+      {data?.unavailableSources.includes('relay') && (
+        <p className="text-sm hub-sub" role="status">
+          {t('callLogs.relayUnavailable')}
+        </p>
+      )}
+      {!!data?.unavailableSources.filter((value) => value !== 'relay').length && (
         <p>
           {t('callLogs.unavailable')}:{' '}
-          {data.unavailableSources.map((value) => t(`callLogs.${value}`)).join(', ')}
+          {data.unavailableSources
+            .filter((value) => value !== 'relay')
+            .map((value) => t(`callLogs.${value}`))
+            .join(', ')}
         </p>
       )}
       <div className="overflow-hidden rounded-xl border border-[var(--hub-line)]">

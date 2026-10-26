@@ -106,6 +106,7 @@ jest.mock('../../src/controllers/authController.js', () => ({
 
 jest.mock('../../src/controllers/logController.js', () => ({
   getCallLogs: routeHandler,
+  getLogCatalogs: routeHandler,
   getAllLogs: routeHandler,
   clearLogs: routeHandler,
   streamLogs: routeHandler,
@@ -328,6 +329,7 @@ describe('initRoutes authenticated API rate limiting', () => {
 
     expect(authenticatedLimiterIndex).toBeGreaterThanOrEqual(0);
     expect(routerContainsRoute(protectedRouter!, 'get', '/catalogs')).toBe(true);
+    expect(routerContainsRoute(protectedRouter!, 'get', '/logs/catalogs')).toBe(true);
     expect(routerContainsRoute(protectedRouter!, 'get', '/servers/:name/share-candidates')).toBe(
       true,
     );

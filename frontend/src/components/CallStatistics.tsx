@@ -66,7 +66,7 @@ export default function CallStatistics() {
         {t(metric === 'upstream' ? 'statistics.upstreamDescription' : 'statistics.description')}
       </p>
       <div className="hub-card flex flex-wrap items-end gap-3 p-4">
-        <LogCatalogFilter value={catalog} onChange={setCatalog} />
+        <LogCatalogFilter value={catalog} onChange={setCatalog} refresh={refresh} />
         <label className="hub-field">
           <span className="hub-label">{t('statistics.metric')}</span>
           <select
