@@ -1,4 +1,9 @@
 import {
+  workspaceManagement,
+  createWorkspaceRun,
+  workspaceRun,
+} from '../../src/controllers/workspaceController.js';
+import {
   registerTaskConnection,
   renewTaskConnection,
 } from '../../src/controllers/taskConnectionController.js';
@@ -181,6 +186,11 @@ beforeAll(async () => {
   app.delete('/api/credentials/:name', updateMyCredential);
   app.get('/api/servers/:name', getServerConfig);
   app.get('/api/servers', getAllServers);
+  app.get('/api/workspace-credentials', workspaceManagement);
+  app.put('/api/workspace-credentials/:catalog/:workspace', workspaceManagement);
+  app.post('/api/workspace-runs', createWorkspaceRun);
+  app.get('/api/workspace-runs/:id', workspaceRun);
+  app.delete('/api/workspace-runs/:id', workspaceRun);
   app.post('/api/task-connections', registerTaskConnection);
   app.put('/api/task-connections/:id', renewTaskConnection);
   app.get('/api/servers/:name/runtime', connectionRuntime);
@@ -1331,4 +1341,86 @@ test('owned groups bind calling keys to their owner and cannot grant foreign pri
   );
   await dao.update('owned-public', { visibility: 'private' });
   await expect(client.callTool({ name: tool.name, arguments: {} })).rejects.toThrow();
+}, 30000);
+
+test('workspace group key authenticates setup and isolates two resident MCP account processes', async () => {
+  const name = 'toolathlon::workspace-fixture';
+  await getServerDao().create({
+    name,
+    owner: 'admin',
+    visibility: 'public',
+    enabled: true,
+    type: 'stdio',
+    command: process.execPath,
+    args: [fixture],
+    env: { PERSONAL_KEY: 'base-never-used' },
+  });
+  await initializeClientsFromSettings(true);
+  const group = (
+    await request(app)
+      .post('/api/user-groups')
+      .set('x-auth-token', apiToken('admin'))
+      .send({ name: 'Workspace integration group', enabled: true, servers: [{ name }] })
+      .expect(201)
+  ).body.data;
+  const key = (
+    await request(app)
+      .post('/api/auth/keys')
+      .set('x-auth-token', apiToken('admin'))
+      .send({ name: 'Workspace integration key', userGroupId: group.id })
+      .expect(201)
+  ).body.data;
+  for (const account of ['account-a', 'account-b']) {
+    await request(app)
+      .put(`/api/workspace-credentials/toolathlon/${account}`)
+      .set('x-auth-token', apiToken('admin'))
+      .send({
+        allowedGroupIds: [group.id],
+        values: { provider_token: account },
+        files: {},
+        connections: { 'workspace-fixture': { PERSONAL_KEY: 'provider_token' } },
+      })
+      .expect(200);
+  }
+  await request(app)
+    .get('/api/workspace-credentials')
+    .set('Authorization', `Bearer ${key.token}`)
+    .expect(401);
+  const run = (
+    await request(app)
+      .post('/api/workspace-runs')
+      .set('Authorization', `Bearer ${key.token}`)
+      .send({ catalog: 'toolathlon', workspace: 'account-a' })
+      .expect(200)
+  ).body.data;
+  const data = (
+    await request(app)
+      .get(`/api/workspace-runs/${run.id}`)
+      .set('Authorization', `Bearer ${key.token}`)
+      .set('X-MCPHub-Run-Token', run.token)
+      .expect(200)
+  ).body.data;
+  expect(data.values.provider_token).toBe('account-a');
+  const identities = [];
+  for (const account of ['account-a', 'account-b']) {
+    const client = new Client({ name: 'workspace-e2e', version: '1' });
+    clients.push(client);
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp/${encodeURIComponent(name)}`), {
+        requestInit: {
+          headers: { Authorization: `Bearer ${key.token}`, 'X-MCPHub-Target': account },
+        },
+      }),
+    );
+    const tools = (await client.listTools()).tools;
+    identities.push(parseIdentity(await client.callTool({ name: tools[0].name, arguments: {} })));
+  }
+  expect(identities.map((identity) => identity.credential)).toEqual(['account-a', 'account-b']);
+  expect(identities[0].pid).not.toBe(identities[1].pid);
+  expect(identities.every((identity) => !identity.masterKeyInherited)).toBe(true);
+  await request(app)
+    .delete(`/api/workspace-runs/${run.id}`)
+    .set('Authorization', `Bearer ${key.token}`)
+    .set('X-MCPHub-Run-Token', run.token)
+    .expect(200);
 }, 30000);

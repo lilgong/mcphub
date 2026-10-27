@@ -1,3 +1,4 @@
+import { runtimeWorkerFor } from './runtimeWorkerService.js';
 import { slackCacheEnvironment } from './slackCacheService.js';
 import { splitServerKey } from '../utils/catalog.js';
 import { getKeyPoolProvider } from '../utils/keyPoolCompatibility.js';
@@ -110,7 +111,11 @@ export const getServerEnvironment = async (
     const poolName = config.env?.MCPHUB_CONNECTION_TARGET
       ? `${name}@${config.env.MCPHUB_CONNECTION_TARGET}`
       : name;
-    environment.MCPHUB_KEY_POOL_URL = `http://127.0.0.1:${runtimeConfig.port}/internal/v1/key-pool/${encodeURIComponent(poolName)}`;
+    const callbackBase = runtimeWorkerFor(name, config.env?.MCPHUB_CONNECTION_TARGET)
+      ? process.env.MCPHUB_INTERNAL_URL
+      : `http://127.0.0.1:${runtimeConfig.port}`;
+    if (!callbackBase) throw new Error('Remote key pools require MCPHUB_INTERNAL_URL');
+    environment.MCPHUB_KEY_POOL_URL = `${callbackBase.replace(/\/$/, '')}/internal/v1/key-pool/${encodeURIComponent(poolName)}`;
     environment.MCPHUB_KEY_POOL_TOKEN = keyPoolToken(poolName);
     if (config.keyPool.provider === 'context7') {
       const preload = join(process.cwd(), 'scripts', 'key_pool_fetch_preload.cjs');

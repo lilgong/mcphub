@@ -10,6 +10,7 @@ export interface TaskConnection extends InvocationLabels {
   owner: string;
   username: string;
   keyId?: string;
+  workspaceRunId?: string;
   url: string;
   upstreamToken: string;
   token: string;
@@ -108,3 +109,22 @@ export class TaskConnectionRegistry {
   }
 }
 export const taskConnections = new TaskConnectionRegistry();
+
+/** Lease renewal can extend liveness, but never the configured request budget. */
+export function watchTaskRequest(
+  entry: TaskConnection,
+  abort: AbortController,
+  timeoutMs = 150000,
+): () => void {
+  const deadline = timeoutMs > 0 ? setTimeout(() => abort.abort(), timeoutMs) : undefined;
+  let lease: ReturnType<typeof setTimeout>;
+  const checkLease = () => {
+    if (entry.revoked || entry.expiresAt <= Date.now()) abort.abort();
+    else lease = setTimeout(checkLease, entry.expiresAt - Date.now());
+  };
+  checkLease();
+  return () => {
+    clearTimeout(deadline);
+    clearTimeout(lease);
+  };
+}

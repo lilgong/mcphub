@@ -1,3 +1,4 @@
+import { normalizeWorkspaceSchema } from './workspaceSchema.js';
 import { normalizeTargetConnections } from './targetConnection.js';
 import { normalizeKeyPool } from './keyPool.js';
 import { normalizeServiceRateLimit, normalizeFetchRelay } from './serviceControls.js';
@@ -288,6 +289,11 @@ export const normalizeServerConfigForPersistence = (config: ServerConfig): Serve
     rateLimit: normalizeServiceRateLimit(config.rateLimit),
     relay: normalizeFetchRelay(config.relay),
   };
+  try {
+    config.workspaceSchema = normalizeWorkspaceSchema(config.workspaceSchema);
+  } catch {
+    throw new ServerConfigValidationError('Invalid workspace credential declaration');
+  }
   const normalizedType = inferServerType(config);
   if (config.targets?.length && config.credentialTemplate?.length)
     throw new ServerConfigValidationError(

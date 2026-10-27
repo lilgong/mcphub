@@ -52,6 +52,7 @@ const KNOWN_KEYS = new Set<keyof ServerConfig | string>([
   'rateLimit',
   'relay',
   'credentialTemplate',
+  'workspaceSchema',
   'startOnDemand',
   'idleTimeoutMs',
   'resources',
@@ -66,7 +67,10 @@ const KNOWN_KEYS = new Set<keyof ServerConfig | string>([
  * `oauth`. That produced opaque "Failed to import servers" errors downstream.
  * We now validate up-front and name the exact server/field at fault.
  */
-export const normalizeImportedServers = (parsed: ImportJsonFormat, catalog?: string): NormalizeResult => {
+export const normalizeImportedServers = (
+  parsed: ImportJsonFormat,
+  catalog?: string,
+): NormalizeResult => {
   const servers: NormalizedServer[] = [];
   const issues: ImportIssue[] = [];
 
@@ -74,7 +78,10 @@ export const normalizeImportedServers = (parsed: ImportJsonFormat, catalog?: str
   for (const [name, rawConfig] of Object.entries(parsed.mcpServers)) {
     const existing = splitServerKey(name);
     if (catalog && existing.catalog && existing.catalog !== catalog) {
-      issues.push({ name, message: `Server belongs to namespace "${existing.catalog}", not "${catalog}".` });
+      issues.push({
+        name,
+        message: `Server belongs to namespace "${existing.catalog}", not "${catalog}".`,
+      });
       continue;
     }
     const identity = validateServerKey(name, catalog || undefined);
@@ -147,7 +154,11 @@ export const normalizeImportedServers = (parsed: ImportJsonFormat, catalog?: str
       if (config.options) {
         normalizedConfig.options = config.options;
       }
-      if (!config.command) {
+      const taskOnly =
+        Array.isArray(config.targets) &&
+        config.targets.length > 0 &&
+        config.targets.every((target) => target.kind === 'task');
+      if (!config.command && !taskOnly) {
         issues.push({
           name,
           message: `stdio servers require a "command" field.`,

@@ -240,6 +240,7 @@ export const buildServerPayload = ({
 
   const config: Partial<ServerConfig> = {
     targets: formData.targets,
+    workspaceSchema: formData.workspaceSchema,
     keyPool: formData.keyPool,
     rateLimit: formData.rateLimit,
     relay: formData.relay,

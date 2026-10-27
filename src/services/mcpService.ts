@@ -1,3 +1,6 @@
+import { workspaceDefinition } from './workspaceRuntimeService.js';
+import { WorkerStdioTransport } from '../clients/workerStdioTransport.js';
+import { runtimeWorkerFor, workerEnvironment } from './runtimeWorkerService.js';
 import { splitServerKey, validateServerKey } from '../utils/catalog.js';
 import { resolveMcpbPackageVersion, resolveMcpbVersions } from '../utils/mcpbVersion.js';
 import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
@@ -1762,14 +1765,24 @@ export const createTransportFromConfig = async (name: string, conf: ServerConfig
     );
 
     // Create STDIO transport with potentially wrapped command
-    transport = new StdioClientTransport({
-      cwd: process.cwd(),
-      command: finalCommand,
-      args: finalArgs,
-      env: env,
-      stderr: 'pipe',
-      maxBufferSize: validateMaxBufferSize(conf.options?.maxBufferSize),
-    });
+    const worker = runtimeWorkerFor(name, conf.env?.MCPHUB_CONNECTION_TARGET);
+    transport = worker
+      ? new WorkerStdioTransport(worker, {
+          name,
+          startupTimeoutMs: Number(config.initTimeout) || 300000,
+          command: finalCommand,
+          args: finalArgs,
+          env: workerEnvironment(env, conf.env),
+          maxBufferSize: validateMaxBufferSize(conf.options?.maxBufferSize) ?? 10 * 1024 * 1024,
+        })
+      : new StdioClientTransport({
+          cwd: process.cwd(),
+          command: finalCommand,
+          args: finalArgs,
+          env,
+          stderr: 'pipe',
+          maxBufferSize: validateMaxBufferSize(conf.options?.maxBufferSize),
+        });
     if (transport.stderr && hasCredentialTemplate(conf)) {
       transport.stderr.on('data', () => undefined); // Personal upstream diagnostics can contain raw credentials.
     } else if (transport.stderr) {
@@ -2924,7 +2937,19 @@ function getRuntimeInstances(name: string): RuntimeInstance[] {
       reportedVersion: session.client.getServerVersion()?.version,
     });
   }
-  return instances;
+  return instances.map((instance) => {
+    if (instance.kind === 'task') return instance;
+    const connection = instance.target
+      ? global?.config?.targets?.find((target) => target.path === instance.target)?.config
+      : global?.config;
+    if (!connection?.command || connection.url) return instance;
+    try {
+      const worker = runtimeWorkerFor(name, instance.target);
+      return worker ? { ...instance, worker: worker.id } : instance;
+    } catch {
+      return { ...instance, worker: 'unassigned' };
+    }
+  });
 }
 
 // Get server by name
@@ -5317,6 +5342,7 @@ const withPrincipalServers =
   (handler: McpHandler, operation: 'list' | 'tool' | 'prompt' | 'resource'): McpHandler =>
   async (request, extra) => {
     if (
+      !invocationLabels().target &&
       !serverInfos.some(
         (info) => hasCredentialTemplate(info.config) || info.config?.targets?.length,
       )
@@ -5359,10 +5385,6 @@ const withPrincipalServers =
     // A call to a known target must not spawn or keep unrelated personal children alive.
     const selected =
       target && (operation === 'tool' || operation === 'prompt') ? [target] : candidates;
-    const templated = selected.filter(
-      (info) => hasCredentialTemplate(info.config) || info.config?.targets?.length,
-    );
-    if (!templated.length) return handler(request, extra);
     const user = UserContextService.getInstance().getCurrentUser() as RequestPrincipal | null;
     const bearer = RequestContextService.getInstance().getBearerKeyContext();
     const operator =
@@ -5379,6 +5401,25 @@ const withPrincipalServers =
             isAdmin: operator.accessType === 'all',
           }
         : null);
+    const workspaceDefinitions = new Map<string, ServerConfig>();
+    for (const info of selected) {
+      if (!info.config) continue;
+      const resolved = await workspaceDefinition(
+        info.name,
+        info.config,
+        invocationLabels().target,
+        targetPrincipal,
+        bearer.keyId,
+      );
+      if (resolved) workspaceDefinitions.set(info.name, resolved);
+    }
+    const templated = selected.filter(
+      (info) =>
+        hasCredentialTemplate(info.config) ||
+        info.config?.targets?.length ||
+        workspaceDefinitions.has(info.name),
+    );
+    if (!templated.length) return handler(request, extra);
     const releases: Array<() => void> = [];
     const scoped = new Map(serverInfos.map((info) => [info.name, info]));
     const failures = new Map<string, Error>();
@@ -5386,10 +5427,10 @@ const withPrincipalServers =
       await Promise.all(
         templated.map(async (info) => {
           try {
-            if (info.config?.targets?.length) {
+            if (info.config?.targets?.length || workspaceDefinitions.has(info.name)) {
               const lease = await targetRuntimes.acquire(
                 info.name,
-                info.config,
+                workspaceDefinitions.get(info.name) ?? info.config!,
                 invocationLabels().target,
                 targetPrincipal,
                 bearer.keyId,

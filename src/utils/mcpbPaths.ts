@@ -8,3 +8,10 @@ export function mcpbServerDirectoryName(key: string): string {
   // '~' is disallowed in logical names, making scoped and public paths unambiguous.
   return `server-${catalog ? `${catalog}~${name}` : name}`;
 }
+
+/** Scoped executable trees can be mounted into only their assigned worker. */
+export function mcpbServerRelativePath(key: string): string {
+  const { catalog } = splitServerKey(key);
+  const directory = mcpbServerDirectoryName(key);
+  return catalog ? `catalogs/${catalog}/${directory}` : directory;
+}

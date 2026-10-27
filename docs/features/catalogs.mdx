@@ -149,3 +149,121 @@ summaries are omitted when their request ID matches an attempt's parent request 
 Retries remain separate HTTP attempts. Queue expiry before any HTTP attempt remains
 a visible failure record. When a bounded tail contains no matching attempt, its
 failure summary is retained rather than silently losing the only visible evidence.
+
+Task targets may set `config.options.timeout` (milliseconds) to a positive request budget, or `0` to leave the request deadline to the benchmark client. Omitting it preserves the default 150 seconds. Callback lease expiration, revocation and client disconnection always cancel forwarding. Renewed leases extend liveness for an in-flight call but never extend an explicit request budget. This supports benchmarks whose native MCP client budgets exceed 150 seconds without changing Atlas defaults.
+
+Task target `config.options.maxBufferSize` controls the buffered callback response in bytes (default 4 MiB). A value of `0` removes this extra response cap for trusted task workers; memory usage then scales with their responses. The normal configurable JSON request-body limit still applies. JSON import accepts task-only definitions without a dummy local command.
+
+## Namespace execution workers
+
+A catalog can explicitly route its STDIO processes to an isolated execution worker.
+Public-space MCPs remain in Hub. The Hub retains configuration, caller authorization,
+target selection, scheduling, tool auditing and statistics; the worker only runs MCP
+processes and bridges their raw JSON-RPC, including notifications and cancellation.
+Benchmark-owned task callbacks continue to run in their original task containers.
+
+Operators set `MCPHUB_WORKERS` to a JSON map of worker IDs to `{catalog, url, token}`.
+The URL is a private `ws://worker:3100/stdio` endpoint, or WSS for cross-host deployments.
+A worker has its own strong control token and accepts only its configured catalog.
+Never publish these endpoints or give worker control tokens to benchmark clients.
+`MCPHUB_REQUIRE_WORKERS=true` rejects unassigned scoped STDIO connections instead of
+falling back to local execution. Worker loss does not trigger tool-call replay; the
+normal STDIO recovery mechanism reconnects on a subsequent invocation.
+
+An optional `servers` array assigns selected logical MCP names to another worker in
+the same catalog. Optional `targets` maps logical names to exact target paths, allowing
+different target implementations of one MCP to use different containers. Selection
+precedence is exact target, exact MCP, then catalog default. Ambiguous assignments
+fail. Docker Compose starts/restarts containers; Hub does not have a Docker socket
+and does not create containers or automatically detect dependency conflicts.
+
+The v2 Compose deployment includes `atlas-worker` and `toolathlon-worker`, private
+networks and separate writable data. Uploaded code is mounted read-only per catalog;
+workers snapshot it into private immutable releases, so existing connections do not
+see overwritten files while new connections adopt a new upload. Uploaded scoped
+bundles reside under `uploads/mcpb/catalogs/<catalog>/server-<catalog>~<name>`.
+Normal key edits and reloads retain their existing dashboard workflow.
+
+Provider usage files are mounted back into the Hub's existing per-catalog log tree.
+Key pools remain in Hub and use `MCPHUB_INTERNAL_URL` for worker callbacks. Workers do
+not inherit database credentials, Hub JWT secrets or the credential encryption key.
+Runtime inventory shows the assigned worker; admin-only `GET /api/runtime-workers`
+reports authenticated worker connectivity and process metadata without control tokens.
+Existing request timeouts, relay forwarding and shared per-MCP limits stay in Hub.
+
+Execution workers run on Linux with the `setsid` executable (util-linux). Each MCP runs in its own session/process group. Disconnect and worker shutdown share idempotent cleanup: signal the group with SIGTERM, allow one second to exit, then SIGKILL the saved group even if its leader has exited. Worker shutdown waits for pending cleanups. Descendants visible before termination are also tracked by PID and process start time, so detached children can be terminated after reparenting without signaling a reused PID. Package snapshots rewrite `command`, arguments and environment paths, including command-only executable bundles.
+
+## Workspace accounts
+
+Administrators manage account workspaces on the Credentials page. A workspace belongs
+to one catalog and contains encrypted named values, credential files and optional
+resident-MCP environment bindings. The dashboard lists field names, not secret values.
+Templates import field names and bindings without embedding benchmark logic in the Hub.
+
+Calling groups must be explicitly allowed to retrieve a workspace's credentials. This
+is a credential-export permission for trusted preparation/grading processes, separate
+from the group's existing MCP permissions. Only dashboard administrators can edit
+workspace accounts; calling keys cannot manage them.
+
+`POST /api/workspace-runs` accepts `{catalog, workspace}` and returns a run ID and
+capability token. Subsequent `GET`, `PUT` and `DELETE /api/workspace-runs/:id` require
+both the original calling key and `X-MCPHub-Run-Token`. GET exports the selected account,
+PUT renews its ten-minute lease and DELETE releases it. One workspace has one run.
+These responses use `Cache-Control: no-store`.
+
+`PUT /api/workspace-runs/:id/files` accepts OAuth updates with per-file `expectedHash`
+(SHA-256 of the previous UTF-8 contents, or null for a new file). Stale writes return
+409. Task callback registration can include `runId`; it must belong to the same calling
+key and catalog, and forwarding stops when that run ends or expires.
+
+Lost or expired runs remain occupied to protect rotating refresh tokens. After stopping
+the old tasks and recovering their authorization state, an administrator can explicitly
+release an expired run from the Credentials page. Restore the newest authorization files
+before reusing the account. Workspaces do not provision containers or isolate third-party
+services: benchmark launchers still own preparation, task files and service lifecycle.
+
+The encrypted credential store and its encryption key must both be persisted/backed up.
+Current workspace mutation serialization assumes one Hub process; multiple active Hub
+replicas require a database transaction/advisory lock before sharing account leases.
+
+### Declared startup accounts for task MCPs
+
+A registration may optionally include `workspaceSchema` with `values` and `files`
+metadata. For example, a value declares `{name: "provider_token", label: "API token"}`;
+a document declares a safe `configs/` path, `format: "json"`, public `template`, and
+optional named `fields` (dot paths select nested JSON fields). `env` documents render
+named variables and `text` documents provide a multiline editor. A non-secret value
+may declare a string `default`; secret defaults must remain empty. Schema declarations contain
+no secret values. They survive JSON import, configuration edits and both DAO modes.
+
+Only registrations declaring this schema display the startup-account editor. Existing
+Atlas environment variables and static target editors are unchanged. `GET
+/api/servers/:name/accounts` lists account metadata for that server's catalog; `PUT
+/api/servers/:name/accounts/:account` updates only the declared fields/files. Both
+require a dashboard administrator, never a calling key. Updates preserve other MCPs'
+credentials and use workspace revisions to prevent stale writes. Explicit `GET
+/api/servers/:name/accounts/:account` returns only that MCP’s declared credentials
+to dashboard administrators, with `Cache-Control: no-store`. Lists remain metadata-only.
+The form and optional full source preview edit the same document. New accounts receive
+only public defaults; untouched placeholder documents are not saved as empty tokens.
+Caller keys and non-admin users cannot use this credential editor or read endpoint.
+
+An account is a preparation-time credential choice, not a second runtime target.
+Task connections still select each task's registered callback. Choosing another account
+in the editor never changes server routing or the benchmark's launch settings; the
+launcher must explicitly select the account when starting an evaluation.
+
+The task editor nests startup accounts under task connections. The optional
+`workspaceSchema.enabled` flag defaults to false; no extra account UI is shown in
+single/static-target modes. Disabling preserves stored credentials but excludes its
+declared inputs from newly exported run bundles, unless another enabled MCP declares
+the same shared input. Existing registrations without this optional schema retain
+their original credential and routing behavior.
+
+`workspaceSchema.managed` documents variables supplied or overridden by a task,
+generated paths, and public defaults. Entries contain `name`, `source` (`task`,
+`generated`, or `default`), `description`, and an optional public string `default`.
+They are display metadata only: they never inject credentials or change task routing.
+A declaration containing only managed entries shows guidance without enabling an
+account editor. JSON document templates expose their public defaults separately
+from editable credential fields; saved secret values are not enumerated as defaults.

@@ -104,6 +104,9 @@ export class Server {
   @Column({ type: 'simple-json', nullable: true })
   credentialTemplate?: CredentialSlot[];
 
+  @Column({ type: 'simple-json', nullable: true })
+  workspaceSchema?: import('../../types/workspace.js').WorkspaceCredentialSchema;
+
   // Internal declaration fingerprint; never exposed through the server DAO.
   @Column({ type: 'varchar', length: 128, nullable: true })
   settingsSyncHash?: string;

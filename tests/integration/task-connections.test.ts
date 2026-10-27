@@ -60,6 +60,30 @@ beforeEach(() => {
   };
 });
 afterEach(() => jest.restoreAllMocks());
+test('task exceptions retain original MCP details and are audited as tool errors', async () => {
+  const result = {
+    content: [{ type: 'text', text: 'MCP error -32603: No output' }],
+    isError: true,
+    _meta: {
+      'mcphub/taskException': { kind: 'mcp', error: { code: -32603, message: 'No output' } },
+    },
+  };
+  jest
+    .spyOn(global, 'fetch')
+    .mockResolvedValue(new Response(JSON.stringify(result), { status: 200 }));
+  const entry = (await register('exception-details').expect(200)).body.data;
+  try {
+    const response = await request(app)
+      .post(`${entry.path}/call-tool`)
+      .set('Authorization', `Bearer ${entry.token}`)
+      .send({ tool_name: 'filesystem_read_file', tool_args: {} })
+      .expect(200);
+    expect(response.body).toEqual(result);
+    expect(mockActivity).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
+  } finally {
+    taskConnections.remove(entry.id, 'caller-a');
+  }
+});
 test('registration requires operator and exact target permission; no implicit target', async () => {
   await request(app).post('/api/task-connections').send({}).expect(403);
   await register('unauthorized', 'caller-b').expect(403);
@@ -180,4 +204,31 @@ test('task-only MCPs register without fixture selectors and retain task authoriz
     .set('x-test-admin', 'caller-a')
     .send(body)
     .expect(400);
+});
+
+test('task response caps can be configured or explicitly deferred to the trusted worker', async () => {
+  mockDefinition.targets![0].config = { options: { timeout: 0, maxBufferSize: 16 } };
+  const entry = (await register('response-budget').expect(200)).body.data;
+  jest
+    .spyOn(global, 'fetch')
+    .mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ content: [{ type: 'text', text: 'original-result' }] })),
+    );
+  try {
+    await request(app)
+      .post(`${entry.path}/call-tool`)
+      .set('Authorization', `Bearer ${entry.token}`)
+      .send({ tool_name: 'filesystem_read', tool_args: {} })
+      .expect(502);
+    mockDefinition.targets![0].config!.options!.maxBufferSize = 0;
+    const response = await request(app)
+      .post(`${entry.path}/call-tool`)
+      .set('Authorization', `Bearer ${entry.token}`)
+      .send({ tool_name: 'filesystem_read', tool_args: {} })
+      .expect(200);
+    expect(response.body.content[0].text).toBe('original-result');
+  } finally {
+    taskConnections.remove(entry.id, 'caller-a');
+  }
 });

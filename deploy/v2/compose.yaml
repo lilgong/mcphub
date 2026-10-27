@@ -8,7 +8,7 @@ services:
     volumes:
       - ../../data/v2-container/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 5s
       timeout: 5s
       retries: 12
@@ -16,23 +16,28 @@ services:
       driver: json-file
       options: { max-size: 20m, max-file: '3' }
   hub:
-    image: mcphub-v2:local
+    image: ${MCPHUB_V2_IMAGE:-mcphub-v2:local}
     build:
       context: ../..
       dockerfile: deploy/v2/Dockerfile
     container_name: mcphub-v2
     restart: unless-stopped
     init: true
-    env_file: ../../data/v2-container/app.env
+    env_file:
+      - ../../data/v2-container/app.env
+      - ../../data/v2-container/workers.env
     environment:
-      # Benchmarks use per-MCP policies and Relay HTTP limits, not a shared IP cap.
       MCP_RATE_LIMIT_MAX: 'off'
+      API_RATE_LIMIT_MAX: 'off'
     ports:
       - '${MCPHUB_V2_BIND:-127.0.0.1}:${MCPHUB_V2_PORT:-3003}:3000'
     volumes:
       - ../../data/v2-container/runtime:/app/data
+    networks: [default, atlas-runtime, toolathlon-runtime]
     depends_on:
       db: { condition: service_healthy }
+      atlas-worker: { condition: service_healthy }
+      toolathlon-worker: { condition: service_healthy }
     healthcheck:
       test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
       interval: 20s
@@ -42,3 +47,48 @@ services:
     logging:
       driver: json-file
       options: { max-size: 50m, max-file: '5' }
+  atlas-worker:
+    image: ${MCPHUB_V2_IMAGE:-mcphub-v2:local}
+    container_name: mcphub-v2-atlas
+    command: [dist/workers/main.js]
+    init: true
+    restart: unless-stopped
+    env_file: ../../data/v2-container/atlas-worker.env
+    volumes:
+      - ../../data/v2-container/workers/atlas:/app/data
+      - ../../data/v2-container/runtime/uploads/mcpb/catalogs/atlas:/app/packages:ro
+      - ../../data/v2-container/runtime/usage/catalogs/atlas:/app/data/usage/catalogs/atlas
+    networks: [atlas-runtime]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3100/health",{headers:{Authorization:"Bearer "+process.env.MCPHUB_WORKER_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging:
+      driver: json-file
+      options: { max-size: 20m, max-file: '3' }
+  toolathlon-worker:
+    image: ${MCPHUB_V2_IMAGE:-mcphub-v2:local}
+    container_name: mcphub-v2-toolathlon
+    command: [dist/workers/main.js]
+    init: true
+    restart: unless-stopped
+    env_file: ../../data/v2-container/toolathlon-worker.env
+    volumes:
+      - ../../data/v2-container/workers/toolathlon:/app/data
+      - ../../data/v2-container/runtime/uploads/mcpb/catalogs/toolathlon:/app/packages:ro
+      - ../../data/v2-container/runtime/usage/catalogs/toolathlon:/app/data/usage/catalogs/toolathlon
+    networks: [toolathlon-runtime]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3100/health",{headers:{Authorization:"Bearer "+process.env.MCPHUB_WORKER_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging:
+      driver: json-file
+      options: { max-size: 20m, max-file: '3' }
+networks:
+  atlas-runtime: {}
+  toolathlon-runtime: {}

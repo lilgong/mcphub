@@ -208,6 +208,7 @@ export interface MyCredentialBinding {
 
 // Server config types
 export interface ServerConfig {
+  workspaceSchema?: import('../../../src/types/workspace').WorkspaceCredentialSchema;
   targets?: import('../../../src/types/targetConnection').TargetConnection[];
   keyPool?: import('../../../src/types/keyPool').KeyPoolConfig;
   rateLimit?: import('../../../src/types/serviceControls').ServiceRateLimit;
@@ -388,6 +389,7 @@ export interface EnvVar {
 
 // Form data types
 export interface ServerFormData {
+  workspaceSchema?: import('../../../src/types/workspace').WorkspaceCredentialSchema;
   targets?: import('../../../src/types/targetConnection').TargetConnection[];
   keyPool?: import('../../../src/types/keyPool').KeyPoolConfig;
   rateLimit?: import('../../../src/types/serviceControls').ServiceRateLimit;

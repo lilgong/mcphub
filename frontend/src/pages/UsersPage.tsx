@@ -1,3 +1,5 @@
+import { splitServerKey } from '../../../src/utils/catalog';
+import { filterGroupResources, selectVisibleGroupResources } from '../utils/groupResourceSelection';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -14,15 +16,15 @@ import {
   X,
   ChevronRight,
   ChevronDown,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
+import { copyText } from '../utils/clipboard';
 import { apiGet, apiPost, apiPut, apiDelete, type ApiResponse } from '../utils/fetchInterceptor';
 import type { User, BearerKey } from '../types';
-import type {
-  UserGroup,
-  UserGroupResource,
-  UserGroupResourceOption,
-} from '../../../src/types/userGroup';
+import type { UserGroup, UserGroupResourceOption } from '../../../src/types/userGroup';
 import AddUserForm from '../components/AddUserForm';
 import EditUserForm from '../components/EditUserForm';
 import SecretInput from '../components/SecretInput';
@@ -31,6 +33,7 @@ import DeleteDialog from '../components/ui/DeleteDialog';
 export default function UsersPage() {
   const { t } = useTranslation();
   const { auth } = useAuth();
+  const { showToast } = useToast();
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [servers, setServers] = useState<UserGroupResourceOption[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -38,6 +41,7 @@ export default function UsersPage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [resourceQuery, setResourceQuery] = useState('');
+  const [resourceCatalog, setResourceCatalog] = useState('*');
   const [permissions, setPermissions] = useState<UserGroup>();
   const [editingGroup, setEditingGroup] = useState<UserGroup>();
   const [removingGroup, setRemovingGroup] = useState<UserGroup>();
@@ -45,6 +49,8 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User>();
   const [removingUser, setRemovingUser] = useState<User>();
   const [newToken, setNewToken] = useState('');
+  const [tokenCopied, setTokenCopied] = useState(false);
+  useEffect(() => setTokenCopied(false), [newToken]);
   const [keyGroup, setKeyGroup] = useState<UserGroup>();
   const [removingKey, setRemovingKey] = useState<BearerKey>();
   const [error, setError] = useState('');
@@ -214,13 +220,20 @@ export default function UsersPage() {
       setError(t('userGroups.failed'));
     }
   };
-  const allResources = (): UserGroupResource[] =>
-    servers.map((server) => ({
-      name: server.name,
-      ...(targetsFor(server).length
-        ? { targets: targetsFor(server).map((target) => target.path) }
-        : {}),
-    }));
+  const resourceCatalogs = [
+    ...new Set(servers.map((server) => splitServerKey(server.name).catalog)),
+  ]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  const visibleResources = filterGroupResources(servers, resourceCatalog, resourceQuery);
+  const selectVisible = (checked: boolean) =>
+    setPermissions(
+      (current) =>
+        current && {
+          ...current,
+          servers: selectVisibleGroupResources(current.servers, visibleResources, checked),
+        },
+    );
   const resourceComplete = (server: UserGroupResourceOption) => {
     const resource = permissions?.servers.find((entry) => entry.name === server.name);
     return (
@@ -396,6 +409,7 @@ export default function UsersPage() {
                             aria-label={t('userDirectory.permissionsFor', { name: group.name })}
                             onClick={() => {
                               setResourceQuery('');
+                              setResourceCatalog('*');
                               void openPermissions(group);
                             }}
                           >
@@ -582,6 +596,21 @@ export default function UsersPage() {
               </p>
             )}
             <div className="hub-directory-permission-tools">
+              <select
+                className="hub-input hub-directory-permission-catalog"
+                aria-label={t('catalog.label')}
+                value={resourceCatalog}
+                disabled={busy}
+                onChange={(event) => setResourceCatalog(event.target.value)}
+              >
+                <option value="*">{t('catalog.all')}</option>
+                <option value="">{t('catalog.public')}</option>
+                {resourceCatalogs.map((catalog) => (
+                  <option key={catalog} value={catalog}>
+                    {catalog}
+                  </option>
+                ))}
+              </select>
               <div className="hub-directory-search">
                 <Search size={14} />
                 <input
@@ -593,83 +622,83 @@ export default function UsersPage() {
               </div>
               <button
                 className="hub-btn sm"
-                disabled={busy}
-                onClick={() => setPermissions({ ...permissions, servers: allResources() })}
+                disabled={busy || !visibleResources.length}
+                onClick={() => selectVisible(true)}
               >
-                {t('userDirectory.selectAll')}
+                {t('userDirectory.selectVisible')}
               </button>
               <button
                 className="hub-btn ghost sm"
-                disabled={busy}
-                onClick={() => setPermissions({ ...permissions, servers: [] })}
+                disabled={busy || !visibleResources.length}
+                onClick={() => selectVisible(false)}
               >
-                {t('userDirectory.clearAll')}
+                {t('userDirectory.clearVisible')}
               </button>
             </div>
             <div className="hub-directory-permission-list">
-              {servers
-                .filter((server) => server.name.toLowerCase().includes(resourceQuery.toLowerCase()))
-                .map((server) => {
-                  const targets = targetsFor(server);
-                  const resource = permissions.servers.find((entry) => entry.name === server.name);
-                  const complete = resourceComplete(server);
-                  return (
-                    <div className="hub-directory-resource" key={server.name}>
-                      <label className="hub-directory-resource-label">
-                        <input
-                          type="checkbox"
-                          disabled={busy}
-                          checked={complete}
-                          ref={(node) => {
-                            if (node) node.indeterminate = !!resource && !complete;
-                          }}
-                          onChange={(event) =>
-                            updateResource(
-                              server,
-                              targets.length ? targets.map((target) => target.path) : undefined,
-                              event.target.checked,
-                            )
-                          }
-                        />
-                        <span>{server.name}</span>
-                        <small>
-                          {targets.length
-                            ? t('userDirectory.targetCount', { count: targets.length })
-                            : t('userDirectory.singleConnection')}
-                        </small>
-                      </label>
-                      {targets.length > 0 && (
-                        <div className="hub-directory-resource-targets">
-                          {targets.map((target) => (
-                            <label className="hub-checkbox-label" key={target.path}>
-                              <input
-                                type="checkbox"
-                                disabled={busy}
-                                checked={
-                                  !!resource &&
-                                  (resource.targets === undefined ||
-                                    resource.targets.includes(target.path))
-                                }
-                                onChange={(event) => {
-                                  const current = resource
-                                    ? (resource.targets ?? targets.map((entry) => entry.path))
-                                    : [];
-                                  const next = event.target.checked
-                                    ? [...new Set([...current, target.path])]
-                                    : current.filter((path) => path !== target.path);
-                                  updateResource(server, next, next.length > 0);
-                                }}
-                              />
-                              <span className="break-all">{target.path}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              {!servers.length && (
-                <p className="hub-config-note p-4">{t('userGroups.noServers')}</p>
+              {visibleResources.map((server) => {
+                const targets = targetsFor(server);
+                const resource = permissions.servers.find((entry) => entry.name === server.name);
+                const complete = resourceComplete(server);
+                return (
+                  <div className="hub-directory-resource" key={server.name}>
+                    <label className="hub-directory-resource-label">
+                      <input
+                        type="checkbox"
+                        disabled={busy}
+                        checked={complete}
+                        ref={(node) => {
+                          if (node) node.indeterminate = !!resource && !complete;
+                        }}
+                        onChange={(event) =>
+                          updateResource(
+                            server,
+                            targets.length ? targets.map((target) => target.path) : undefined,
+                            event.target.checked,
+                          )
+                        }
+                      />
+                      <span>{server.name}</span>
+                      <small>
+                        {targets.length
+                          ? t('userDirectory.targetCount', { count: targets.length })
+                          : t('userDirectory.singleConnection')}
+                      </small>
+                    </label>
+                    {targets.length > 0 && (
+                      <div className="hub-directory-resource-targets">
+                        {targets.map((target) => (
+                          <label className="hub-checkbox-label" key={target.path}>
+                            <input
+                              type="checkbox"
+                              disabled={busy}
+                              checked={
+                                !!resource &&
+                                (resource.targets === undefined ||
+                                  resource.targets.includes(target.path))
+                              }
+                              onChange={(event) => {
+                                const current = resource
+                                  ? (resource.targets ?? targets.map((entry) => entry.path))
+                                  : [];
+                                const next = event.target.checked
+                                  ? [...new Set([...current, target.path])]
+                                  : current.filter((path) => path !== target.path);
+                                updateResource(server, next, next.length > 0);
+                              }}
+                            />
+                            <span className="break-all">{target.path}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {!visibleResources.length && (
+                <p className="hub-config-note p-4">
+                  {t(servers.length ? 'userDirectory.noMatchingResources' : 'userGroups.noServers')}
+                </p>
               )}
             </div>
             <div className="hub-directory-dialog-footer">
@@ -817,13 +846,30 @@ export default function UsersPage() {
                 {t('userGroups.tokenOnce')}
               </h2>
             </div>
-            <div className="p-5">
+            <div className="p-5 flex items-center gap-2">
               <SecretInput
                 value={newToken}
                 readOnly
                 className="hub-input hub-mono"
                 secretLabel={t('userGroups.groupKey')}
               />
+              <button
+                type="button"
+                className="hub-btn shrink-0"
+                onClick={async (event) => {
+                  const button = event.currentTarget;
+                  const copied = await copyText(newToken);
+                  button.focus();
+                  setTokenCopied(copied);
+                  showToast(
+                    t(copied ? 'common.copySuccess' : 'common.copyFailed'),
+                    copied ? 'success' : 'error',
+                  );
+                }}
+              >
+                {tokenCopied ? <Check size={15} /> : <Copy size={15} />}
+                {t(tokenCopied ? 'common.copied' : 'common.copy')}
+              </button>
             </div>
             <div className="hub-directory-dialog-footer">
               <button className="hub-btn" onClick={() => setNewToken('')}>

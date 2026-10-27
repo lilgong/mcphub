@@ -98,7 +98,8 @@
     "tree-kill": "^1.2.2",
     "typeorm": "^1.1.0",
     "undici": "^7.28.0",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "ws": "8.21.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
@@ -125,6 +126,7 @@
     "@types/react-dom": "^19.1.7",
     "@types/supertest": "^7.2.0",
     "@types/uuid": "^11.0.0",
+    "@types/ws": "^8.18.2",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.68.0",
     "@vitejs/plugin-react": "^5.1.3",

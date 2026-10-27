@@ -1,3 +1,5 @@
+import WorkspaceCredentials from '../components/WorkspaceCredentials';
+import { useAuth } from '../contexts/AuthContext';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
@@ -96,6 +98,7 @@ const CredentialForm = ({
 };
 
 export default function CredentialsPage() {
+  const { auth } = useAuth();
   const { t } = useTranslation();
   const [search, setSearch] = useSearchParams();
   const [bindings, setBindings] = useState<MyCredentialBinding[]>([]);
@@ -123,15 +126,24 @@ export default function CredentialsPage() {
     <div className="max-w-4xl mx-auto space-y-5">
       <div>
         <h1 className="hub-h1">{t('credentials.title')}</h1>
-        <p className="hub-sub">{t('credentials.description')}</p>
+        <p className="hub-sub">
+          {t(
+            auth.user?.isAdmin ? 'workspaceCredentials.pageDescription' : 'credentials.description',
+          )}
+        </p>
       </div>
+      {auth.user?.isAdmin && <WorkspaceCredentials />}
       {search.has('server') && (
         <button className="hub-btn" onClick={() => setSearch({})}>
           {t('credentials.showAll')}
         </button>
       )}
       {error && (
-        <div className="hub-card px-4 py-3 text-sm" style={{ color: 'var(--hub-err)' }} role="alert">
+        <div
+          className="hub-card px-4 py-3 text-sm"
+          style={{ color: 'var(--hub-err)' }}
+          role="alert"
+        >
           {error}
         </div>
       )}
@@ -139,7 +151,7 @@ export default function CredentialsPage() {
         <div className="hub-card p-10 text-center text-sm" style={{ color: 'var(--hub-ink-3)' }}>
           {t('credentials.loading')}
         </div>
-      ) : !visible.length && !error ? (
+      ) : !visible.length && !error && !auth.user?.isAdmin ? (
         <div className="hub-card p-10 text-center text-sm" style={{ color: 'var(--hub-ink-3)' }}>
           {t('credentials.empty')}
         </div>

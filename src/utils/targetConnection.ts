@@ -139,6 +139,14 @@ export function normalizeTargetConnections(value: unknown): TargetConnection[] |
     }
     if (entry.kind === 'task' && entry.config) {
       config = { relay: normalizeFetchRelay(entry.config.relay) };
+      for (const field of ['timeout', 'maxBufferSize'] as const) {
+        const value = entry.config.options?.[field];
+        if (value !== undefined) {
+          if (!Number.isSafeInteger(value) || value < 0 || value > 2147483647)
+            throw new ServerConfigValidationError(`Invalid task request ${field}`);
+          config.options = { ...config.options, [field]: value };
+        }
+      }
       if (entry.config.env?.MCPHUB_RELAY_ADAPTER === 'fetch-v1')
         config.env = { MCPHUB_RELAY_ADAPTER: 'fetch-v1' };
     }

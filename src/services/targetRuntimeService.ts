@@ -1,3 +1,4 @@
+import { workspaceDefinition } from './workspaceRuntimeService.js';
 import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
 import type { ServerConfig, ServerInfo } from '../types/index.js';
 import type { RequestPrincipal } from './authorizationService.js';
@@ -202,6 +203,8 @@ export class TargetRuntimeService {
       if (!current || current.enabled === false) throw new Error('Target registration unavailable');
       definition = current;
     }
+    definition =
+      (await workspaceDefinition(server, definition, path, principal, keyId)) ?? definition;
     if (!validateTargetPath(path)) throw new Error('An explicit X-MCPHub-Target is required');
     const target = definition.targets?.find((value) => value.path === path);
     if (!target || !(await authorizeTargetForCaller(server, target, principal, keyId)))

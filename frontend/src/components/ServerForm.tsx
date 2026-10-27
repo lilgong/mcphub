@@ -1,3 +1,4 @@
+import ServerAccountEditor from './ServerAccountEditor';
 import { splitServerKey, validateServerKey } from '../../../src/utils/catalog';
 import HttpForwardEditor from './HttpForwardEditor';
 import {
@@ -141,6 +142,7 @@ const ServerForm = ({
 
   const [formData, setFormData] = useState<ServerFormData>({
     targets: initialData?.config?.targets ?? undefined,
+    workspaceSchema: initialData?.config?.workspaceSchema,
     keyPool: initialData?.config?.keyPool ?? undefined,
     rateLimit: initialData?.config?.rateLimit ?? undefined,
     relay: initialData?.config?.relay ?? undefined,
@@ -871,6 +873,26 @@ const ServerForm = ({
         {serverType !== 'http-proxy' && (
           <TargetConnectionEditor
             value={formData.targets}
+            managedFields={formData.workspaceSchema?.managed}
+            managedStartupAccount={formData.workspaceSchema?.enabled === true}
+            startupAccountEnabled={formData.workspaceSchema?.enabled === true}
+            onStartupAccountChange={(enabled) =>
+              setFormData((previous) => ({
+                ...previous,
+                workspaceSchema: previous.workspaceSchema
+                  ? { ...previous.workspaceSchema, enabled }
+                  : undefined,
+              }))
+            }
+            taskAccountEditor={
+              isEdit &&
+              initialData?.name &&
+              formData.workspaceSchema &&
+              (!!formData.workspaceSchema.values?.length ||
+                !!formData.workspaceSchema.files?.length) ? (
+                <ServerAccountEditor server={initialData.name} schema={formData.workspaceSchema} />
+              ) : undefined
+            }
             catalog={catalog}
             onUseSingle={(connection) => {
               if (!connection) return;

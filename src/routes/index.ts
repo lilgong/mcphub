@@ -1,3 +1,10 @@
+import { serverWorkspaceAccounts } from '../controllers/workspaceController.js';
+import {
+  workspaceManagement,
+  createWorkspaceRun,
+  workspaceRun,
+} from '../controllers/workspaceController.js';
+import { getRuntimeWorkers } from '../controllers/runtimeWorkerController.js';
 import { forwardHttp } from '../controllers/httpForwardController.js';
 import {
   relayRuntime,
@@ -308,6 +315,29 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   // instead of consuming the shared authenticated-route budget.
 
   // API routes protected by auth middleware in middlewares/index.ts and rate limited here
+  authenticatedRouter.get('/servers/:name/accounts', serverWorkspaceAccounts);
+  authenticatedRouter.get('/servers/:name/accounts/:account', serverWorkspaceAccounts);
+  authenticatedRouter.put('/servers/:name/accounts/:account', serverWorkspaceAccounts);
+  authenticatedRouter.get('/workspace-credentials', workspaceManagement);
+  authenticatedRouter.post(
+    '/workspace-credentials/:catalog/:workspace/release',
+    workspaceManagement,
+  );
+  authenticatedRouter.put(
+    '/workspace-credentials/:catalog/:workspace',
+    express.json({ limit: '9mb' }),
+    workspaceManagement,
+  );
+  authenticatedRouter.delete('/workspace-credentials/:catalog/:workspace', workspaceManagement);
+  authenticatedRouter.post('/workspace-runs', createWorkspaceRun);
+  authenticatedRouter.get('/workspace-runs/:id', workspaceRun);
+  authenticatedRouter.put('/workspace-runs/:id', workspaceRun);
+  authenticatedRouter.put(
+    '/workspace-runs/:id/files',
+    express.json({ limit: '9mb' }),
+    workspaceRun,
+  );
+  authenticatedRouter.delete('/workspace-runs/:id', workspaceRun);
   authenticatedRouter.post('/task-connections', registerTaskConnection);
   authenticatedRouter.put('/task-connections/:id', renewTaskConnection);
   authenticatedRouter.delete('/task-connections/:id', removeTaskConnection);
@@ -422,6 +452,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.post('/oauth/clients/:clientId/regenerate-secret', regenerateSecret);
 
   // Bearer authentication key management (admin only)
+  authenticatedRouter.get('/runtime-workers', getRuntimeWorkers);
   authenticatedRouter.get('/user-groups', getUserGroups);
   authenticatedRouter.post('/user-groups', saveUserGroup);
   authenticatedRouter.get('/user-groups/resources', getGroupResources);

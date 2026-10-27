@@ -58,7 +58,10 @@ it('scopes plain names without dropping target and relay configuration', () => {
     targets: [{ id: 'fixture-a', enabled: true, command: 'node', args: ['fixture.mjs'] }],
     relay: { enabled: true, upstream: 'arxiv' },
   };
-  const { servers, issues } = normalizeImportedServers({ mcpServers: { arxiv: config } } as any, 'atlas');
+  const { servers, issues } = normalizeImportedServers(
+    { mcpServers: { arxiv: config } } as any,
+    'atlas',
+  );
   expect(issues).toEqual([]);
   expect(servers[0]).toMatchObject({ name: 'atlas::arxiv', config });
 });
@@ -67,7 +70,8 @@ it('preserves exported namespaces and rejects a conflicting destination', () => 
   const input = { mcpServers: { 'atlas::arxiv': { command: 'node' } } };
   expect(normalizeImportedServers(input, '').servers[0].name).toBe('atlas::arxiv');
   expect(normalizeImportedServers(input, 'toolathlon')).toMatchObject({
-    servers: [], issues: [{ name: 'atlas::arxiv', message: expect.stringContaining('atlas') }],
+    servers: [],
+    issues: [{ name: 'atlas::arxiv', message: expect.stringContaining('atlas') }],
   });
 });
 
@@ -79,7 +83,20 @@ it('reports duplicate destinations when plain and scoped names converge', () => 
 });
 
 it('rejects invalid namespace names before importing servers', () => {
-  const result = normalizeImportedServers({ mcpServers: { arxiv: { command: 'node' } } }, '../atlas');
+  const result = normalizeImportedServers(
+    { mcpServers: { arxiv: { command: 'node' } } },
+    '../atlas',
+  );
   expect(result.servers).toEqual([]);
   expect(result.issues).toHaveLength(1);
+});
+
+it('imports task-only definitions without inventing a local executable', () => {
+  const config = {
+    targets: [{ path: 'task/default', kind: 'task' as const, config: { options: { timeout: 0 } } }],
+  };
+  const result = normalizeImportedServers({ mcpServers: { notion: config } }, 'toolathlon');
+  expect(result.issues).toEqual([]);
+  expect(result.servers[0]).toMatchObject({ name: 'toolathlon::notion', config });
+  expect(result.servers[0].config.command).toBeUndefined();
 });

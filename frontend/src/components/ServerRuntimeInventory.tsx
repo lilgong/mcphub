@@ -55,6 +55,7 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
                 {[
                   'target',
                   'kind',
+                  'execution',
                   'implementation',
                   'mcpVersion',
                   'status',
@@ -79,6 +80,12 @@ export default function ServerRuntimeInventory({ runtime }: { runtime: ServerRun
                     {t(
                       `runtime.${instance.kind === 'target' ? 'targetConnection' : instance.kind}`,
                     )}
+                  </td>
+                  <td className="px-3 py-2 hub-sub whitespace-nowrap">
+                    {instance.worker ??
+                      t(
+                        instance.kind === 'task' ? 'runtime.taskExecution' : 'runtime.hubExecution',
+                      )}
                   </td>
                   <td className="px-3 py-2">
                     {t(`targets.${instance.implementation ?? 'unspecified'}`)}

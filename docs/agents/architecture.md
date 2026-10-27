@@ -71,3 +71,44 @@ attached to a replaced DataSource fail with DatabaseRecoveringError instead of a
 from its ended pool. Queries already running can still fail during teardown; do not
 blindly replay writes or tool calls. Generic HTTP error handling returns 503 for this
 recovery error. System-config recovery must not destroy the pool for an isolated timeout.
+
+## Execution workers
+
+`MCPHUB_WORKERS` explicitly maps catalogs/MCPs/targets to authenticated execution workers; public STDIO stays local. `WorkerStdioTransport` extends the STDIO transport contract so recovery, discovery and protocol notifications remain unchanged. Never use a worker PID with the Hub's local process killer. Workers receive only per-connection credentials and selected toolchain/helper settings, never ambient Hub secrets. They have no database or Docker socket. `MCPHUB_REQUIRE_WORKERS=true` forbids local fallback for scoped STDIO. Docker Compose owns container lifecycle; task callbacks retain benchmark ownership. Scoped uploads use per-catalog read-only mounts and worker-owned immutable releases.
+
+Execution workers run on Linux with the `setsid` executable (util-linux). Each MCP runs in its own session/process group. Disconnect and worker shutdown share idempotent cleanup: signal the group with SIGTERM, allow one second to exit, then SIGKILL the saved group even if its leader has exited. Worker shutdown waits for pending cleanups. Package snapshots rewrite `command`, arguments and environment paths, including command-only executable bundles.
+
+## Account workspaces
+
+`workspaceService` stores operator-managed account material and run leases in the
+existing encrypted credential DAO, using reserved `@workspace` and `@workspace-run`
+identities that cannot collide with MCP names. Dashboard administrators manage account configuration. Lists remain metadata-only;
+explicit per-account reads require administrator dashboard authentication and return
+only the current MCP declaration’s fields with Cache-Control: no-store. Calling groups need an explicit workspace grant to
+export credentials to trusted preparation/grading processes; MCP invocation grants
+remain separate. Never include account values/files or run capabilities in discovery,
+logs, settings exports or runtime inventory.
+
+A workspace has one leased run. Persist only capability hashes; require the original
+calling identity and live group grants for every access. OAuth file writes compare the
+previous contents hash. Expired runs remain occupied until explicit administrator
+recovery, rather than reusing possibly stale refresh tokens. Mutation serialization is
+single-Hub-process only. Benchmarks own scripts, task IDs, paths and service lifecycle;
+workspace templates are external data, not benchmark-specific Hub execution logic.
+
+`ServerConfig.workspaceSchema` is optional metadata for startup-account inputs, stored
+in both server DAO modes. It is independent of personal credentialTemplate slots and
+static/task target selection. Account editing is administrator-only, scoped
+to the server's declared inputs; it must preserve other MCPs' fields in the shared
+catalog account. Adding this metadata must never require Atlas callers to create or
+supply a workspace-run capability. Declaration payloads must not embed secret values.
+
+Structured account documents declare their fields, format and public template in
+workspaceSchema. Templates must not carry credentials. Fields and the optional full
+source editor modify one document; new accounts use only public defaults. Keep file
+materialization in the benchmark adapter. Generic Hub code does not encode provider
+field names or execute benchmark preparation scripts.
+
+Workspace schema `managed` entries are documentation only. Do not turn generated or
+task-owned fields into operator credential inputs or export their default strings
+as credentials. Managed-only declarations show guidance, not an account editor.

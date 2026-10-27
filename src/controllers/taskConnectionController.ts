@@ -1,15 +1,21 @@
+import { accessWorkspaceRun, boundWorkspaceRun } from '../services/workspaceService.js';
+import { canUseWorkspace } from './workspaceController.js';
+import { Agent } from 'undici';
 import { resolveTaskTarget } from '../utils/taskTarget.js';
 import { validateServerKey, splitServerKey } from '../utils/catalog.js';
 import { getUserGroupPolicy, userGroupAllows } from '../services/userGroupService.js';
 import type { Request, Response } from 'express';
 import { getServerDao, getBearerKeyDao } from '../dao/DaoFactory.js';
-import { taskConnections } from '../services/taskConnectionService.js';
+import { taskConnections, watchTaskRequest } from '../services/taskConnectionService.js';
 import { authorizeTargetForCaller } from '../services/targetRuntimeService.js';
 import { assertSafeUrl } from '../utils/ssrf.js';
 import { requireAdmin } from '../utils/requireAdmin.js';
 import { withToolAudit } from '../services/toolAuditService.js';
 import { toolCallScheduler } from '../services/toolCallSchedulerService.js';
 import { RequestContextService } from '../services/requestContextService.js';
+// Explicit lease/request watches own task deadlines, including long calls.
+// Avoid undici's implicit 300-second headers/body inactivity deadline.
+const taskDispatcher = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
 const owner = (req: Request): string => {
   const principal = req as Request & { user?: { username: string }; bearerKey?: { id: string } };
   return principal.bearerKey?.id || principal.user?.username || '';
@@ -66,8 +72,21 @@ export async function registerTaskConnection(req: Request, res: Response): Promi
     const parsed = new URL(url);
     if (parsed.username || parsed.password || parsed.search || parsed.hash)
       throw new Error('Invalid callback URL');
+    let workspaceRunId: string | undefined;
+    if (req.body?.runId !== undefined) {
+      if (typeof req.body.runId !== 'string') throw new Error('Invalid run');
+      const { run } = await accessWorkspaceRun(
+        req.body.runId,
+        req.get('X-MCPHub-Run-Token') || '',
+        owner(req),
+        (config) => canUseWorkspace(req, config),
+      );
+      if (run.catalog !== splitServerKey(server).catalog) throw new Error('Task space mismatch');
+      workspaceRunId = run.id;
+    }
     const entry = taskConnections.register({
       server,
+      workspaceRunId,
       target: connection.path,
       taskId,
       url: url.replace(/\/$/, ''),
@@ -125,13 +144,24 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
   }
   const abort = new AbortController();
   entry.controllers.add(abort);
-  const timeout = setTimeout(() => abort.abort(), Math.min(150000, entry.expiresAt - Date.now()));
+  let stopWatch: (() => void) | undefined;
   const disconnect = () => {
     if (!res.writableEnded) abort.abort();
   };
   res.on('close', disconnect);
   res.setHeader('Cache-Control', 'no-store');
   try {
+    if (entry.workspaceRunId) {
+      await boundWorkspaceRun(
+        entry.workspaceRunId,
+        entry.owner,
+        splitServerKey(entry.server).catalog,
+        async (workspace) => {
+          const policy = await getUserGroupPolicy(null, entry.keyId);
+          return policy.groups.some((group) => workspace.allowedGroupIds.includes(group.id));
+        },
+      );
+    }
     const definition = await getServerDao().findById(entry.server);
     const target = definition?.targets?.find(
       (value) => value.path === entry.target && value.kind === 'task',
@@ -153,6 +183,9 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
           key.accessType !== 'all'))
     )
       throw new Error('Task target unavailable');
+    // A zero budget disables only the extra Hub deadline. Lease expiration,
+    // explicit revocation and client disconnection still cancel the call.
+    stopWatch = watchTaskRequest(entry, abort, target.config?.options?.timeout ?? 150000);
     if (
       operation === 'call-tool' &&
       (typeof req.body?.tool_name !== 'string' ||
@@ -164,6 +197,7 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
       res.status(400).json({ message: 'Invalid tool call' });
       return;
     }
+    const maxResponseBytes = target.config?.options?.maxBufferSize ?? 4 * 1024 * 1024;
     const headers = {
       ...req.headers,
       'x-mcphub-target': entry.target,
@@ -183,7 +217,8 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
         ),
         signal: abort.signal,
         redirect: 'error',
-      });
+        dispatcher: taskDispatcher,
+      } as RequestInit & { dispatcher: Agent });
       const reader = response.body?.getReader();
       const chunks: Uint8Array[] = [];
       let bytes = 0;
@@ -192,7 +227,7 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
           const chunk = await reader.read();
           if (chunk.done) break;
           bytes += chunk.value.byteLength;
-          if (bytes > 4 * 1024 * 1024) {
+          if (maxResponseBytes > 0 && bytes > maxResponseBytes) {
             await reader.cancel();
             throw new Error('Task response too large');
           }
@@ -267,7 +302,7 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
         isError: true,
       });
   } finally {
-    clearTimeout(timeout);
+    stopWatch?.();
     res.off('close', disconnect);
     entry.controllers.delete(abort);
   }

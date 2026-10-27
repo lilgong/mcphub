@@ -12,6 +12,7 @@ export interface RuntimeInstance {
   status: 'connected' | 'connecting' | 'disconnected' | 'oauth_required' | 'registered';
   startedAt?: number;
   activeCalls?: number;
+  worker?: string;
   draining?: boolean;
   taskId?: string;
   expiresAt?: number;

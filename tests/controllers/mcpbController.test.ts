@@ -106,9 +106,11 @@ describe('mcpbController - uploadMcpbFile', () => {
       const { response, json } = createResponse();
       await uploadMcpbFile(req, response);
       expect(json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
-      expect(fs.existsSync(path.join(uploadDir, `server-${catalog}~weather`, 'server.js'))).toBe(
-        true,
-      );
+      expect(
+        fs.existsSync(
+          path.join(uploadDir, 'catalogs', catalog, `server-${catalog}~weather`, 'server.js'),
+        ),
+      ).toBe(true);
     }
     expect(fs.readFileSync(path.join(uploadDir, 'server-weather', 'original.txt'), 'utf8')).toBe(
       'public',

@@ -199,3 +199,5 @@ Les groupes d’appel appartiennent aux utilisateurs ; les administrateurs gère
 ### Statistiques par clé en amont
 
 Les statistiques distinguent les appels d’outils des tentatives API terminées. Les administrateurs peuvent filtrer par empreinte de clé calculée dans le navigateur. La couverture comprend les ressources HTTP (dont `serper-a` et `serper-b`), les MCP Yibu instrumentés et les pools de clés. Les clés complètes ne sont pas envoyées ; les traces historiques sans empreinte et les MCP non instrumentés restent exclus. Voir [le transfert HTTP](docs/features/http-forwarding.mdx).
+
+Les espaces de comptes centralisent les identifiants et fichiers OAuth pour la préparation et l’évaluation autorisées. Voir [les comptes par espace](docs/features/catalogs.mdx#workspace-accounts).

@@ -1,4 +1,5 @@
-import { mcpbServerDirectoryName } from '../utils/mcpbPaths.js';
+import { randomUUID } from 'node:crypto';
+import { mcpbServerDirectoryName, mcpbServerRelativePath } from '../utils/mcpbPaths.js';
 import { getServerDao } from '../dao/DaoFactory.js';
 import { serverKey } from '../utils/catalog.js';
 import { Request, Response } from 'express';
@@ -63,7 +64,7 @@ const validateMcpbServerName = (serverName: unknown): string => {
 
 const resolveMcpbServerExtractDir = (baseDir: string, serverName: string): string => {
   const resolvedBaseDir = path.resolve(baseDir);
-  const resolvedTargetDir = path.resolve(resolvedBaseDir, mcpbServerDirectoryName(serverName));
+  const resolvedTargetDir = path.resolve(resolvedBaseDir, mcpbServerRelativePath(serverName));
   const relativeTargetPath = path.relative(resolvedBaseDir, resolvedTargetDir);
 
   if (relativeTargetPath.startsWith('..') || path.isAbsolute(relativeTargetPath)) {
@@ -77,19 +78,10 @@ const resolveMcpbServerExtractDir = (baseDir: string, serverName: string): strin
 const cleanupOldMcpbServer = (serverName: string): void => {
   try {
     const uploadDir = getMcpbUploadDir();
-    const serverPattern = mcpbServerDirectoryName(serverName);
-
-    if (fs.existsSync(uploadDir)) {
-      const files = fs.readdirSync(uploadDir);
-      files.forEach((file) => {
-        if (file === serverPattern) {
-          const filePath = path.join(uploadDir, file);
-          if (fs.statSync(filePath).isDirectory()) {
-            fs.rmSync(filePath, { recursive: true, force: true });
-            logger.log(`Cleaned up old MCPB server directory: ${filePath}`);
-          }
-        }
-      });
+    const directories = [mcpbServerRelativePath(serverName), mcpbServerDirectoryName(serverName)];
+    for (const directory of directories) {
+      const installed = path.join(uploadDir, directory);
+      if (fs.existsSync(installed)) fs.rmSync(installed, { recursive: true, force: true });
     }
   } catch (error) {
     logger.warn('Failed to cleanup old MCPB server files:', error);
@@ -160,7 +152,13 @@ export const uploadMcpbFile = async (req: Request, res: Response): Promise<void>
           path.dirname(mcpbFilePath),
           `server-${encodeURIComponent(safeServerName)}`,
         );
-        const exists = registered || fs.existsSync(finalExtractDir) || fs.existsSync(legacyDir);
+        const exists =
+          registered ||
+          fs.existsSync(finalExtractDir) ||
+          fs.existsSync(legacyDir) ||
+          fs.existsSync(
+            path.join(path.dirname(mcpbFilePath), mcpbServerDirectoryName(safeServerName)),
+          );
         if (req.body?.inspectOnly === 'true') {
           fs.unlinkSync(mcpbFilePath);
           res.json({ success: true, data: { manifest, exists, registered } });
@@ -179,6 +177,8 @@ export const uploadMcpbFile = async (req: Request, res: Response): Promise<void>
       // Inspection never extracts or replaces executable files.
       zip.extractAllTo(tempExtractDir, true);
 
+      fs.writeFileSync(path.join(tempExtractDir, '.mcphub-install-id'), randomUUID());
+
       // Clean up any existing version of this server
       cleanupOldMcpbServer(safeServerName);
       if (!fs.existsSync(finalExtractDir)) {
@@ -186,6 +186,7 @@ export const uploadMcpbFile = async (req: Request, res: Response): Promise<void>
       }
 
       // Move the temporary directory to the final location
+      fs.mkdirSync(path.dirname(finalExtractDir), { recursive: true });
       fs.renameSync(tempExtractDir, finalExtractDir);
       logger.log(`MCPB server extracted to: ${finalExtractDir}`);
 

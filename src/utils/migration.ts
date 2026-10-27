@@ -112,6 +112,7 @@ export async function migrateToDatabase(seedServersAndGroups = true): Promise<bo
             passthroughHeaders: config.passthroughHeaders,
             perSessionClient: config.perSessionClient,
             credentialTemplate: config.credentialTemplate,
+            workspaceSchema: config.workspaceSchema,
           });
           logger.log(`  - Created server: ${name}`);
         } else {

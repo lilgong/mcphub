@@ -411,3 +411,18 @@ describe('key pool DB persistence', () => {
     expect(mockRepository.update).toHaveBeenCalledWith('context7', { keyPool: null });
   });
 });
+
+it('persists account declarations across create, update and DB reads', async () => {
+  const dao = new ServerDaoDbImpl();
+  const workspaceSchema = { values: [{ name: 'token', label: 'Token' }] };
+  mockRepository.create.mockResolvedValue({ name: 'task', enabled: true, workspaceSchema });
+  expect((await dao.create({ name: 'task', workspaceSchema })).workspaceSchema).toEqual(
+    workspaceSchema,
+  );
+  expect(mockRepository.create).toHaveBeenCalledWith(expect.objectContaining({ workspaceSchema }));
+  mockRepository.update.mockResolvedValue({ name: 'task', enabled: true, workspaceSchema });
+  expect((await dao.update('task', { workspaceSchema }))?.workspaceSchema).toEqual(workspaceSchema);
+  expect(mockRepository.update).toHaveBeenLastCalledWith('task', { workspaceSchema });
+  await dao.update('task', { workspaceSchema: undefined });
+  expect(mockRepository.update).toHaveBeenLastCalledWith('task', { workspaceSchema: null });
+});

@@ -58,7 +58,11 @@ export const initMiddlewares = (app: express.Application): void => {
           new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[^/]+/sse(/.*)?$`),
         )
       ) {
-        const jsonBodyLimit = resolveJsonBodyLimit(systemConfig);
+        const credentialUpload =
+          /\/api\/(workspace-credentials\/|workspace-runs\/[^/]+\/files$|servers\/[^/]+\/accounts\/)/.test(
+            req.path,
+          );
+        const jsonBodyLimit = credentialUpload ? '9mb' : resolveJsonBodyLimit(systemConfig);
         express.json({ limit: jsonBodyLimit })(req, res, next);
         return;
       }

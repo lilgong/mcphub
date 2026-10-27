@@ -1517,6 +1517,12 @@ button.text-white.is-loading::after {
   padding: 14px 22px;
   border-bottom: 1px solid var(--hub-line);
 }
+.hub-directory-permission-catalog {
+  width: auto;
+  flex: 0 1 150px;
+  min-width: 120px;
+  font-size: 13px;
+}
 .hub-directory-permission-tools .hub-directory-search {
   flex: 1;
   min-width: 150px;
@@ -1662,3 +1668,29 @@ button.text-white.is-loading::after {
 }
 .hub-relay-connection-status { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-left: 12px; border-left: 2px solid var(--hub-accent); }
 .hub-relay-connection-status > p { flex-basis: 100%; margin: 0; }
+
+/* Account summaries establish one clear boundary around the active configuration. */
+.hub-account-list { border: 1px solid var(--hub-line); border-radius: 8px; overflow: hidden; margin: 18px 0; }
+.hub-account-item { min-width: 0; margin: 0; padding: 0; border: 0; }
+.hub-account-item + .hub-account-item, .hub-account-picker > button + button { border-top: 1px solid var(--hub-line); }
+.hub-account-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; text-align: left; background: var(--hub-bg-2); color: var(--hub-ink-2); border: 0; cursor: pointer; }
+.hub-account-row:hover { background: var(--hub-surface-hover); }
+.hub-account-row.is-active { background: var(--hub-surface-hover); color: var(--hub-ink); box-shadow: inset 3px 0 var(--hub-accent); }
+.hub-account-row:focus-visible { outline: 2px solid var(--hub-accent); outline-offset: -3px; }
+.hub-account-identity { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.hub-account-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.hub-account-caption { color: var(--hub-ink-3); font-size: 12px; overflow-wrap: anywhere; }
+.hub-account-meta { margin-left: auto; font-size: 12px; color: var(--hub-ink-3); flex-shrink: 0; }
+.hub-account-row > svg { flex-shrink: 0; color: var(--hub-ink-3); }
+.hub-account-body { padding: 20px; border-top: 1px solid var(--hub-line-2); }
+.hub-account-body[hidden] { display: none; }
+.hub-account-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 18px; border-top: 1px solid var(--hub-line-2); }
+.hub-task-config { border: 0; padding: 18px 0 0; margin: 0; min-width: 0; }
+.hub-account-picker { max-height: 240px; overflow-y: auto; }
+.hub-account-profile { border-left: 2px solid var(--hub-line); padding-left: 18px; }
+.hub-account-profile-title { font-size: 14px; font-weight: 600; color: var(--hub-ink); overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .hub-account-row { padding: 12px; gap: 8px; }
+  .hub-account-body { padding: 16px 12px; }
+  .hub-account-profile { padding-left: 12px; }
+}

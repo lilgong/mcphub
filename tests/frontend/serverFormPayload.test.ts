@@ -556,3 +556,22 @@ it('preserves only allowlisted task startup values when the base connection form
   expect(payload.config.command).toBeUndefined();
   expect(payload.config.args).toBeUndefined();
 });
+
+it('preserves optional startup account declarations without changing task targets', () => {
+  const workspaceSchema = { values: [{ name: 'provider_token', label: 'Token' }] };
+  const targets = [{ path: 'task/default', kind: 'task' as const }];
+  const formData: ServerFormData = {
+    name: 'task-mcp',
+    url: '',
+    command: '',
+    arguments: '',
+    args: [],
+    env: [],
+    headers: [],
+    workspaceSchema,
+    targets,
+  };
+  const result = buildServerPayload({ formData, serverType: 'stdio', envVars: [], headerVars: [] });
+  expect(result.config.workspaceSchema).toEqual(workspaceSchema);
+  expect(result.config.targets).toEqual(targets);
+});
