@@ -53,6 +53,23 @@ describe('key pool scheduling', () => {
     expect(audit.mock.calls.filter((call) => call[0] === 'finished')).toHaveLength(6);
     expect(JSON.stringify(audit.mock.calls)).not.toContain('private-');
   });
+
+  test('waits for durable admission and does not spend a key when async audit fails', async () => {
+    let release!: () => void;
+    audit.mockImplementationOnce(() => new Promise<void>((resolve) => (release = resolve)));
+    const pending = service.request('context7', target, signal());
+    await Promise.resolve();
+    expect(send).not.toHaveBeenCalled();
+    release();
+    await pending;
+    expect(send).toHaveBeenCalledTimes(1);
+    send.mockClear();
+    audit.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(service.request('context7', target, signal())).rejects.toThrow(
+      'storage unavailable',
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
   test('hides quota and auth failures and skips cooling keys on later requests', async () => {
     send
       .mockResolvedValueOnce(quota)

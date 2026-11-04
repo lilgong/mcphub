@@ -1,9 +1,9 @@
 import { invocationLabels } from './invocationLabelsService.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
-import { openSync, writeSync, fsyncSync, closeSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { logger } from '../utils/logger.js';
+import { appendDurableAudit } from './durableAuditService.js';
 
 type AuditMetadata = {
   tool: string;
@@ -15,7 +15,8 @@ type AuditMetadata = {
 };
 
 type Diagnostic = Record<string, string | number | boolean | undefined>;
-const diagnostics = new AsyncLocalStorage<(event: string, fields: Diagnostic) => void>();
+type DiagnosticWriter = (event: string, fields: Diagnostic) => void | Promise<void>;
+const diagnostics = new AsyncLocalStorage<DiagnosticWriter>();
 
 /** Classify failures without persisting payloads, arguments, tokens, or raw error text. */
 export function describeToolFailure(
@@ -74,10 +75,11 @@ export function describeToolFailure(
   };
 }
 
-export function captureToolDiagnostic(server: string): (event: string, fields: Diagnostic) => void {
+export function captureToolDiagnostic(server: string): DiagnosticWriter {
   const write = diagnostics.getStore();
   return (event, fields) => {
-    if (write) write(event, { ...(server ? { server: server.slice(0, 512) } : {}), ...fields });
+    if (write)
+      return write(event, { ...(server ? { server: server.slice(0, 512) } : {}), ...fields });
     else logger.log('[tool-scheduler]', { event, server, ...fields });
   };
 }
@@ -92,8 +94,8 @@ export async function withToolAudit<T extends { isError?: boolean }>(
   const requestId = randomUUID();
   const started = Date.now();
   const file = join(directory, `${new Date(started).toISOString().slice(0, 10)}.jsonl`);
-  const write = (event: string, fields: Diagnostic = {}): void => {
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const writes: Promise<void>[] = [];
+  const write = (event: string, fields: Diagnostic = {}): Promise<void> => {
     const record = {
       ts: new Date().toISOString(),
       request_id: requestId,
@@ -105,43 +107,35 @@ export async function withToolAudit<T extends { isError?: boolean }>(
       event,
       ...fields,
     };
-    const line = Buffer.from(`${JSON.stringify(record)}\n`);
-    const fd = openSync(file, 'a', 0o600);
-    try {
-      if (writeSync(fd, line) !== line.length) throw new Error('Incomplete tool audit write');
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
-    for (const path of [directory, dirname(directory)]) {
-      const fd = openSync(path, 'r');
-      try {
-        fsyncSync(fd);
-      } finally {
-        closeSync(fd);
-      }
-    }
-    logger.log('[tool-audit]', record);
+    const pending = appendDurableAudit(file, record).then(() => {
+      logger.log('[tool-audit]', record);
+    });
+    writes.push(pending);
+    // Diagnostic producers are synchronous; surface their write failures at completion.
+    void pending.catch(() => undefined);
+    return pending;
   };
   // This must complete before any tool invocation can use an upstream credential.
-  write('started');
+  await write('started');
   return diagnostics.run(write, async () => {
     let result: T;
     try {
       result = await call();
     } catch (error) {
-      write('finished', {
+      await write('finished', {
         status: 'error',
         duration_ms: Date.now() - started,
         ...describeToolFailure(error),
       });
+      await Promise.all(writes);
       throw error;
     }
-    write('finished', {
+    await write('finished', {
       status: result.isError ? 'error' : 'success',
       duration_ms: Date.now() - started,
       ...describeToolFailure(result),
     });
+    await Promise.all(writes);
     return result;
   });
 }

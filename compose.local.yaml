@@ -22,6 +22,7 @@ services:
     environment:
       USE_DB: 'true'
       MCP_RATE_LIMIT_MAX: 'off'
+      API_RATE_LIMIT_MAX: 'off'
       MCPHUB_AUDIT_LOG_DIR: /app/data/tool-audit
       MCP_USAGE_LOG_DIR: /app/data/mcp-usage
       MCP_USAGE_LOG_STDERR: 'true'

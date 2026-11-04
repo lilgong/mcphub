@@ -1,5 +1,10 @@
 import express from 'express';
 import request from 'supertest';
+import fsPromises from 'node:fs/promises';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { withToolAudit } from '../../src/services/toolAuditService.js';
 import {
   registerTaskConnection,
   renewTaskConnection,
@@ -135,4 +140,55 @@ test('leases expire, targets removed from configuration reject forwarding', asyn
     -1,
   );
   expect(taskConnections.acquire(expired.id, expired.token)).toBeUndefined();
+});
+
+test('lease renewal stays responsive while tool admission waits for durable storage', async () => {
+  const entry = (await register('slow-audit').expect(200)).body.data;
+  const directory = mkdtempSync(join(tmpdir(), 'hub-slow-audit-'));
+  const previous = process.env.MCPHUB_AUDIT_LOG_DIR;
+  process.env.MCPHUB_AUDIT_LOG_DIR = directory;
+  let release!: () => void;
+  let entered!: () => void;
+  const blocked = new Promise<void>((resolve) => (release = resolve));
+  const syncing = new Promise<void>((resolve) => (entered = resolve));
+  const open = fsPromises.open;
+  let delayed = false;
+  jest.spyOn(fsPromises, 'open').mockImplementation(async (...args) => {
+    const handle = await open(...args);
+    if (!delayed && String(args[0]).endsWith('.jsonl')) {
+      delayed = true;
+      const sync = handle.sync.bind(handle);
+      jest.spyOn(handle, 'sync').mockImplementation(async () => {
+        entered();
+        await blocked;
+        await sync();
+      });
+    }
+    return handle;
+  });
+  const call = jest.fn(async () => ({ isError: false }));
+  const invocation = withToolAudit({ tool: 'slow-storage' }, call);
+  try {
+    await syncing;
+    expect(call).not.toHaveBeenCalled();
+    await request(app)
+      .put(`/api/task-connections/${entry.id}`)
+      .set('x-test-admin', 'caller-a')
+      .expect(200);
+    await request(app)
+      .put(`/api/task-connections/${entry.id}`)
+      .set('x-test-admin', 'caller-b')
+      .expect(403);
+    expect(call).not.toHaveBeenCalled();
+    release();
+    await invocation;
+    expect(call).toHaveBeenCalledTimes(1);
+  } finally {
+    release();
+    await invocation;
+    taskConnections.remove(entry.id, 'caller-a');
+    if (previous === undefined) delete process.env.MCPHUB_AUDIT_LOG_DIR;
+    else process.env.MCPHUB_AUDIT_LOG_DIR = previous;
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

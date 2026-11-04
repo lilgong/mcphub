@@ -77,7 +77,7 @@ export async function requestHttpUpstream(
     credential_suffix: credentials.map((value) => `${value.role}: …${value.suffix}`).join(', '),
   };
   // Persist admission before the HTTP request; failure must not spend a credential.
-  log('upstream_started', metadata);
+  await log('upstream_started', metadata);
   const started = Date.now();
   let result;
   try {

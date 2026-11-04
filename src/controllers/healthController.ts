@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { getDatabaseHealth } from '../db/connection.js';
 import { getServerConnectionStats } from '../services/mcpService.js';
 import { logger } from '../utils/logger.js';
+import { relayRuntimeService } from '../services/relayRuntimeService.js';
 
 const isDatabaseModeEnabled = (): boolean => {
   return process.env.USE_DB !== undefined ? process.env.USE_DB === 'true' : !!process.env.DB_URL;
@@ -12,7 +13,7 @@ const isDatabaseModeEnabled = (): boolean => {
  * Returns 200 OK when MCPHub core is healthy.
  * Returns 503 Service Unavailable when MCPHub core is unhealthy.
  */
-export const healthCheck = (_req: Request, res: Response): void => {
+export const healthCheck = async (_req: Request, res: Response): Promise<void> => {
   try {
     const serverStats = getServerConnectionStats();
 
@@ -29,6 +30,17 @@ export const healthCheck = (_req: Request, res: Response): void => {
       }
     }
 
+    const relay = await relayRuntimeService.readiness();
+    if (relay && !relay.healthy) {
+      res.status(503).json({
+        status: 'unhealthy',
+        message: 'Configured Relay is unavailable',
+        servers: serverStats,
+        relay,
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
     if (serverStats.disconnected === 0) {
       res.status(200).json({
         status: 'healthy',

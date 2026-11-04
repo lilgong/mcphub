@@ -99,4 +99,22 @@ describe('durable tool audit', () => {
     ).resolves.toEqual({ isError: false });
     expect(readdirSync(directory)).toEqual([]);
   });
+
+  it('keeps concurrent admissions and diagnostics as complete ordered records', async () => {
+    await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        withToolAudit({ tool: `search-${index}` }, async () => {
+          captureToolDiagnostic('search')('dispatched', { wait_ms: index });
+          return { isError: false };
+        }),
+      ),
+    );
+    const events = records(directory);
+    expect(events).toHaveLength(36);
+    for (let index = 0; index < 12; index++) {
+      expect(
+        events.filter((record) => record.tool === `search-${index}`).map((record) => record.event),
+      ).toEqual(['started', 'dispatched', 'finished']);
+    }
+  });
 });

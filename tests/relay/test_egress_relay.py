@@ -278,6 +278,8 @@ def test_json_response_treats_broken_pipe_as_client_disconnect():
         ("https://arxiv.org/abs/2501.00001", "arxiv"),
         ("https://arxiv.org/pdf/2501.00001", "arxiv"),
         ("https://arxiv.org/html/2501.00001", "arxiv"),
+        ("https://arxiv.org/format/2412.17451", "arxiv"),
+        ("https://www.arxiv.org/format/2412.17451", "arxiv"),
         ("https://arxiv.org/e-print/2501.00001", "arxiv"),
         ("https://arxiv.org/src/2501.00001", "arxiv"),
         ("https://www.arxiv.org/src/2501.00001", "arxiv"),
@@ -286,22 +288,40 @@ def test_json_response_treats_broken_pipe_as_client_disconnect():
         ("https://router.project-osrm.org/route/v1/car/1,2;3,4", "osm-routing"),
     ],
 )
-def test_relay_allows_only_named_arxiv_and_osm_paths(url, group):
+def test_relay_preserves_upstream_category_for_known_hosts(url, group):
     assert relay._validate_url(url) == group
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://export.arxiv.org/unknown",
-        "https://nominatim.openstreetmap.org/status.php",
-        "https://overpass-api.de/",
-        "https://example.com/api/query",
-    ],
-)
-def test_relay_rejects_unapproved_arxiv_and_osm_paths(url):
-    with pytest.raises(ValueError, match="allowed MCP egress"):
+@pytest.mark.parametrize("host,group", list(relay.ALLOWED_TARGETS.items()))
+@pytest.mark.parametrize("path", ["", "/", "/new-api/v2/item", "/format-admin/paper", "/a%2Fb?q=x%2Fy"])
+def test_relay_allows_all_paths_on_each_registered_host(host, group, path):
+    assert relay._validate_url("https://" + host + path) == group
+
+
+@pytest.mark.parametrize("url", [
+    "https://example.com/api/query",
+    "http://arxiv.org/format/paper",
+    "https://arxiv.org:444/new-api",
+    "https://user:password@arxiv.org/new-api",
+    "https://arxiv.org/new-api#fragment",
+    "https://arxiv.org.evil.example/new-api",
+    "https://127.0.0.1/new-api",
+])
+def test_relay_rejects_unknown_hosts_and_unsafe_url_components(url):
+    with pytest.raises(ValueError):
         relay._validate_url(url)
+
+
+def test_relay_checks_redirect_hosts_but_not_paths():
+    request = relay.urllib.request.Request("https://arxiv.org/format/paper")
+    redirect = relay.SafeRedirect().redirect_request(
+        request, None, 302, "Found", {}, "https://export.arxiv.org/new-source/paper",
+    )
+    assert redirect.full_url == "https://export.arxiv.org/new-source/paper"
+    with pytest.raises(ValueError):
+        relay.SafeRedirect().redirect_request(
+            request, None, 302, "Found", {}, "https://evil.example/new-source/paper",
+        )
 
 
 def test_relay_allows_arxiv_eprint_redirect_to_source_archive():

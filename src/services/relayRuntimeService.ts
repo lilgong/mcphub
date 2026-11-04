@@ -42,6 +42,12 @@ export class RelayRuntimeService {
   private busy = false;
   private lastError?: string;
 
+  async readiness(): Promise<{ state: string; healthy: boolean } | undefined> {
+    if (!(await getAtlasConfig()).relay.enabled) return undefined;
+    const { state, healthy } = await this.status();
+    return { state, healthy };
+  }
+
   private options() {
     const port = Number(process.env.MCP_RELAY_PORT || '3985');
     const bind = process.env.MCP_RELAY_BIND || '0.0.0.0';

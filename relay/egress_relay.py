@@ -27,25 +27,19 @@ from pathlib import Path
 from typing import Any
 
 
+# Known upstream hosts share category-wide quotas; paths are transparent to MCPs.
 ALLOWED_TARGETS = {
-    "eutils.ncbi.nlm.nih.gov": ("ncbi", "/entrez/eutils/"),
-    "www.ncbi.nlm.nih.gov": ("ncbi", "/pmc/articles/"),
-    "en.wikipedia.org": ("wikipedia", "/w/api.php"),
-    "export.arxiv.org": ("arxiv", "/api/query", "/pdf/"),
-    "arxiv.org": (
-        "arxiv", "/abs/", "/pdf/", "/html/", "/e-print/", "/src/",
-    ),
-    "www.arxiv.org": (
-        "arxiv", "/abs/", "/pdf/", "/html/", "/e-print/", "/src/",
-    ),
-    "nominatim.openstreetmap.org": ("osm-nominatim", "/search", "/reverse"),
-    "overpass-api.de": ("osm-overpass", "/api/interpreter"),
-    "maps.mail.ru": ("osm-overpass", "/osm/tools/overpass/api/interpreter"),
-    "router.project-osrm.org": ("osm-routing", "/route/v1/"),
-    "routing.openstreetmap.de": (
-        "osm-routing", "/routed-car/route/v1/", "/routed-bike/route/v1/",
-        "/routed-foot/route/v1/",
-    ),
+    "eutils.ncbi.nlm.nih.gov": "ncbi",
+    "www.ncbi.nlm.nih.gov": "ncbi",
+    "en.wikipedia.org": "wikipedia",
+    "export.arxiv.org": "arxiv",
+    "arxiv.org": "arxiv",
+    "www.arxiv.org": "arxiv",
+    "nominatim.openstreetmap.org": "osm-nominatim",
+    "overpass-api.de": "osm-overpass",
+    "maps.mail.ru": "osm-overpass",
+    "router.project-osrm.org": "osm-routing",
+    "routing.openstreetmap.de": "osm-routing",
 }
 TOKEN = (os.getenv("MCP_RELAY_TOKEN") or "").strip()
 CONTROL_TOKEN = (os.getenv("MCPHUB_RELAY_CONTROL_TOKEN") or "").strip()
@@ -458,12 +452,11 @@ def _validate_url(url: str) -> str:
         parsed.scheme != "https"
         or parsed.port not in (None, 443)
         or not target
-        or not any(parsed.path.startswith(prefix) for prefix in target[1:])
     ):
         raise ValueError("target is not an allowed MCP egress endpoint")
     if parsed.username or parsed.password or parsed.fragment:
         raise ValueError("target URL contains forbidden components")
-    return target[0]
+    return target
 
 
 def _proxy_tunnel_status(exc: Exception) -> int | None:
