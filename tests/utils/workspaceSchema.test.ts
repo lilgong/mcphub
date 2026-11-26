@@ -1,6 +1,41 @@
 import { normalizeWorkspaceSchema } from '../../src/utils/workspaceSchema.js';
 import { normalizeServerConfigForPersistence } from '../../src/utils/serverConfigPersistence.js';
 import { normalizeImportedServers } from '../../frontend/src/utils/jsonImport';
+test('HTTP bindings reference declared secrets and fixed HTTPS origins only', () => {
+  const value = {
+    values: [{ name: 'github_token' }],
+    http: [
+      {
+        id: 'api',
+        url: 'https://api.github.com',
+        credential: { value: 'github_token', header: 'Authorization', prefix: 'Bearer ' },
+      },
+    ],
+  };
+  expect(normalizeWorkspaceSchema(value)?.http?.[0]).toMatchObject(value.http[0]);
+  for (const url of [
+    'http://api.github.com',
+    'https://secret@api.github.com',
+    'https://api.github.com?token=secret',
+  ])
+    expect(() =>
+      normalizeWorkspaceSchema({ ...value, http: [{ ...value.http[0], url }] }),
+    ).toThrow();
+  expect(() =>
+    normalizeWorkspaceSchema({
+      ...value,
+      http: [
+        {
+          ...value.http[0],
+          credential: {
+            value: 'undeclared',
+            header: 'Authorization',
+          },
+        },
+      ],
+    }),
+  ).toThrow();
+});
 test('task JSON declares account fields without changing task routing', () => {
   const config = {
     type: 'stdio' as const,
@@ -84,6 +119,27 @@ test('managed-only task declarations preserve documentation without adding crede
   expect(() =>
     normalizeWorkspaceSchema({
       managed: [{ name: 'token', source: 'task', description: '', value: 'secret' }],
+    }),
+  ).toThrow();
+});
+
+test('account HTTP bindings persist explicit pool egress and reject unsupported transports', () => {
+  const binding = {
+    id: 'api',
+    url: 'https://huggingface.co',
+    streaming: true,
+    egress: 'ip-pool',
+    credential: { value: 'token', header: 'Authorization' },
+  };
+  const input = { values: [{ name: 'token' }], http: [binding] };
+  expect(normalizeWorkspaceSchema(input)?.http?.[0].egress).toBe('ip-pool');
+  expect(() =>
+    normalizeWorkspaceSchema({ ...input, http: [{ ...binding, egress: 'unknown' }] }),
+  ).toThrow();
+  expect(() =>
+    normalizeWorkspaceSchema({
+      ...input,
+      http: [{ ...binding, streaming: false, protocol: 'grpc' }],
     }),
   ).toThrow();
 });

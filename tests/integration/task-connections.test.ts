@@ -7,6 +7,7 @@ import {
   dispatchTaskConnection,
 } from '../../src/controllers/taskConnectionController.js';
 import { taskConnections } from '../../src/services/taskConnectionService.js';
+import * as toolAudit from '../../src/services/toolAuditService.js';
 import type { ServerConfig } from '../../src/types/index.js';
 const mockActivity = jest.fn(async () => undefined);
 jest.mock('../../src/services/activityLoggingService.js', () => ({
@@ -16,7 +17,7 @@ let mockDefinition: ServerConfig;
 let mockEnabledKey = true;
 jest.mock('../../src/dao/DaoFactory.js', () => ({
   getSystemConfigDao: () => ({ get: async () => ({}) }),
-  getServerDao: () => ({ findById: async () => mockDefinition }),
+  getServerDao: () => ({ findById: async () => mockDefinition, findAll: async () => [] }),
   getBearerKeyDao: () => ({
     findById: async () => ({ enabled: mockEnabledKey, kind: 'system', accessType: 'all' }),
   }),
@@ -228,6 +229,30 @@ test('task response caps can be configured or explicitly deferred to the trusted
       .send({ tool_name: 'filesystem_read', tool_args: {} })
       .expect(200);
     expect(response.body.content[0].text).toBe('original-result');
+  } finally {
+    taskConnections.remove(entry.id, 'caller-a');
+  }
+});
+
+
+test('PubMed task dispatch reserves time for two internally retried HTTP requests', async () => {
+  jest.spyOn(toolAudit, 'withToolAudit').mockImplementation(async (_metadata, call) => call());
+  const timer = jest.spyOn(global, 'setTimeout');
+  jest.spyOn(global, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify({ content: [], isError: false }), { status: 200 }),
+  );
+  const registered = await request(app)
+    .post('/api/task-connections')
+    .set('x-test-admin', 'caller-a')
+    .send({ server: 'pubmed', target: 'project/official', taskId: 'pubmed-retries',
+      url: 'http://callback/pubmed', token: 'upstream-test-token' })
+    .expect(200);
+  const entry = registered.body.data;
+  try {
+    await request(app).post(`${entry.path}/call-tool`)
+      .set('Authorization', `Bearer ${entry.token}`)
+      .send({ tool_name: 'pubmed_search_pubmed_advanced', tool_args: {} }).expect(200);
+    expect(timer.mock.calls.some(([, delay]) => delay === 500000)).toBe(true);
   } finally {
     taskConnections.remove(entry.id, 'caller-a');
   }

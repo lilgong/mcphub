@@ -214,6 +214,7 @@ const stripUndefinedDeep = (value: unknown): unknown => {
 // or access metadata that can be applied without a reconnect.
 const CONNECTION_RELEVANT_CONFIG_FIELDS = [
   'targets',
+  'workspaceSchema',
   'keyPool',
   'relay',
   'type',

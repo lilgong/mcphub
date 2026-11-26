@@ -1,7 +1,10 @@
 import { serverWorkspaceAccounts } from '../controllers/workspaceController.js';
+import { workspaceHttp } from '../controllers/workspaceHttpController.js';
 import {
   workspaceManagement,
+  workspaceEnabled,
   createWorkspaceRun,
+  workspaceAvailability,
   workspaceRun,
 } from '../controllers/workspaceController.js';
 import { getRuntimeWorkers } from '../controllers/runtimeWorkerController.js';
@@ -193,6 +196,7 @@ import {
 } from '../controllers/oauthDynamicRegistrationController.js';
 import {
   getBearerKeys,
+  getBearerKeyToken,
   createBearerKey,
   updateBearerKey,
   deleteBearerKey,
@@ -254,11 +258,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   // Health check endpoint (no auth required, accessible at /health)
   app.get('/health', healthCheck);
   const httpPrefix = config.basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  app.all(
-    new RegExp(`^${httpPrefix}/http/([^/]+)(/.*)?$`),
-    express.raw({ type: () => true, limit: '1mb' }),
-    forwardHttp,
-  );
+  app.all(new RegExp(`^${httpPrefix}/http/([^/]+)(/.*)?$`), forwardHttp);
   app.post(
     '/gateway/v1/tasks/:id/:operation',
     express.json({ limit: '1mb' }),
@@ -319,6 +319,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.get('/servers/:name/accounts/:account', serverWorkspaceAccounts);
   authenticatedRouter.put('/servers/:name/accounts/:account', serverWorkspaceAccounts);
   authenticatedRouter.get('/workspace-credentials', workspaceManagement);
+  authenticatedRouter.put('/workspace-credentials/:catalog/:workspace/enabled', workspaceEnabled);
   authenticatedRouter.post(
     '/workspace-credentials/:catalog/:workspace/release',
     workspaceManagement,
@@ -329,7 +330,12 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
     workspaceManagement,
   );
   authenticatedRouter.delete('/workspace-credentials/:catalog/:workspace', workspaceManagement);
+  authenticatedRouter.get('/workspace-runs', workspaceAvailability);
   authenticatedRouter.post('/workspace-runs', createWorkspaceRun);
+  authenticatedRouter.all(
+    /^\/workspace-runs\/([^/]+)\/http\/([^/]+)\/([^/]+)(\/.*)?$/,
+    workspaceHttp,
+  );
   authenticatedRouter.get('/workspace-runs/:id', workspaceRun);
   authenticatedRouter.put('/workspace-runs/:id', workspaceRun);
   authenticatedRouter.put(
@@ -459,6 +465,7 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   authenticatedRouter.put('/user-groups/:id', saveUserGroup);
   authenticatedRouter.delete('/user-groups/:id', saveUserGroup);
   authenticatedRouter.get('/auth/keys', getBearerKeys);
+  authenticatedRouter.get('/auth/keys/:id/token', getBearerKeyToken);
   authenticatedRouter.post('/auth/keys', createBearerKey);
   authenticatedRouter.put('/auth/keys/:id', updateBearerKey);
   authenticatedRouter.delete('/auth/keys/:id', deleteBearerKey);

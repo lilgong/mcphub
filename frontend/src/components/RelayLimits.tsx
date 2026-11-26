@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiGet, apiPut } from '../utils/fetchInterceptor';
-type Limits = Record<string, { minIntervalMs: number; concurrency?: number }>;
+type Limits = Record<
+  string,
+  {
+    minIntervalMs: number;
+    concurrency?: number;
+    networkTimeoutSeconds?: number;
+    requestTimeoutSeconds?: number;
+  }
+>;
 export default function RelayLimits() {
   const { t } = useTranslation();
   const [limits, setLimits] = useState<Limits>();
@@ -26,6 +34,7 @@ export default function RelayLimits() {
     <section className="space-y-4">
       <h2 className="hub-editor-heading">{t('uiLayout.upstreamLimits')}</h2>
       <p className="text-sm text-[var(--hub-ink-2)]">{t('uiLayout.upstreamScope')}</p>
+      <p className="hub-config-note">{t('relayLimits.timeoutHint')}</p>
       <button type="button" disabled={busy} className="hub-btn" onClick={() => request(false)}>
         {t('relayLimits.load')}
       </button>
@@ -38,6 +47,8 @@ export default function RelayLimits() {
                   <th>{t('uiLayout.upstreamCategory')}</th>
                   <th>{t('serviceControls.minIntervalMs')}</th>
                   <th>{t('serviceControls.concurrency')}</th>
+                  <th>{t('relayLimits.networkTimeout')}</th>
+                  <th>{t('relayLimits.requestTimeout')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -82,6 +93,29 @@ export default function RelayLimits() {
                         }
                       />
                     </td>
+                    {(['networkTimeoutSeconds', 'requestTimeoutSeconds'] as const).map((field) => (
+                      <td key={field}>
+                        <input
+                          aria-label={`${name} ${t(field === 'networkTimeoutSeconds' ? 'relayLimits.networkTimeout' : 'relayLimits.requestTimeout')}`}
+                          className="hub-input"
+                          type="number"
+                          min="1"
+                          max="600"
+                          value={value[field] ?? ''}
+                          onChange={(event) =>
+                            setLimits({
+                              ...limits,
+                              [name]: {
+                                ...value,
+                                [field]: event.target.value
+                                  ? Number(event.target.value)
+                                  : undefined,
+                              },
+                            })
+                          }
+                        />
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

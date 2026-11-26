@@ -1,8 +1,9 @@
 import WorkspaceCredentials from '../components/WorkspaceCredentials';
+import WorkspaceAccountManager from '../components/WorkspaceAccountManager';
 import { useAuth } from '../contexts/AuthContext';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { MyCredentialBinding } from '../types';
 import { apiDelete, apiGet, apiPut, type ApiResponse } from '../utils/fetchInterceptor';
 
@@ -104,6 +105,8 @@ export default function CredentialsPage() {
   const [bindings, setBindings] = useState<MyCredentialBinding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [accountView, setAccountView] = useState(true);
+  const [accountDirty, setAccountDirty] = useState(false);
   const reload = useCallback(async () => {
     try {
       const result = await apiGet<ApiResponse<MyCredentialBinding[]>>('/credentials');
@@ -132,7 +135,49 @@ export default function CredentialsPage() {
           )}
         </p>
       </div>
-      {auth.user?.isAdmin && <WorkspaceCredentials />}
+      {auth.user?.isAdmin && (
+        <>
+          <div className="hub-mode-tabs" role="group" aria-label={t('accountManager.view')}>
+            <button
+              className={`hub-mode-tab ${accountView ? 'is-active' : ''}`}
+              aria-pressed={accountView}
+              onClick={() => {
+                if (accountView) return;
+                setAccountDirty(false);
+                setAccountView(true);
+              }}
+            >
+              {t('accountManager.byAccount')}
+            </button>
+            <button
+              className={`hub-mode-tab ${!accountView ? 'is-active' : ''}`}
+              aria-pressed={!accountView}
+              onClick={() => {
+                if (accountDirty && !window.confirm(t('startupAccounts.discard'))) return;
+                setAccountDirty(false);
+                setAccountView(false);
+              }}
+            >
+              {t('accountManager.advanced')}
+            </button>
+            <Link
+              className="hub-mode-tab"
+              to="/servers"
+              onClick={(event) => {
+                if (accountDirty && !window.confirm(t('startupAccounts.discard')))
+                  event.preventDefault();
+              }}
+            >
+              {t('accountManager.byMcp')}
+            </Link>
+          </div>
+          {accountView ? (
+            <WorkspaceAccountManager onDirtyChange={setAccountDirty} />
+          ) : (
+            <WorkspaceCredentials />
+          )}
+        </>
+      )}
       {search.has('server') && (
         <button className="hub-btn" onClick={() => setSearch({})}>
           {t('credentials.showAll')}

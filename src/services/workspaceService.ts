@@ -1,15 +1,28 @@
+import { workspaceReadiness } from '../utils/workspaceReadiness.js';
+import { getServerDao } from '../dao/DaoFactory.js';
 import { validCredentialFile } from '../utils/workspaceSchema.js';
 import { normalizeCredentialPrivateKeys } from '../utils/workspacePrivateKeys.js';
+import { normalizeTargetConnections } from '../utils/targetConnection.js';
 export { validCredentialFile } from '../utils/workspaceSchema.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { getCredentialBindingDao } from '../dao/DaoFactory.js';
-import { encryptCredentialValues, decryptCredentialValues } from './credentialBindingService.js';
-import type { WorkspaceCredentials, WorkspaceRun } from '../types/workspace.js';
+import {
+  encryptCredentialValues,
+  decryptCredentialValues,
+  credentialBindingEvents,
+} from './credentialBindingService.js';
+import type {
+  WorkspaceCredentials,
+  WorkspaceRun,
+  WorkspaceRunSummary,
+  WorkspaceExitReason,
+} from '../types/workspace.js';
 
 // Reserved identities cannot collide with valid MCP names. Reuse both DAO modes and
 // the existing encrypted store; credentials never enter settings exports or logs.
 const WORKSPACES = '@workspace';
 const RUNS = '@workspace-run';
+const LAST_RUNS = '@workspace-last-run';
 const TTL = 10 * 60 * 1000;
 let pending: Promise<unknown> = Promise.resolve();
 function serial<T>(operation: () => Promise<T>): Promise<T> {
@@ -75,8 +88,16 @@ async function write(kind: string, id: string, payload: unknown): Promise<void> 
     updatedAt: new Date().toISOString(),
   });
 }
-export const getWorkspace = (catalog: string, name: string) =>
-  read<WorkspaceCredentials>(WORKSPACES, identity(catalog, name));
+export async function getWorkspace(
+  catalog: string,
+  name: string,
+): Promise<WorkspaceCredentials | null> {
+  const workspace = await read<WorkspaceCredentials>(WORKSPACES, identity(catalog, name));
+  if (!workspace) return null;
+  // Older saved accounts predate PEM normalization on write. Canonicalize the
+  // exported view without changing stored OAuth state or another active run.
+  return { ...workspace, values: strings(workspace.values), files: strings(workspace.files, true) };
+}
 async function runs(): Promise<WorkspaceRun[]> {
   const result: WorkspaceRun[] = [];
   for (const id of await getCredentialBindingDao().listUsernames(RUNS)) {
@@ -87,18 +108,43 @@ async function runs(): Promise<WorkspaceRun[]> {
   }
   return result;
 }
+function runSummary(run: WorkspaceRun): WorkspaceRunSummary {
+  return {
+    id: run.id,
+    startedAt: run.startedAt,
+    heartbeatAt: run.heartbeatAt,
+    lastSyncAt: run.lastSyncAt,
+    expiresAt: run.expiresAt,
+    state: run.state ?? 'running',
+    lastError: run.lastError,
+  };
+}
 export async function listWorkspaces() {
   const active = await runs();
+  const definitions = await getServerDao().findAll();
   const result = [];
   for (const id of await getCredentialBindingDao().listUsernames(WORKSPACES)) {
     const workspace = await read<WorkspaceCredentials>(WORKSPACES, id);
     if (workspace)
       result.push({
+        ...workspaceReadiness(workspace, definitions),
         catalog: workspace.catalog,
         name: workspace.name,
+        enabled: workspace.enabled !== false,
         allowedGroupIds: workspace.allowedGroupIds,
         revision: workspace.revision,
         connections: workspace.connections ?? {},
+        servers: Object.keys(workspace.serverConnections ?? {}),
+        run: active.find(
+          (run) => run.catalog === workspace.catalog && run.workspace === workspace.name,
+        )
+          ? runSummary(
+              active.find(
+                (run) => run.catalog === workspace.catalog && run.workspace === workspace.name,
+              )!,
+            )
+          : undefined,
+        lastRun: (await read<WorkspaceRunSummary>(LAST_RUNS, id)) ?? undefined,
         fields: Object.keys(workspace.values),
         files: Object.keys(workspace.files),
         expired: active.some(
@@ -121,6 +167,7 @@ export function saveWorkspace(
     values?: unknown;
     files?: unknown;
     connections?: unknown;
+    serverConnections?: WorkspaceCredentials['serverConnections'];
     allowedGroupIds?: unknown;
     revision?: unknown;
   },
@@ -138,6 +185,23 @@ export function saveWorkspace(
     const values = { ...current?.values, ...strings(input.values ?? {}) };
     const files = { ...current?.files, ...strings(input.files ?? {}, true) };
     const connections = input.connections ?? current?.connections ?? {};
+    const serverConnections = { ...current?.serverConnections };
+    if (input.serverConnections) {
+      if (
+        typeof input.serverConnections !== 'object' ||
+        Array.isArray(input.serverConnections) ||
+        JSON.stringify(input.serverConnections).length > 8 * 1024 * 1024
+      )
+        throw new WorkspaceError('Invalid account launch configuration');
+      for (const [server, connection] of Object.entries(input.serverConnections)) {
+        if (!/^[a-zA-Z0-9_.-]+$/.test(server)) throw new WorkspaceError('Invalid MCP binding');
+        const normalized = normalizeTargetConnections([
+          { ...connection, path: name, kind: 'static' },
+        ])![0];
+        const { path: _path, kind: _kind, ...stored } = normalized;
+        serverConnections[server] = stored;
+      }
+    }
     if (!connections || typeof connections !== 'object' || Array.isArray(connections))
       throw new WorkspaceError('Invalid MCP environment bindings');
     for (const [server, fields] of Object.entries(connections)) {
@@ -149,10 +213,33 @@ export function saveWorkspace(
     await write(WORKSPACES, id, {
       catalog,
       name,
+      enabled: current?.enabled !== false,
       connections,
+      serverConnections,
       allowedGroupIds: [...new Set(groups)],
       values,
       files,
+      revision: randomUUID(),
+    });
+    credentialBindingEvents.emit('workspace-changed', { catalog, name });
+  });
+}
+/** Admission only: existing runs keep their credentials and can synchronize/release. */
+export function setWorkspaceEnabled(
+  catalog: string,
+  name: string,
+  enabled: unknown,
+  revision: unknown,
+): Promise<void> {
+  return serial(async () => {
+    if (typeof enabled !== 'boolean') throw new WorkspaceError('Enabled must be a boolean');
+    const current = await getWorkspace(catalog, name);
+    if (!current) throw new WorkspaceError('Account not found', 404);
+    if (revision !== current.revision)
+      throw new WorkspaceError('Workspace changed; reload before saving', 409);
+    await write(WORKSPACES, identity(catalog, name), {
+      ...current,
+      enabled,
       revision: randomUUID(),
     });
   });
@@ -165,20 +252,53 @@ export function deleteWorkspace(catalog: string, name: string): Promise<void> {
       serverName: WORKSPACES,
       username: identity(catalog, name),
     });
+    credentialBindingEvents.emit('workspace-changed', { catalog, name });
   });
 }
 export function startWorkspaceRun(
   catalog: string,
-  workspace: string,
+  workspace: string | undefined,
   owner: string,
   authorize: (workspace: WorkspaceCredentials) => Promise<boolean>,
 ) {
   return serial(async () => {
+    const definitions = await getServerDao().findAll();
+    if (workspace === undefined) {
+      if (!/^[a-z][a-z0-9_-]{0,47}$/.test(catalog)) throw new WorkspaceError('Invalid space');
+      const active = await runs();
+      const candidates = (await listWorkspaces())
+        .filter((entry) => entry.catalog === catalog)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      let authorized = false;
+      for (const candidate of candidates) {
+        const account = await getWorkspace(catalog, candidate.name);
+        if (!account || !(await authorize(account))) continue;
+        authorized = true;
+        if (account.enabled === false) continue;
+        if (!workspaceReadiness(account, definitions).ready) continue;
+        if (active.some((run) => run.catalog === catalog && run.workspace === candidate.name))
+          continue;
+        workspace = candidate.name;
+        break;
+      }
+      if (!authorized) throw new WorkspaceError('Workspace unavailable', 403);
+      if (workspace === undefined) throw new WorkspaceError('No available workspace account', 409);
+    }
     const config = await getWorkspace(catalog, workspace);
     if (!config || !(await authorize(config)))
       throw new WorkspaceError('Workspace unavailable', 403);
+    if (config.enabled === false) throw new WorkspaceError('Workspace account is disabled', 409);
     if ((await runs()).some((run) => run.catalog === catalog && run.workspace === workspace))
-      throw new WorkspaceError('Workspace already belongs to another run', 409);
+      throw new WorkspaceError(
+        'Workspace already belongs to another run; exit the previous workspace terminal or review its run status in the dashboard',
+        409,
+      );
+    const readiness = workspaceReadiness(config, definitions);
+    if (!readiness.ready)
+      throw new WorkspaceError(
+        `Workspace credentials are incomplete: ${readiness.missing.join('; ')}`,
+        422,
+      );
     const token = randomBytes(32).toString('hex');
     const run: WorkspaceRun = {
       id: randomUUID(),
@@ -187,9 +307,12 @@ export function startWorkspaceRun(
       owner,
       tokenHash: digest(token),
       expiresAt: Date.now() + TTL,
+      startedAt: Date.now(),
+      heartbeatAt: Date.now(),
+      state: 'running',
     };
     await write(RUNS, run.id, run);
-    return { id: run.id, token, expiresAt: run.expiresAt };
+    return { id: run.id, token, expiresAt: run.expiresAt, workspace };
   });
 }
 export async function accessWorkspaceRun(
@@ -215,11 +338,49 @@ export function updateWorkspaceRun(id: string, operation: (run: WorkspaceRun) =>
 }
 export async function renewWorkspaceRun(run: WorkspaceRun) {
   run.expiresAt = Date.now() + TTL;
+  run.heartbeatAt = Date.now();
   await write(RUNS, run.id, run);
   return run.expiresAt;
 }
-export const finishWorkspaceRun = (run: WorkspaceRun) =>
-  getCredentialBindingDao().delete({ serverName: RUNS, username: run.id });
+export async function finishWorkspaceRun(
+  run: WorkspaceRun,
+  exitReason: WorkspaceExitReason | 'administrator_recovery' = 'completed',
+) {
+  await write(LAST_RUNS, identity(run.catalog, run.workspace), {
+    ...runSummary(run),
+    endedAt: Date.now(),
+    exitReason,
+  });
+  await getCredentialBindingDao().delete({ serverName: RUNS, username: run.id });
+}
+export async function reportWorkspaceRun(run: WorkspaceRun, input: unknown) {
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw new WorkspaceError('Invalid workspace run status');
+  const value = input as Record<string, unknown>;
+  if (
+    Object.keys(value).some((key) => !['syncComplete', 'error'].includes(key)) ||
+    (value.syncComplete !== undefined && typeof value.syncComplete !== 'boolean') ||
+    (value.error !== undefined &&
+      !['sync_failed', 'connection_failed', 'cleanup_failed'].includes(String(value.error)))
+  )
+    throw new WorkspaceError('Invalid workspace run status');
+  if (value.syncComplete === true) {
+    run.lastSyncAt = Date.now();
+    run.lastError = undefined;
+    run.state = 'running';
+  }
+  if (value.error) {
+    run.lastError = value.error as WorkspaceRun['lastError'];
+    run.state = 'recovery_required';
+  }
+  await renewWorkspaceRun(run);
+}
+export function workspaceExitReason(value: unknown): WorkspaceExitReason {
+  if (value === undefined) return 'completed';
+  if (!['completed', 'cancelled', 'command_failed', 'startup_failed'].includes(String(value)))
+    throw new WorkspaceError('Invalid workspace exit reason');
+  return value as WorkspaceExitReason;
+}
 /** Compare each changed file independently: unrelated updates must not overwrite rotated tokens. */
 export async function syncWorkspaceFiles(run: WorkspaceRun, input: unknown) {
   if (!Array.isArray(input) || input.length > 256) throw new WorkspaceError('Invalid file updates');
@@ -243,6 +404,8 @@ export async function syncWorkspaceFiles(run: WorkspaceRun, input: unknown) {
   for (const update of input) workspace.files[update.path] = update.content;
   workspace.revision = randomUUID();
   await write(WORKSPACES, identity(run.catalog, run.workspace), workspace);
+  run.lastSyncAt = Date.now();
+  await write(RUNS, run.id, run);
 }
 
 /** Recheck a bound task's account lease without revealing its capability. */
@@ -262,14 +425,23 @@ export async function boundWorkspaceRun(
 }
 
 /** Explicit administrator recovery only; never silently free a lost account lease. */
-export function releaseExpiredWorkspace(catalog: string, name: string) {
+export function releaseExpiredWorkspace(
+  catalog: string,
+  name: string,
+  input?: { runId?: unknown; stopped?: unknown; authorizationReviewed?: unknown },
+) {
   return serial(async () => {
     identity(catalog, name);
     const matching = (await runs()).filter(
       (run) => run.catalog === catalog && run.workspace === name,
     );
-    if (matching.some((run) => run.expiresAt > Date.now()))
-      throw new WorkspaceError('The run is still active', 409);
-    for (const run of matching) await finishWorkspaceRun(run);
+    if (matching.length !== 1 || matching[0].id !== input?.runId)
+      throw new WorkspaceError('Workspace run changed; refresh before recovery', 409);
+    if (input.stopped !== true || input.authorizationReviewed !== true)
+      throw new WorkspaceError(
+        'Confirm the previous run stopped and authorization state was reviewed',
+        400,
+      );
+    for (const run of matching) await finishWorkspaceRun(run, 'administrator_recovery');
   });
 }

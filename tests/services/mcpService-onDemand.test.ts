@@ -264,7 +264,7 @@ describe('startOnDemand lifecycle', () => {
     };
 
     beforeEach(() => {
-      jest.useFakeTimers();
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
       mcpService.setServerInfosForTest([
         createSleepingServerInfo({
           status: 'connected',

@@ -4,7 +4,10 @@ import { validateBearerAuth } from '../services/sseService.js';
 import { authorizationService } from '../services/authorizationService.js';
 import { getUserGroupPolicy, userGroupAllows } from '../services/userGroupService.js';
 import { expandServerConfig } from '../services/serverConfigEnvironment.js';
-import { forwardingUrl, requestHttpUpstream } from '../services/httpForwardService.js';
+import { forwardingRequestHeaders, forwardingLocation } from '../utils/httpForwardHeaders.js';
+import { upstreamCredential } from '../utils/upstreamCredential.js';
+import { streamWorkspaceHttp } from '../services/workspaceHttpStreamService.js';
+import { forwardingUrl } from '../services/httpForwardService.js';
 import { withToolAudit, captureToolDiagnostic } from '../services/toolAuditService.js';
 import { toolCallScheduler } from '../services/toolCallSchedulerService.js';
 import { RequestContextService } from '../services/requestContextService.js';
@@ -73,7 +76,10 @@ export async function forwardHttp(req: Request, res: Response): Promise<void> {
       return resource;
     };
     const resource = await loadAuthorized();
-    const path = String(req.params[1] || '/');
+    const raw = req.originalUrl.split('?')[0];
+    const match = raw.match(/\/http\/[^/]+(\/.*)?$/);
+    const path = match?.[1] ?? '';
+    const clientPrefix = raw.slice(0, raw.length - (match?.[1]?.length ?? 0));
     const query = req.originalUrl.includes('?')
       ? req.originalUrl.slice(req.originalUrl.indexOf('?'))
       : '';
@@ -89,11 +95,6 @@ export async function forwardHttp(req: Request, res: Response): Promise<void> {
         .status(503)
         .json({ error: 'Configure MCPHUB_AUDIT_LOG_DIR before enabling HTTP forwarding' });
       return;
-    }
-    const clientHeaders: Record<string, string> = {};
-    for (const header of ['content-type', 'accept']) {
-      const value = req.get(header);
-      if (value) clientHeaders[header] = value;
     }
     const result = await RequestContextService.getInstance().runWithCustomRequestContext(
       {
@@ -122,18 +123,31 @@ export async function forwardHttp(req: Request, res: Response): Promise<void> {
                 const url = forwardingUrl(config.url!, path, query);
                 const log = captureToolDiagnostic(name);
                 try {
-                  const response = await requestHttpUpstream(
-                    config,
+                  const headers = forwardingRequestHeaders(req.headers, config.headers);
+                  const credentials = Object.entries(config.headers ?? {})
+                    .filter(
+                      ([name, value]) => value && /authorization|key|token|secret/i.test(name),
+                    )
+                    .map(([name, value]) => upstreamCredential(value, name.toLowerCase()));
+                  const response = await streamWorkspaceHttp(
+                    req,
+                    res,
                     url,
-                    req.method,
-                    Buffer.isBuffer(req.body) ? req.body : undefined,
-                    clientHeaders,
+                    headers,
                     abort.signal,
-                    owner?.isAdmin === true,
+                    credentials,
+                    undefined,
+                    {
+                      allowInternal: owner?.isAdmin === true,
+                      timeout: config.options?.timeout ?? 60000,
+                      mapLocation: (location) =>
+                        forwardingLocation(location, url, config.url!, clientPrefix),
+                    },
                   );
                   log('completed', { http_status: response.status });
                   return response;
                 } catch (error) {
+                  if (res.headersSent) throw error;
                   const status =
                     abort.signal.aborted || (error as { code?: string }).code === 'ECONNABORTED'
                       ? 504
@@ -162,10 +176,15 @@ export async function forwardHttp(req: Request, res: Response): Promise<void> {
         ),
     );
     if (!res.destroyed) {
+      if ('streamed' in result && result.streamed) {
+        res.end();
+        return;
+      }
       for (const [header, value] of Object.entries(result.headers)) res.setHeader(header, value);
       res.status(result.status).send(result.body);
     }
   } catch (error) {
+    if (res.headersSent && !res.destroyed) res.destroy(new Error('HTTP upstream stream failed'));
     const status = (error as { status?: number }).status;
     if (!res.headersSent && !res.destroyed)
       res

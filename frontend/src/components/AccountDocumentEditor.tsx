@@ -7,6 +7,7 @@ import {
   validateDocument,
 } from '../../../src/utils/workspaceDocuments';
 import SecretInput from './SecretInput';
+import SecretTextarea from './SecretTextarea';
 import AccountDocumentDefaults from './AccountDocumentDefaults';
 
 /** Form fields and the advanced source editor always edit the same document. */
@@ -23,7 +24,6 @@ export default function AccountDocumentEditor({
 }) {
   const { t } = useTranslation();
   const [preview, setPreview] = useState(false);
-  const [visible, setVisible] = useState<Record<string, boolean>>({});
   const valid = validateDocument(file, value);
   return (
     <div className="space-y-4 border-t border-[var(--hub-line)] pt-5">
@@ -46,8 +46,10 @@ export default function AccountDocumentEditor({
                   </span>
                 )}
               </span>
-              {field.multiline && (field.secret === false || visible[field.name]) ? (
-                <textarea
+              {field.multiline ? (
+                <SecretTextarea
+                  sensitive={field.secret !== false}
+                  secretLabel={field.label || field.name}
                   aria-label={field.label || field.name}
                   className="hub-input min-h-28 font-mono text-sm"
                   value={text}
@@ -72,19 +74,6 @@ export default function AccountDocumentEditor({
                     onChange(updateDocumentField(file, value, field.name, event.target.value))
                   }
                 />
-              )}
-              {field.multiline && field.secret !== false && (
-                <button
-                  type="button"
-                  className="self-start text-xs text-[var(--hub-ink-2)]"
-                  onClick={() => setVisible({ ...visible, [field.name]: !visible[field.name] })}
-                >
-                  {t(
-                    visible[field.name]
-                      ? 'startupAccounts.hideDocument'
-                      : 'startupAccounts.showMultiline',
-                  )}
-                </button>
               )}
               {field.default !== undefined && (
                 <span className="hub-config-note break-all">

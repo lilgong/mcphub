@@ -47,6 +47,7 @@ export const initMiddlewares = (app: express.Application): void => {
 
       if (
         !req.path.startsWith(`${basePath}/http/`) &&
+        !/\/api\/workspace-runs\/[^/]+\/http\//.test(req.path) &&
         !req.path.startsWith(betterAuthPath) &&
         req.path !== `${basePath}/sse` &&
         !req.path.startsWith(`${basePath}/sse/`) &&

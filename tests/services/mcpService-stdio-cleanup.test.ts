@@ -197,7 +197,7 @@ describe('orphan stdio process cleanup (issue #920)', () => {
     // fallback. Use fake timers to make sure those don't keep the event loop
     // alive between tests. Also restore process.kill so the spy doesn't leak
     // into other test files in the same process.
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
     jest.clearAllTimers();
     jest.useRealTimers();
     jest.restoreAllMocks();
@@ -271,7 +271,7 @@ describe('orphan stdio process cleanup (issue #920)', () => {
     });
 
     it('falls back to SIGKILL if the process is still alive after the grace period', async () => {
-      jest.useFakeTimers();
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
       try {
         // Make the "is alive?" probe say the process is still alive, so the
         // SIGKILL fallback fires.
@@ -304,7 +304,7 @@ describe('orphan stdio process cleanup (issue #920)', () => {
     });
 
     it('treats EPERM from the liveness probe as "still alive" and falls back to SIGKILL', async () => {
-      jest.useFakeTimers();
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
       try {
         // process.kill(pid, 0) throws EPERM when the process exists but we
         // can't signal it. isProcessAlive() should count that as alive.
@@ -378,7 +378,7 @@ describe('orphan stdio process cleanup (issue #920)', () => {
     });
 
     it('still escalates to SIGKILL on the direct child after the grace period', async () => {
-      jest.useFakeTimers();
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
       try {
         const kill = recordProcessKills();
         currentTestPid = 6262;

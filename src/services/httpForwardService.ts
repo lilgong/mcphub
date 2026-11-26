@@ -1,3 +1,6 @@
+import { ipPoolConnectionOptions, type HttpEgress } from './ipPoolTransportService.js';
+import { forwardingResponseHeaders } from '../utils/httpForwardHeaders.js';
+import { decodedHttpPreview } from '../utils/httpResponseBody.js';
 import { randomUUID } from 'node:crypto';
 import { upstreamCredential } from '../utils/upstreamCredential.js';
 import { captureToolDiagnostic } from './toolAuditService.js';
@@ -16,23 +19,30 @@ export function forwardingUrl(base: string, path: string, query = ''): string {
     upstream.hash
   )
     throw new Error('Invalid upstream URL');
-  // Decode repeatedly to reject encoded traversal, separators and scheme injection.
-  let decoded = path;
-  for (let i = 0; i < 4; i++) {
-    const next = decodeURIComponent(decoded);
-    if (next === decoded) break;
-    decoded = next;
+  if (path === '') {
+    upstream.search = query;
+    return upstream.href;
   }
+  // Validate transport syntax without interpreting encoded separators as path structure.
+  // An object named "folder/../file" is data when its slashes are encoded.
+  const hasControl = (value: string) =>
+    [...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
+  if (!path.startsWith('/') || path.startsWith('//') || /[\\?#]/.test(path) || hasControl(path))
+    throw new Error('Invalid forwarding path');
+  const decoded = decodeURIComponent(path);
+  if (decoded.startsWith('//') || decoded.includes('\\') || hasControl(decoded))
+    throw new Error('Invalid forwarding path');
   if (
-    !decoded.startsWith('/') ||
-    decoded.startsWith('//') ||
-    /[\\?#%]/.test(decoded) ||
-    [...decoded].some((char) => char.charCodeAt(0) <= 32) ||
-    decoded.split('/').some((part) => part === '..' || part === '.')
+    path.split('/').some((part) => {
+      const segment = decodeURIComponent(part);
+      return segment === '.' || segment === '..';
+    })
   )
     throw new Error('Invalid forwarding path');
   const prefix = upstream.pathname.replace(/\/$/, '');
   upstream.pathname = prefix + path;
+  if (upstream.pathname !== prefix && !upstream.pathname.startsWith(prefix + '/'))
+    throw new Error('Invalid forwarding path');
   upstream.search = query;
   return upstream.href;
 }
@@ -42,6 +52,9 @@ export interface ForwardResponse {
   isError: boolean;
   body: Buffer;
   headers: Record<string, string>;
+  rateLimited?: boolean;
+  grpcStatus?: number;
+  streamed?: boolean;
 }
 
 /** One request, no redirects or automatic retries; benchmarks retain their own retries. */
@@ -53,6 +66,9 @@ export async function requestHttpUpstream(
   clientHeaders: Record<string, string>,
   signal: AbortSignal,
   allowInternal: boolean,
+  maxBytes = Infinity,
+  credentialAliases?: ReturnType<typeof upstreamCredential>[],
+  egress?: HttpEgress,
 ): Promise<ForwardResponse> {
   await assertSafeUrl(url, { allowInternal });
   const headers = { ...clientHeaders };
@@ -68,16 +84,22 @@ export async function requestHttpUpstream(
     headers[lower] = value;
   }
   const log = captureToolDiagnostic('');
-  const credentials = Object.entries(headers)
-    .filter(([name, value]) => value && /authorization|key|token|secret/i.test(name))
-    .map(([name, value]) => upstreamCredential(value, name.toLowerCase()));
+  const credentials =
+    credentialAliases ??
+    Object.entries(headers)
+      .filter(([name, value]) => value && /authorization|key|token|secret/i.test(name))
+      .map(([name, value]) => upstreamCredential(value, name.toLowerCase()));
   const metadata = {
+    ...(egress ? { egress_backend: 'ipwo' } : {}),
     upstream_request_id: randomUUID(),
+    http_method: method.toUpperCase(),
+    upstream_host: new URL(url).hostname,
+    upstream_path: new URL(url).pathname.slice(0, 1000),
     upstream_credentials: JSON.stringify(credentials),
     credential_suffix: credentials.map((value) => `${value.role}: …${value.suffix}`).join(', '),
   };
   // Persist admission before the HTTP request; failure must not spend a credential.
-  log('upstream_started', metadata);
+  await log('upstream_started', metadata);
   const started = Date.now();
   let result;
   try {
@@ -89,23 +111,29 @@ export async function requestHttpUpstream(
       signal,
       timeout: config.options?.timeout ?? 60000,
       maxRedirects: 0,
-      maxContentLength: 8 * 1024 * 1024,
-      maxBodyLength: 1024 * 1024,
+      maxContentLength: maxBytes,
+      maxBodyLength: maxBytes,
       responseType: 'arraybuffer',
+      decompress: false,
       transformRequest: [(value) => value],
       transformResponse: [(value) => value],
       validateStatus: () => true,
       ...ssrfConnectionOptions(allowInternal),
+      ...ipPoolConnectionOptions(url, egress),
       proxy: false,
     });
-    log('upstream_finished', {
+    await log('upstream_finished', {
       ...metadata,
       http_status: result.status,
+      provider_request_id:
+        typeof result.headers['x-github-request-id'] === 'string'
+          ? result.headers['x-github-request-id'].slice(0, 512)
+          : undefined,
       duration_ms: Date.now() - started,
       status: result.status >= 400 ? 'error' : 'success',
     });
   } catch (error) {
-    log('upstream_finished', {
+    await log('upstream_finished', {
       ...metadata,
       http_status:
         signal.aborted || (error as { code?: string }).code === 'ECONNABORTED' ? 504 : 502,
@@ -114,24 +142,32 @@ export async function requestHttpUpstream(
     });
     throw error;
   }
-  const responseHeaders: Record<string, string> = {};
-  for (const name of [
-    'content-type',
-    'retry-after',
-    'etag',
-    'last-modified',
-    'x-ratelimit-limit',
-    'x-ratelimit-remaining',
-    'x-ratelimit-reset',
-  ]) {
-    const value = result.headers[name];
-    if (typeof value === 'string' || typeof value === 'number')
-      responseHeaders[name] = String(value);
+  const responseHeaders = Object.fromEntries(
+    Object.entries(forwardingResponseHeaders(result.headers)).map(([name, value]) => [
+      name,
+      Array.isArray(value) ? value.join(', ') : value,
+    ]),
+  );
+  let rateLimited = result.status === 429;
+  if (result.status === 403) {
+    try {
+      const message = JSON.parse(
+        decodedHttpPreview(Buffer.from(result.data), responseHeaders['content-encoding']).toString(
+          'utf8',
+        ),
+      ).message;
+      rateLimited =
+        typeof message === 'string' &&
+        /secondary rate limit|API rate limit exceeded/i.test(message);
+    } catch {
+      /* Keep ordinary permission failures distinct from rate limiting. */
+    }
   }
   return {
     status: result.status,
     isError: result.status >= 400,
     body: Buffer.from(result.data),
     headers: responseHeaders,
+    ...(rateLimited ? { rateLimited: true } : {}),
   };
 }

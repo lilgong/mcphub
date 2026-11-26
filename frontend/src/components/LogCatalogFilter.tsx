@@ -15,12 +15,19 @@ export default function LogCatalogFilter({
   const [names, setNames] = useState<string[]>([]);
   useEffect(() => {
     let active = true;
-    void apiGet('/logs/catalogs')
-      .then((result) => {
-        if (active && result.success && Array.isArray(result.data))
-          setNames(result.data.map((item: { name: string }) => item.name).filter(Boolean));
-      })
-      .catch(() => undefined);
+    const load = (path: string) =>
+      apiGet(path)
+        .then((result) => {
+          if (active && result.success && Array.isArray(result.data)) {
+            const discovered = result.data
+              .map((item: { name: string }) => item.name)
+              .filter(Boolean);
+            setNames((previous) => [...new Set<string>([...previous, ...discovered])].sort());
+          }
+        })
+        .catch(() => undefined);
+    // Current registrations are usable immediately while historical discovery runs separately.
+    void Promise.allSettled([load('/catalogs'), load('/logs/catalogs')]);
     return () => {
       active = false;
     };

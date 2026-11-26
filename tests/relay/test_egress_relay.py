@@ -17,6 +17,17 @@ relay = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(relay)
 
 
+@pytest.fixture(autouse=True)
+def public_target_dns(monkeypatch, tmp_path):
+    monkeypatch.setattr(relay, "ARXIV_QUERY_CACHE", relay._arxiv_module.ArxivQueryCache(tmp_path / "arxiv.db"))
+    original = relay.socket.getaddrinfo
+    def resolve(host, port, *args, **kwargs):
+        if str(host) in {"localhost", "127.0.0.1", "::1"}:
+            return original(host, port, *args, **kwargs)
+        return [(relay.socket.AF_INET, relay.socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+    monkeypatch.setattr(relay.socket, "getaddrinfo", resolve)
+
+
 def test_ipwo_proxy_auth_failure_latches(monkeypatch):
     calls = []
 
@@ -122,7 +133,7 @@ def test_ipwo_username_uses_requested_country_and_explicit_sid(monkeypatch):
     assert username == "account_custom_zone_US_sid_10001234_time_10"
 
 
-def test_ipwo_username_adds_sticky_suffix_to_rotating_account(monkeypatch):
+def test_ipwo_username_preserves_rotating_account_without_sticky_suffix(monkeypatch):
     monkeypatch.setattr(
         relay,
         "IPWO_PROXY_USERNAME",
@@ -130,9 +141,9 @@ def test_ipwo_username_adds_sticky_suffix_to_rotating_account(monkeypatch):
     )
     monkeypatch.setattr(relay, "IPWO_PROXY_COUNTRY", "US")
 
-    assert relay._ipwo_username_for_request("10001234") == (
-        "account_custom_zone_US_sid_10001234_time_10"
-    )
+    assert relay._ipwo_username_for_request("10001234") == "account_custom_zone_US"
+    assert relay._ipwo_username_for_request("10005678") == "account_custom_zone_US"
+    assert relay._ipwo_username_for_request() == "account_custom_zone_US"
 
 
 def test_ipwo_tunnel_407_is_recognized_without_exposing_proxy_url():
@@ -278,6 +289,8 @@ def test_json_response_treats_broken_pipe_as_client_disconnect():
         ("https://arxiv.org/abs/2501.00001", "arxiv"),
         ("https://arxiv.org/pdf/2501.00001", "arxiv"),
         ("https://arxiv.org/html/2501.00001", "arxiv"),
+        ("https://arxiv.org/format/2412.17451", "arxiv"),
+        ("https://www.arxiv.org/format/2412.17451", "arxiv"),
         ("https://arxiv.org/e-print/2501.00001", "arxiv"),
         ("https://arxiv.org/src/2501.00001", "arxiv"),
         ("https://www.arxiv.org/src/2501.00001", "arxiv"),
@@ -286,22 +299,37 @@ def test_json_response_treats_broken_pipe_as_client_disconnect():
         ("https://router.project-osrm.org/route/v1/car/1,2;3,4", "osm-routing"),
     ],
 )
-def test_relay_allows_only_named_arxiv_and_osm_paths(url, group):
+def test_relay_preserves_upstream_category_for_known_hosts(url, group):
     assert relay._validate_url(url) == group
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://export.arxiv.org/unknown",
-        "https://nominatim.openstreetmap.org/status.php",
-        "https://overpass-api.de/",
-        "https://example.com/api/query",
-    ],
-)
-def test_relay_rejects_unapproved_arxiv_and_osm_paths(url):
-    with pytest.raises(ValueError, match="allowed MCP egress"):
+@pytest.mark.parametrize("host,group", list(relay.UPSTREAM_GROUPS.items()))
+@pytest.mark.parametrize("path", ["", "/", "/new-api/v2/item", "/format-admin/paper", "/a%2Fb?q=x%2Fy"])
+def test_relay_allows_all_paths_on_each_registered_host(host, group, path):
+    assert relay._validate_url("https://" + host + path) == group
+
+
+@pytest.mark.parametrize("url", [
+    "http://arxiv.org/format/paper",
+    "https://user:password@arxiv.org/new-api",
+    "https://arxiv.org/new-api#fragment",
+    "https://127.0.0.1/new-api",
+])
+def test_relay_rejects_non_https_and_unsafe_url_components(url):
+    with pytest.raises(ValueError):
         relay._validate_url(url)
+
+
+def test_relay_checks_redirect_hosts_but_not_paths():
+    request = relay.urllib.request.Request("https://arxiv.org/format/paper")
+    redirect = relay.SafeRedirect().redirect_request(
+        request, None, 302, "Found", {}, "https://export.arxiv.org/new-source/paper",
+    )
+    assert redirect.full_url == "https://export.arxiv.org/new-source/paper"
+    with pytest.raises(ValueError):
+        relay.SafeRedirect().redirect_request(
+            request, None, 302, "Found", {}, "https://127.0.0.1/new-source/paper",
+        )
 
 
 def test_relay_allows_arxiv_eprint_redirect_to_source_archive():
@@ -353,7 +381,7 @@ def temporary_audit_path(monkeypatch, tmp_path):
 def test_live_limits_validate_and_persist(monkeypatch, tmp_path):
     old = relay.current_limits()
     values = {name: dict(value) for name, value in old.items()}
-    values["wikipedia"] = {"minIntervalMs": 500, "concurrency": 2}
+    values["wikipedia"] = {**old["wikipedia"], "minIntervalMs": 500, "concurrency": 2}
     try:
         relay.apply_limits(values)
         assert relay.current_limits()["wikipedia"] == values["wikipedia"]
@@ -367,10 +395,26 @@ def test_live_limits_validate_and_persist(monkeypatch, tmp_path):
         relay.apply_limits(old, persist=False)
 
 
+def test_all_overpass_nodes_share_the_same_relay_policy():
+    for host in ("overpass-api.de", "maps.mail.ru", "overpass.private.coffee"):
+        url = f"https://{host}/api/interpreter"
+        group = relay._validate_url(url)
+        assert group == "osm-overpass"
+        assert relay.controller_for_url(url, group) is relay.CONTROLLERS["osm-overpass"]
+
+
 def test_ncbi_key_and_pmc_have_separate_http_policies():
     assert relay.controller_for_url("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?api_key=test", "ncbi") is relay.CONTROLLERS["ncbi-key"]
     assert relay.controller_for_url("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi", "ncbi") is relay.CONTROLLERS["ncbi"]
     assert relay.controller_for_url("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123", "ncbi") is relay.CONTROLLERS["ncbi-pmc"]
+    url = "https://pmc.ncbi.nlm.nih.gov:443/articles/PMC123/pdf/"
+    assert relay._validate_url(url) == "ncbi"
+    assert relay.controller_for_url(url, "ncbi") is relay.CONTROLLERS["ncbi-pmc"]
+    redirected = relay.SafeRedirect().redirect_request(
+        relay.urllib.request.Request("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123/pdf/"),
+        None, 301, "Moved", {}, url,
+    )
+    assert redirected.full_url == url
 
 
 def test_each_http_attempt_is_logged_without_query_or_keys(monkeypatch, tmp_path):
@@ -595,6 +639,34 @@ def test_http_retry_returns_success_in_one_client_call(http_relay, monkeypatch):
     assert parent_ids == {summary['request_id']} and summary['attempts'] == 2
 
 
+def test_http_overpass_cache_preserves_response_and_does_not_count_hit_as_upstream(http_relay, monkeypatch, tmp_path):
+    import base64
+    import json
+    import urllib.request
+    cache = relay._cache_module.OverpassCache(tmp_path / 'cache.db')
+    monkeypatch.setattr(relay, 'OVERPASS_CACHE', cache)
+    controller = relay.Controller(0)
+    monkeypatch.setattr(relay, 'controller_for_url', lambda *a: controller)
+    attempts = []
+    raw = b'{ "elements": [{"id":1}], "osm3s": {} }'
+    def upstream(url, redirects, **kwargs):
+        attempts.append(url)
+        return 200, {'Content-Type': 'application/json'}, raw, url
+    monkeypatch.setattr(relay, '_fetch_once', upstream)
+    replies = []
+    for url in ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']:
+        body = json.dumps({'url': url, 'method': 'POST', 'body_base64': base64.b64encode(b'data=[out:json];node(1);out;').decode()}).encode()
+        req = urllib.request.Request('http://%s:%s/v1/fetch' % http_relay, data=body, headers={'Authorization': 'Bearer test-relay-token'})
+        with urllib.request.urlopen(req, timeout=2) as response:
+            replies.append(json.load(response))
+    assert len(attempts) == 1
+    assert replies[0] == replies[1]
+    assert base64.b64decode(replies[1]['body_base64']) == raw
+    records = [json.loads(l) for l in relay.LOG_PATH.read_text().splitlines()]
+    assert sum(r['event'] == 'http_finished' for r in records) == 1
+    assert sum(r['event'] == 'cache_hit' for r in records) == 1
+
+
 def test_many_expired_requests_do_not_block_a_new_request(monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     controller = relay.Controller(0)
@@ -658,3 +730,687 @@ def test_deadline_interrupts_slow_response_headers():
         assert time.monotonic() - start < 0.5
     finally:
         connection.close(); writer.close()
+
+
+def test_queue_diagnostics_distinguish_capacity_spacing_and_cooldown(monkeypatch):
+    records = []
+    monkeypatch.setattr(relay, '_append_log', records.append)
+    controller = relay.Controller(3)
+    controller.max_concurrency = 1
+    controller.active = 1
+    now = relay.time.monotonic()
+    controller.last_started = now
+    controller.blocked_until = now + 60
+    budget = relay.RequestBudget(0.015)
+    with pytest.raises(relay.RelayRequestExpired):
+        controller._wait_for_slot(budget)
+    waits = [r for r in records if r['event'] == 'queue_wait']
+    assert len(waits) == 1
+    assert waits[0]['parent_request_id'] == budget.request_id
+    assert waits[0]['active'] == 1 and waits[0]['max_concurrency'] == 1
+    assert waits[0]['queued_ahead'] == 0 and waits[0]['min_interval_ms'] == 3000
+    assert waits[0]['cooldown_wait_ms'] > 59000
+    assert waits[0]['interval_wait_ms'] > 2900
+    assert controller.active == 1 and not controller.pending
+
+
+@pytest.mark.parametrize('outcome', ['network_timeout', 'http_504'])
+def test_arxiv_timeout_retries_without_extra_cooldown(monkeypatch, outcome):
+    monkeypatch.setattr(relay, 'ARXIV_IMMEDIATE_TIMEOUT_RETRY', True)
+    controller = relay.Controller(0)
+    monkeypatch.setattr(controller, '_set_cooldown', lambda seconds: pytest.fail('Unexpected backoff'))
+    sessions = []
+    def fetch(url, redirects, *, session_id=None, **kwargs):
+        sessions.append(session_id)
+        if len(sessions) == 1:
+            if outcome == 'network_timeout': raise relay.RelayUpstreamTimeout('TimeoutError')
+            return 504, {}, b'timeout', url
+        return 200, {}, b'ok', url
+    monkeypatch.setattr(relay, '_fetch_once', fetch)
+    assert controller.fetch('https://export.arxiv.org/api/query', False)[0] == 200
+    assert len(sessions) == 2 and sessions[0] != sessions[1]
+    assert controller.active == 0
+
+
+@pytest.mark.parametrize('case', ['other_host', 'disabled', 'non_timeout', 'http_429', 'retry_after_504'])
+def test_timeout_experiment_preserves_other_backoff(monkeypatch, case):
+    monkeypatch.setattr(relay, 'IPWO_PROXY_USERNAME', 'test_sid_12345678')
+    monkeypatch.setattr(relay, 'ARXIV_IMMEDIATE_TIMEOUT_RETRY', case != 'disabled')
+    controller = relay.Controller(0)
+    waits = []
+    monkeypatch.setattr(controller, '_set_cooldown', waits.append)
+    calls = []
+    def fetch(url, redirects, **kwargs):
+        calls.append(url)
+        if len(calls) == 1:
+            if case == 'http_429': return 429, {'Retry-After': '12'}, b'limited', url
+            if case == 'retry_after_504': return 504, {'Retry-After': '9'}, b'busy', url
+            if case == 'non_timeout': raise relay.RelayUpstreamError('ConnectionResetError')
+            raise relay.RelayUpstreamTimeout('TimeoutError')
+        return 200, {}, b'ok', url
+    monkeypatch.setattr(relay, '_fetch_once', fetch)
+    url = 'https://en.wikipedia.org/w/api.php' if case == 'other_host' else 'https://export.arxiv.org/api/query'
+    assert controller.fetch(url, False)[0] == 200
+    assert waits == [12 if case == 'http_429' else 9 if case == 'retry_after_504' else 5]
+
+
+def test_wrapped_socket_timeout_is_recognized_without_leaking_credentials(monkeypatch):
+    class Opener:
+        def open(self, request, timeout):
+            raise relay.urllib.error.URLError(TimeoutError('private-proxy-credential'))
+    monkeypatch.setattr(relay.urllib.request, 'build_opener', lambda *args: Opener())
+    with pytest.raises(relay.RelayUpstreamTimeout) as caught:
+        relay._fetch_once('https://export.arxiv.org/api/query', False)
+    assert str(caught.value) == 'URLError'
+
+
+def test_four_network_slots_run_while_the_fifth_waits(monkeypatch):
+    controller = relay.Controller(0)
+    controller.max_concurrency = 4
+    release = threading.Event()
+    lock = threading.Lock()
+    calls = []
+    failures = []
+    def fetch(url, redirects, **kwargs):
+        with lock: calls.append(url)
+        assert release.wait(2)
+        return 200, {}, b'ok', url
+    def run(index):
+        try: controller.fetch('https://export.arxiv.org/api/query?i='+str(index), False)
+        except Exception as error: failures.append(error)
+    monkeypatch.setattr(relay, '_fetch_once', fetch)
+    threads = [threading.Thread(target=run, args=(index,)) for index in range(5)]
+    try:
+        for thread in threads: thread.start()
+        wait_until(lambda: len(calls) == 4 and len(controller.pending) == 1)
+        assert controller.active == 4
+        assert len(calls) == 4
+    finally:
+        release.set()
+        for thread in threads: thread.join(2)
+    assert not failures and len(calls) == 5
+    assert controller.active == 0 and not controller.pending
+
+
+@pytest.mark.parametrize("url", [
+    "https://example.com/api/query?q=hello",
+    "https://new.provider.example:8443/new-api",
+    "https://8.8.8.8/",
+    "https://[2606:4700:4700::1111]/",
+])
+def test_any_public_https_destination_is_supported(url):
+    assert relay._validate_url(url) == "https"
+
+
+@pytest.mark.parametrize("url", [
+    "https://localhost/", "https://host.docker.internal/", "https://service.local/",
+    "https://10.0.0.1/", "https://172.16.0.1/", "https://192.168.0.22/",
+    "https://169.254.169.254/", "https://100.64.0.1/", "https://0.0.0.0/",
+    "https://[::1]/", "https://[fe80::1]/", "https://[fc00::1]/",
+    "https://[::ffff:127.0.0.1]/", "https://224.0.0.1/",
+    "https://example.com:0/", "https://@example.com/", "https://example.com/#",
+    "https://example.com/\nprivate", "https:///missing-host",
+])
+def test_private_and_malformed_destinations_are_rejected(url):
+    with pytest.raises(relay.RelayTargetError):
+        relay._validate_url(url)
+
+
+@pytest.mark.parametrize("addresses", [("127.0.0.1",), ("93.184.216.34", "10.0.0.1")])
+def test_dns_must_resolve_only_to_public_addresses(monkeypatch, addresses):
+    monkeypatch.setattr(relay.socket, "getaddrinfo", lambda *_a, **_k: [
+        (relay.socket.AF_INET, relay.socket.SOCK_STREAM, 6, "", (address, 443))
+        for address in addresses
+    ])
+    with pytest.raises(relay.RelayTargetError):
+        relay._validate_url("https://public-looking.example/api")
+
+
+def test_cross_domain_public_https_redirect_is_allowed():
+    request = relay.urllib.request.Request("https://arxiv.org/source")
+    redirected = relay.SafeRedirect().redirect_request(
+        request, None, 302, "Found", {}, "https://new-cdn.example:8443/archive/paper",
+    )
+    assert redirected.full_url == "https://new-cdn.example:8443/archive/paper"
+
+
+def test_generic_destinations_have_no_extra_rate_or_concurrency_limit():
+    first = relay.controller_for_url("https://first.example/a", "https")
+    assert first.min_interval == 0
+    assert first.max_concurrency is None
+    assert relay.controller_for_url("https://first.example/b", "https") is first
+    assert relay.controller_for_url("https://second.example/a", "https") is not first
+
+
+def test_proxy_tunnel_pins_checked_ip_and_restores_tls_hostname(monkeypatch):
+    budget = relay.RequestBudget(5)
+    assert relay._validate_url("https://new.provider.example/", budget) == "https"
+    # A later DNS change cannot change this request's CONNECT destination.
+    monkeypatch.setattr(relay.socket, "getaddrinfo", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("DNS rebound")))
+    observed = []
+    monkeypatch.setattr(relay.http.client.HTTPConnection, "_tunnel", lambda self: observed.append((self._tunnel_host, dict(self._tunnel_headers))))
+    connection = relay.BudgetHTTPSConnection("proxy.example", budget=budget)
+    connection.set_tunnel("new.provider.example", 443, headers={"Proxy-Authorization": "private-test", "Host": "new.provider.example:443"})
+    connection._tunnel()
+    assert observed == [("93.184.216.34", {"Proxy-Authorization": "private-test", "Host": "93.184.216.34:443"})]
+    assert connection._tunnel_host == "new.provider.example"
+    assert connection._tunnel_headers["Host"] == "new.provider.example:443"
+
+
+def test_dns_lookup_obeys_request_deadline(monkeypatch):
+    release = threading.Event()
+    monkeypatch.setattr(relay.socket, "getaddrinfo", lambda *_a, **_k: release.wait(1))
+    try:
+        with pytest.raises(relay.RelayRequestExpired):
+            relay._validate_url("https://slow-dns.example/", relay.RequestBudget(.03))
+    finally:
+        release.set()
+
+
+def test_failure_response_diagnostics_are_metadata_only():
+    import hashlib
+    import json
+    private = "secret-key-with-private-query"
+    body = ("<?xml version='1.0'?><eSearchResult><ERROR>Invalid API key: " + private + "</ERROR></eSearchResult>").encode()
+    metadata = relay._failure_response_metadata(500, {
+        "Content-Type": "text/xml; charset=UTF-8", "Server": "envoy",
+        "Via": "1.1 private-proxy-" + private, "X-Request-Id": private,
+        "Set-Cookie": private, "Location": "https://example.test?api_key=" + private,
+    }, body)
+    assert metadata["response_error_reason"] == "invalid_api_key"
+    assert metadata["response_source_hint"] == "ncbi_xml"
+    assert metadata["response_content_type"] == "text/xml"
+    assert metadata["response_server_product"] == "envoy"
+    assert metadata["response_via_present"] is True
+    assert metadata["response_body_sha256"] == hashlib.sha256(body).hexdigest()
+    assert private not in json.dumps(metadata)
+    assert "<ERROR>" not in json.dumps(metadata)
+    assert relay._failure_response_metadata(200, {}, body) == {}
+
+
+def test_relay_error_diagnostics_do_not_echo_untrusted_headers_or_body():
+    import json
+    private = "do-not-persist-key-or-query"
+    metadata = relay._failure_response_metadata(500, {
+        "Content-Type": private, "Server": private, "Via": private,
+    }, ("<html>ERR_CONNECT_FAIL " + private + "</html>").encode())
+    assert metadata["response_source_hint"] == "proxy_document"
+    assert metadata["response_error_reason"] == "proxy_error"
+    assert metadata["response_content_type"] == "other"
+    assert metadata["response_server_product"] == "unknown"
+    assert private not in json.dumps(metadata)
+
+
+def test_error_diagnostics_keep_three_attempts_and_the_original_response(monkeypatch):
+    records = []
+    calls = []
+    original = (500, {"Content-Type": "text/xml"}, b"<eSearchResult><ERROR>temporary backend failure</ERROR></eSearchResult>", "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi")
+    def fetch(*args, **kwargs):
+        calls.append(args)
+        return original
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    monkeypatch.setattr(relay, "_append_log", records.append)
+    controller = relay.Controller(0)
+    monkeypatch.setattr(controller, "_set_cooldown", lambda _seconds: None)
+    result = controller.fetch(original[3], False)
+    assert len(calls) == 3
+    assert result[:4] == original
+    assert result[4] == 3
+    finished = [r for r in records if r["event"] == "http_finished"]
+    assert len(finished) == 3
+    assert all(r["response_source_hint"] == "ncbi_xml" for r in finished)
+    assert all(r["response_error_reason"] == "ncbi_application_error" for r in finished)
+
+
+def test_overpass_failure_cools_only_that_node_and_returns_original_response(monkeypatch):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_sid_12345678")
+    calls, records = [], []
+    bad = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    good = "https://overpass-api.de/api/interpreter"
+    def fetch(url, *args, **kwargs):
+        calls.append(url)
+        return (504, {"Content-Type": "text/plain"}, b"upstream busy", url) if url == bad else (200, {}, b'{"elements":[]}', url)
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    monkeypatch.setattr(relay, "_append_log", records.append)
+    controller = relay.Controller(0)
+    failure = controller.fetch(bad, False)
+    assert failure[:4] == (504, {"Content-Type": "text/plain"}, b"upstream busy", bad)
+    assert failure[4] == 1
+    assert controller.fetch(good, False)[0] == 200
+    with pytest.raises(relay.RelayEndpointCooling):
+        controller.fetch(bad, False)
+    assert calls == [bad, good]
+    assert controller.active == 0
+    assert not controller.pending
+    assert controller.blocked_until == 0
+    assert any(r["event"] == "endpoint_cooldown" for r in records)
+
+
+def test_overpass_network_failure_leaves_backup_node_usable(monkeypatch):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_sid_12345678")
+    calls = []
+    bad = "https://overpass.private.coffee/api/interpreter"
+    good = "https://overpass-api.de/api/interpreter"
+    def fetch(url, *args, **kwargs):
+        calls.append(url)
+        if url == bad:
+            raise relay.RelayUpstreamTimeout("network timeout")
+        return 200, {}, b"ok", url
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    controller = relay.Controller(0)
+    with pytest.raises(relay.RelayUpstreamTimeout):
+        controller.fetch(bad, False)
+    assert controller.fetch(good, False)[0] == 200
+    assert calls == [bad, good]
+    assert controller.active == 0
+
+
+def test_overpass_node_cooldown_does_not_drop_shared_spacing_or_capacity(monkeypatch):
+    import time
+    controller = relay.Controller(0.035)
+    controller.max_concurrency = 1
+    started, release = threading.Event(), threading.Event()
+    first = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    second = "https://overpass-api.de/api/interpreter"
+    calls = []
+    def fetch(url, *args, **kwargs):
+        calls.append((url, time.monotonic()))
+        if url == first:
+            started.set()
+            assert release.wait(2)
+        return 200, {}, b"ok", url
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    result, errors = [], []
+    def run(url):
+        try:result.append(controller.fetch(url, False))
+        except Exception as exc:errors.append(exc)
+    a = threading.Thread(target=run, args=(first,))
+    b = threading.Thread(target=run, args=(second,))
+    a.start()
+    assert started.wait(2)
+    b.start()
+    wait_until(lambda: len(controller.pending) == 1)
+    assert len(calls) == 1
+    release.set()
+    a.join(2)
+    b.join(2)
+    assert not errors and len(result) == 2
+    assert calls[1][1] - calls[0][1] >= 0.025
+    assert controller.active == 0 and not controller.pending
+
+
+def test_overpass_429_retains_retry_after_for_only_that_node(monkeypatch):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_sid_12345678")
+    calls = []
+    first = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    second = "https://overpass-api.de/api/interpreter"
+    def fetch(url, *args, **kwargs):
+        calls.append(url)
+        return (429, {"Retry-After": "120"}, b"limited", url) if url == first else (200, {}, b"ok", url)
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    controller = relay.Controller(0)
+    result = controller.fetch(first, False)
+    assert result[:3] == (429, {"Retry-After": "120"}, b"limited")
+    assert controller.node_blocked_until[("maps.mail.ru", 443)] - relay.time.monotonic() > 119
+    assert controller.fetch(second, False)[0] == 200
+    assert calls == [first, second]
+
+
+
+def test_overpass_upstream_deadline_cools_node_but_queue_cancellation_does_not(monkeypatch):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_sid_12345678")
+    bad = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    good = "https://overpass-api.de/api/interpreter"
+    def fetch(url, *args, **kwargs):
+        if url == bad:
+            raise relay.RelayRequestExpired("upstream")
+        return 200, {}, b"ok", url
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    controller = relay.Controller(0)
+    with pytest.raises(relay.RelayRequestExpired):
+        controller.fetch(bad, False)
+    assert ("maps.mail.ru", 443) in controller.node_blocked_until
+    assert controller.fetch(good, False)[0] == 200
+    assert controller.active == 0
+    cancelled = relay.RequestBudget(1, disconnected=lambda: True)
+    with pytest.raises(relay.RelayRequestCancelled):
+        controller.fetch(good, False, budget=cancelled)
+    assert ("overpass-api.de", 443) not in controller.node_blocked_until
+    assert not controller.pending
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+def test_rotating_overpass_failure_does_not_pause_other_exits(monkeypatch, status):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_rotating")
+    calls, records = [], []
+    url = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    def fetch(target, *args, **kwargs):
+        calls.append(target)
+        if len(calls) == 1:
+            return status, {"Retry-After": "120"}, b"temporary failure", target
+        return 200, {}, b"ok", target
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    monkeypatch.setattr(relay, "_append_log", records.append)
+    controller = relay.Controller(0)
+    assert controller.fetch(url, False)[0] == status
+    assert controller.fetch(url, False)[0] == 200
+    assert calls == [url, url]
+    assert not controller.node_blocked_until
+    assert controller.blocked_until == 0
+    assert not any(r["event"] in {"cooldown", "endpoint_cooldown"} for r in records)
+    assert controller.active == 0 and not controller.pending
+
+
+@pytest.mark.parametrize("failure", [
+    relay.RelayUpstreamTimeout("network timeout"),
+    relay.RelayUpstreamError("connection refused"),
+    relay.RelayRequestExpired("upstream"),
+])
+def test_rotating_overpass_network_error_does_not_poison_next_request(monkeypatch, failure):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_rotating")
+    url = "https://overpass-api.de/api/interpreter"
+    calls = []
+    def fetch(target, *args, **kwargs):
+        calls.append(target)
+        if len(calls) == 1:
+            raise failure
+        return 200, {}, b"ok", target
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    controller = relay.Controller(0)
+    with pytest.raises(type(failure)):
+        controller.fetch(url, False)
+    assert controller.fetch(url, False)[0] == 200
+    assert not controller.node_blocked_until and controller.blocked_until == 0
+    assert len(calls) == 2
+
+
+def test_rotating_overpass_ignores_existing_node_cooldown(monkeypatch):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_rotating")
+    url = "https://overpass-api.de/api/interpreter"
+    controller = relay.Controller(0)
+    controller.node_blocked_until[("overpass-api.de", 443)] = relay.time.monotonic() + 120
+    monkeypatch.setattr(relay, "_fetch_once", lambda target, *args, **kwargs: (200, {}, b"ok", target))
+    assert controller.fetch(url, False)[0] == 200
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+def test_rotating_arxiv_retries_three_times_without_shared_cooldown(monkeypatch, status):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_rotating")
+    calls, records = [], []
+    url = "https://export.arxiv.org/api/query"
+    def fetch(target, *args, **kwargs):
+        calls.append(target)
+        return status, {"Retry-After": "120"}, b"unavailable", target
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    monkeypatch.setattr(relay, "_append_log", records.append)
+    controller = relay.Controller(0)
+    result = controller.fetch(url, False)
+    assert result[:4] == (status, {"Retry-After": "120"}, b"unavailable", url)
+    assert result[4] == 3 and len(calls) == 3
+    assert controller.blocked_until == 0 and not controller.node_blocked_until
+    assert not any(r["event"] == "cooldown" for r in records)
+    assert len([r for r in records if r["event"] == "retry_scheduled"]) == 2
+    monkeypatch.setattr(relay, "_fetch_once", lambda target, *a, **k: (200, {}, b"ok", target))
+    assert controller.fetch(url, False)[0] == 200
+
+
+@pytest.mark.parametrize("failure", [relay.RelayUpstreamTimeout("timeout"), relay.RelayUpstreamError("reset")])
+def test_rotating_arxiv_network_retry_retains_three_attempt_cap(monkeypatch, failure):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_rotating")
+    monkeypatch.setattr(relay, "ARXIV_IMMEDIATE_TIMEOUT_RETRY", False)
+    calls = []
+    def fetch(target, *args, **kwargs):
+        calls.append(target)
+        raise failure
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    controller = relay.Controller(0)
+    with pytest.raises(type(failure)):
+        controller.fetch("https://export.arxiv.org/api/query", False)
+    assert len(calls) == 3 and controller.blocked_until == 0
+    assert controller.active == 0 and not controller.pending
+
+
+def test_rotating_arxiv_deadline_still_prevents_additional_attempts(monkeypatch):
+    monkeypatch.setattr(relay, "IPWO_PROXY_USERNAME", "test_rotating")
+    calls = []
+    def fetch(target, *args, budget=None, **kwargs):
+        calls.append(target)
+        budget.deadline = relay.time.monotonic() - 1
+        return 429, {}, b"limited", target
+    monkeypatch.setattr(relay, "_fetch_once", fetch)
+    controller = relay.Controller(0)
+    with pytest.raises(relay.RelayRequestExpired):
+        controller.fetch("https://export.arxiv.org/api/query", False)
+    assert len(calls) == 1 and controller.blocked_until == 0
+
+
+def test_timeout_policy_defaults_leave_unrelated_providers_unchanged():
+    assert relay.timeout_policy('https://overpass.private.coffee/api/interpreter', 'osm-overpass') == {
+        'networkTimeoutSeconds': 120, 'requestTimeoutSeconds': 140}
+    assert relay.timeout_policy('https://export.arxiv.org/api/query', 'arxiv') == {
+        'networkTimeoutSeconds': 60, 'requestTimeoutSeconds': 140}
+    for group in ['osm-nominatim', 'wikipedia']:
+        assert relay.timeout_policy('https://test/', group) == {
+            'networkTimeoutSeconds': 45, 'requestTimeoutSeconds': 140}
+    for group in ['ncbi', 'ncbi-key', 'ncbi-pmc']:
+        assert relay.timeout_policy('https://eutils.ncbi.nlm.nih.gov/', group) == {
+            'networkTimeoutSeconds': 60, 'requestTimeoutSeconds': 210}
+    for group in ['osm-routing', 'https']:
+        assert relay.timeout_policy('https://eutils.ncbi.nlm.nih.gov/', group) == {
+            'networkTimeoutSeconds': relay.UPSTREAM_TIMEOUT, 'requestTimeoutSeconds': relay.REQUEST_TIMEOUT}
+
+
+def test_timeout_live_update_is_validated_atomic_and_does_not_mutate_inflight_budget():
+    old = relay.current_limits()
+    values = {name: dict(item) for name, item in old.items()}
+    budget = relay.RequestBudget(140, network_seconds=120)
+    values['osm-overpass'].update(networkTimeoutSeconds=100, requestTimeoutSeconds=130)
+    try:
+        relay.apply_limits(values, persist=False)
+        assert relay.timeout_policy('https://overpass-api.de/', 'osm-overpass')['networkTimeoutSeconds'] == 100
+        assert budget.network_seconds == 120 and budget.total_seconds == 140
+        for field, value in [('networkTimeoutSeconds', True), ('requestTimeoutSeconds', float('nan')),
+                             ('networkTimeoutSeconds', 0), ('requestTimeoutSeconds', 601),
+                             ('networkTimeoutSeconds', 131)]:
+            invalid = {name: dict(item) for name, item in values.items()}
+            invalid['osm-overpass'][field] = value
+            with pytest.raises(ValueError):
+                relay.apply_limits(invalid, persist=False)
+            assert relay.current_limits() == values
+    finally:
+        relay.apply_limits(old, persist=False)
+
+
+@pytest.mark.parametrize('caller_seconds,expected', [(None, 140), (20, 20), (500, 140)])
+def test_http_category_budget_and_shorter_caller_deadline(http_relay, monkeypatch, caller_seconds, expected):
+    import json
+    import urllib.request
+    seen = []
+    controller = relay.Controller(0)
+    monkeypatch.setattr(relay, 'controller_for_url', lambda *a: controller)
+    def fetch(url, *_args, budget, **_kwargs):
+        seen.append((budget.total_seconds, budget.network_seconds, budget.remaining('upstream')))
+        return 200, {}, b'ok', url
+    monkeypatch.setattr(relay, '_fetch_once', fetch)
+    payload = {'url': 'https://overpass-api.de/api/interpreter'}
+    if caller_seconds is not None:
+        payload['timeout_seconds'] = caller_seconds
+    req = urllib.request.Request('http://%s:%s/v1/fetch' % http_relay,
+        data=json.dumps(payload).encode(), headers={'Authorization': 'Bearer test-relay-token'})
+    with urllib.request.urlopen(req, timeout=2) as response:
+        assert response.status == 200
+    assert len(seen) == 1
+    assert seen[0][:2] == (expected, 120)
+    assert 0 < seen[0][2] <= expected
+
+
+def test_network_timeout_retains_phase_in_response_and_attempt_log(http_relay, monkeypatch):
+    import json
+    import urllib.request
+    records = []
+    monkeypatch.setattr(relay, '_append_log', records.append)
+    monkeypatch.setattr(relay, 'controller_for_url', lambda *a: relay.Controller(0))
+    def fetch(*_args, **_kwargs):
+        raise relay.RelayUpstreamTimeout('TimeoutError', phase='response_read')
+    monkeypatch.setattr(relay, '_fetch_once', fetch)
+    req = urllib.request.Request('http://%s:%s/v1/fetch' % http_relay,
+        data=json.dumps({'url': 'https://overpass-api.de/api/interpreter'}).encode(),
+        headers={'Authorization': 'Bearer test-relay-token'})
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(req, timeout=2)
+    assert caught.value.code == 504
+    assert json.loads(caught.value.read())['code'] == 'network_wait_timeout'
+    for event in ['http_finished', 'http_completed']:
+        row = next(item for item in records if item['event'] == event)
+        assert row['timeout_phase'] == 'response_read'
+        assert row['network_timeout_seconds'] == 120
+
+
+@pytest.mark.parametrize('total,network,expected', [(140,120,120), (10,120,10), (85,45,45)])
+def test_network_open_uses_category_timeout_clamped_to_remaining_budget(monkeypatch, total, network, expected):
+    seen = []
+    class Opener:
+        def open(self, request, timeout):
+            seen.append(timeout)
+            raise relay.urllib.error.URLError(TimeoutError('sensitive-proxy-detail'))
+    monkeypatch.setattr(relay.urllib.request, 'build_opener', lambda *args: Opener())
+    budget = relay.RequestBudget(total, network_seconds=network)
+    with pytest.raises(relay.RelayUpstreamTimeout) as caught:
+        relay._fetch_once('https://overpass-api.de/api/interpreter', False, budget=budget)
+    assert len(seen) == 1 and expected - 0.5 < seen[0] <= expected
+    assert 'sensitive' not in str(caught.value)
+
+
+def test_ncbi_attempt_deadlines_leave_room_for_three_rotating_attempts(monkeypatch):
+    clock = [0.0]
+    sessions = []
+    monkeypatch.setattr(relay.time, 'monotonic', lambda: clock[0])
+    controller = relay.Controller(0)
+    monkeypatch.setattr(controller, '_set_cooldown', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    monkeypatch.setattr(relay, '_append_log', lambda record: None)
+
+    def fetch(url, allow_redirects, *, session_id=None, budget=None):
+        sessions.append(session_id)
+        assert budget.remaining('upstream') == pytest.approx(60)
+        if len(sessions) < 3:
+            clock[0] += 60.01
+            budget.remaining('upstream')
+        return 200, {}, b'ok', url
+
+    monkeypatch.setattr(relay, '_fetch_once', fetch)
+    budget = relay.RequestBudget(210, network_seconds=60)
+    result = controller.fetch('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi', False, budget=budget)
+    assert result[0] == 200 and result[4] == 3
+    assert len(set(sessions)) == 3
+    assert clock[0] < 210
+    assert budget.attempt_deadline is None
+
+
+def test_ncbi_stops_after_three_attempt_timeouts(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(relay.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(relay, '_append_log', lambda record: None)
+    controller = relay.Controller(0)
+    monkeypatch.setattr(controller, '_set_cooldown', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    def fetch(url, allow_redirects, *, session_id=None, budget=None):
+        clock[0] += 60.01
+        budget.remaining('upstream')
+
+    monkeypatch.setattr(relay, '_fetch_once', fetch)
+    budget = relay.RequestBudget(210, network_seconds=60)
+    with pytest.raises(relay.RelayUpstreamTimeout):
+        controller.fetch('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi', False, budget=budget)
+    assert budget.attempts == 3
+    assert clock[0] < 210
+    assert budget.attempt_deadline is None
+
+
+def test_ncbi_attempt_does_not_extend_a_shorter_total_budget(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(relay.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(relay, '_append_log', lambda record: None)
+    controller = relay.Controller(0)
+    monkeypatch.setattr(controller, '_set_cooldown', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    def fetch(url, allow_redirects, *, session_id=None, budget=None):
+        clock[0] += budget.remaining('upstream') + .01
+        budget.remaining('upstream')
+
+    monkeypatch.setattr(relay, '_fetch_once', fetch)
+    budget = relay.RequestBudget(85, network_seconds=60)
+    with pytest.raises(relay.RelayRequestExpired):
+        controller.fetch('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi', False, budget=budget)
+    assert budget.attempts == 2
+
+
+def test_attempt_deadline_interrupts_a_trickling_socket():
+    import socket
+    import time
+    reader, writer = socket.socketpair()
+    budget = relay.RequestBudget(2, network_seconds=.05)
+    budget.attempt_deadline = time.monotonic() + .05
+    try:
+        with relay._watch_socket(reader, budget):
+            assert reader.recv(1) == b''
+        with pytest.raises(relay.RelayUpstreamTimeout):
+            budget.remaining('upstream')
+    finally:
+        reader.close()
+        writer.close()
+
+@pytest.mark.parametrize('network,expected', [(5, 5), (500, 120), (None, 120)])
+def test_caller_network_budget_starts_after_admission_and_cannot_raise_operator_limit(http_relay, monkeypatch, network, expected):
+    import json
+    import urllib.request
+    seen = []
+    monkeypatch.setattr(relay, 'controller_for_url', lambda *a: relay.Controller(0))
+    def fetch(url, *_args, budget, **_kwargs):
+        seen.append((budget.total_seconds, budget.network_seconds))
+        return 200, {}, b'ok', url
+    monkeypatch.setattr(relay, '_fetch_once', fetch)
+    payload = {'url': 'https://overpass-api.de/api/interpreter', 'timeout_seconds': 600}
+    if network is not None: payload['network_timeout_seconds'] = network
+    request = urllib.request.Request('http://%s:%s/v1/fetch' % http_relay,
+        data=json.dumps(payload).encode(), headers={'Authorization': 'Bearer test-relay-token'})
+    with urllib.request.urlopen(request, timeout=2) as response: assert response.status == 200
+    assert seen == [(140, expected)]
+
+@pytest.mark.parametrize('network', [0, -1, True, '10'])
+def test_invalid_caller_network_budget_is_rejected_before_fetch(http_relay, network):
+    import json
+    import urllib.request
+    request = urllib.request.Request('http://%s:%s/v1/fetch' % http_relay,
+        data=json.dumps({'url': 'https://export.arxiv.org/api/query', 'network_timeout_seconds': network}).encode(),
+        headers={'Authorization': 'Bearer test-relay-token'})
+    with pytest.raises(urllib.error.HTTPError) as error: urllib.request.urlopen(request, timeout=2)
+    assert error.value.code == 400
+
+
+def test_http_arxiv_query_cache_preserves_atom_and_upstream_accounting(http_relay, monkeypatch):
+    import base64
+    import json
+    import urllib.request
+    controller = relay.Controller(0)
+    monkeypatch.setattr(relay, 'controller_for_url', lambda *a: controller)
+    raw = b'''<feed xmlns="http://www.w3.org/2005/Atom" xmlns:o="http://a9.com/-/spec/opensearch/1.1/">
+    <id>query</id><updated>2026-11-25T00:00:00Z</updated><o:totalResults>0</o:totalResults>
+    <o:startIndex>0</o:startIndex><o:itemsPerPage>10</o:itemsPerPage></feed>'''
+    attempts = []
+    def upstream(url, redirects, **kwargs):
+        attempts.append(url)
+        return 200, {'Content-Type': 'application/atom+xml'}, raw, url
+    monkeypatch.setattr(relay, '_fetch_once', upstream)
+    replies = []
+    for start in [0, 0, 10]:
+        body = json.dumps({'url': 'https://export.arxiv.org/api/query',
+                           'params': {'search_query': 'all:agents', 'start': start, 'max_results': 10}}).encode()
+        req = urllib.request.Request('http://%s:%s/v1/fetch' % http_relay, data=body,
+                                     headers={'Authorization': 'Bearer test-relay-token'})
+        with urllib.request.urlopen(req, timeout=2) as response:
+            replies.append(json.load(response))
+    assert len(attempts) == 2 and replies[0] == replies[1]
+    assert base64.b64decode(replies[1]['body_base64']) == raw
+    records = [json.loads(l) for l in relay.LOG_PATH.read_text().splitlines()]
+    assert sum(r['event'] == 'http_finished' for r in records) == 2
+    assert sum(r['event'] == 'cache_hit' for r in records) == 1

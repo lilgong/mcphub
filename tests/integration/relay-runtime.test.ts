@@ -14,7 +14,11 @@ import {
   stopRelay,
   resetRelayToken,
 } from '../../src/controllers/relayRuntimeController.js';
-import { getRelayToken, saveAtlasConfig } from '../../src/services/atlasConfigService.js';
+import {
+  getAtlasConfig,
+  getRelayToken,
+  saveAtlasConfig,
+} from '../../src/services/atlasConfigService.js';
 
 jest.mock('../../src/services/atlasConfigService.js', () => ({
   getRelayToken: jest.fn(),
@@ -68,8 +72,24 @@ afterAll(async () => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
+test('disabled relay does not probe runtime readiness', async () => {
+  const config = await getAtlasConfig();
+  jest.mocked(getAtlasConfig).mockResolvedValueOnce({
+    ...config,
+    relay: { ...config.relay, enabled: false },
+  });
+  const status = jest.spyOn(service, 'status');
+  try {
+    expect(await service.readiness()).toBeUndefined();
+    expect(status).not.toHaveBeenCalled();
+  } finally {
+    status.mockRestore();
+  }
+});
+
 test('standalone process rotates credentials without restart and persists audit outside the process', async () => {
   expect((await service.status()).state).toBe('stopped');
+  expect(await service.readiness()).toEqual({ state: 'stopped', healthy: false });
   const running = await service.start();
   expect(running).toMatchObject({ state: 'running', healthy: true });
   expect((await service.start()).pid).toBe(running.pid);
@@ -128,6 +148,7 @@ test('external relay is never stopped, reset or replaced', async () => {
       configured: true,
       missing: [],
     });
+    expect(await service.readiness()).toEqual({ state: 'external', healthy: true });
     await expect(service.start()).rejects.toThrow('external relay');
     await expect(service.stop()).rejects.toThrow('External relay');
     await expect(service.resetToken()).rejects.toThrow('External relay');

@@ -1,6 +1,8 @@
 import { buildHttpAuthHeaders } from '../../frontend/src/utils/httpForwardAuth';
 import express from 'express';
 import request from 'supertest';
+import { gzipSync } from 'node:zlib';
+import { request as httpRequest } from 'node:http';
 import { createServer, type Server } from 'node:http';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,6 +19,8 @@ let shared = false;
 let upstreamStatus = 200;
 let upstreamHeaders: Record<string, string> = {};
 let upstreamBody: Buffer;
+let echoBody = false;
+let seenHeaders: import('node:http').IncomingHttpHeaders;
 let seen: { url?: string; body?: string; authorization?: string; cookie?: string; secret?: string };
 const mockFindServer = jest.fn(async () => resource);
 const mockFindUser = jest.fn(async () => ({ username: 'admin', isAdmin: true }));
@@ -71,7 +75,7 @@ import { getCallLogs } from '../../src/services/callLogService.js';
 import { getCallStats } from '../../src/services/callStatsService.js';
 
 const app = express();
-app.all(/^\/http\/([^/]+)(\/.*)?$/, express.raw({ type: () => true, limit: '1mb' }), forwardHttp);
+app.all(/^\/http\/([^/]+)(\/.*)?$/, forwardHttp);
 let server: Server;
 let audit: string;
 let previousAudit: string | undefined;
@@ -79,6 +83,7 @@ beforeAll(async () => {
   server = createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    seenHeaders = req.headers;
     seen = {
       url: req.url,
       body: Buffer.concat(chunks).toString(),
@@ -87,7 +92,7 @@ beforeAll(async () => {
       secret: String(req.headers['x-api-key'] ?? ''),
     };
     res.writeHead(upstreamStatus, upstreamHeaders);
-    res.end(upstreamBody);
+    res.end(echoBody ? Buffer.concat(chunks) : upstreamBody);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   previousAudit = process.env.MCPHUB_AUDIT_LOG_DIR;
@@ -108,6 +113,7 @@ beforeEach(() => {
   upstreamHeaders = { 'Content-Type': 'application/json' };
   upstreamBody = Buffer.from('{ "organic": [{"title":"fixture"}], "extra": true }');
   seen = {};
+  echoBody = false;
   audit = mkdtempSync(join(tmpdir(), 'mcphub-http-audit-'));
   process.env.MCPHUB_AUDIT_LOG_DIR = audit;
   jest.clearAllMocks();
@@ -218,26 +224,21 @@ it('blocks non-admin upstream connections to internal addresses', async () => {
   expect((await search()).status).toBe(502);
   expect(seen.url).toBeUndefined();
 });
-it('does not follow redirects or expose upstream cookies/Location', async () => {
+it('leaves redirects to the client, retaining a Hub-routed Location and isolating cookies', async () => {
   upstreamStatus = 302;
   upstreamHeaders = { Location: 'https://other.example/', 'Set-Cookie': 'secret=1' };
   upstreamBody = Buffer.from('redirect');
   const response = await search();
   expect(response.status).toBe(302);
-  expect(response.headers.location).toBeUndefined();
+  expect(response.headers.location).toBe('https://other.example/');
   expect(response.headers['set-cookie']).toBeUndefined();
 });
-it.each([
-  '/../admin',
-  '/%2e%2e/admin',
-  '/%252e%252e/admin',
-  '//other.example/path',
-  '/%2f%2fother.example',
-  '/path%3fkey=1',
-  '/a\\b',
-])('rejects unsafe path %s', (path) => {
-  expect(() => forwardingUrl('https://yibuapi.com/serper', path)).toThrow();
-});
+it.each(['/../admin', '/%2e%2e/admin', '//other.example/path', '/%2f%2fother.example', '/a\\b'])(
+  'rejects unsafe path %s',
+  (path) => {
+    expect(() => forwardingUrl('https://yibuapi.com/serper', path)).toThrow();
+  },
+);
 it('preserves an upstream base prefix and normalizes saved HTTP configuration', () => {
   expect(forwardingUrl('https://yibuapi.com/serper', '/search', '?q=1')).toBe(
     'https://yibuapi.com/serper/search?q=1',
@@ -359,4 +360,151 @@ it('audits normalized upstream credentials for serper suffix names without copyi
     credentialId: id,
   });
   expect(stats.rows.find((r) => r.server === 'serper-a')?.calls).toBe(1);
+});
+
+it('forwards a Sheets range containing encoded spaces to the HTTP upstream', async () => {
+  const path = '/v4/spreadsheets/test/values/%27Text%20and%20Image%27';
+  const response = await request(app)
+    .get('/http/serper' + path + '?majorDimension=ROWS')
+    .set('Authorization', 'Bearer hub-test-token');
+  expect(response.status).toBe(200);
+  expect(response.text).toBe(upstreamBody.toString());
+  expect(decodeURIComponent(seen.url!)).toBe(decodeURIComponent(path) + '?majorDimension=ROWS');
+  expect(seen.url).toContain('Text%20and%20Image');
+  expect(seen.authorization).toBe('Bearer upstream-test-secret-1234');
+});
+
+it.each([
+  '/objects/folder%2Ffile.csv',
+  '/objects/folder%2F..%2Ffile.csv',
+  '/objects/100%25.csv',
+  '/objects/hello%3Fworld',
+  '/objects/hello%23world',
+  '/objects/%252e%252e',
+  '/objects/literal%252Fname',
+  '/objects/%E4%B8%AD%E6%96%87',
+])('retains the exact upstream encoding for %s', async (path) => {
+  await request(app)
+    .get('/http/serper' + path + '?a=1&a=2&x=%252F')
+    .set('Authorization', 'Bearer hub-test-token')
+    .expect(200);
+  expect(seen.url).toBe(path + '?a=1&a=2&x=%252F');
+});
+
+it('streams a request above 1 MiB and a response above 8 MiB without truncation', async () => {
+  echoBody = true;
+  upstreamHeaders = { 'Content-Type': 'application/octet-stream' };
+  const bytes = Buffer.alloc(9 * 1024 * 1024, 139);
+  const response = await request(app)
+    .post('/http/serper/echo')
+    .set('Authorization', 'Bearer hub-test-token')
+    .set('Content-Type', 'application/octet-stream')
+    .send(bytes)
+    .expect(200);
+  expect(response.body).toEqual(bytes);
+});
+
+it('preserves conditional and checksum headers while isolating caller credentials and hop headers', async () => {
+  upstreamHeaders['Content-MD5'] = 'upstream-checksum';
+  upstreamHeaders['X-Custom-Result'] = 'result';
+  upstreamHeaders.Connection = 'X-Hop-Response';
+  upstreamHeaders['X-Hop-Response'] = 'do-not-forward';
+  const response = await request(app)
+    .get('/http/serper/metadata')
+    .set('Authorization', 'Bearer hub-test-token')
+    .set('If-Match', 'revision-a')
+    .set('Content-MD5', 'request-checksum')
+    .set('X-Custom-Business', 'business')
+    .set('X-MCPHub-Task-Id', 'task-private')
+    .set('X-API-KEY', 'caller-secret')
+    .set('Connection', 'X-Hop-Request')
+    .set('X-Hop-Request', 'do-not-forward')
+    .expect(200);
+  expect(seenHeaders['if-match']).toBe('revision-a');
+  expect(seenHeaders['content-md5']).toBe('request-checksum');
+  expect(seenHeaders['x-custom-business']).toBe('business');
+  expect(seenHeaders['x-mcphub-task-id']).toBeUndefined();
+  expect(seenHeaders['x-api-key']).toBeUndefined();
+  expect(seenHeaders['x-hop-request']).toBeUndefined();
+  expect(response.headers['content-md5']).toBe('upstream-checksum');
+  expect(response.headers['x-custom-result']).toBe('result');
+  expect(response.headers['x-hop-response']).toBeUndefined();
+});
+
+it('rewrites a same-upstream redirect to this Hub resource without following it automatically', async () => {
+  upstreamStatus = 307;
+  upstreamHeaders.Location = '/destination?x=1';
+  const response = await search();
+  expect(response.status).toBe(307);
+  expect(response.headers.location).toBe('/http/serper/destination?x=1');
+  expect(seen.url).toBe('/serper/search?flag=1');
+});
+
+it('preserves HEAD metadata without a response body', async () => {
+  upstreamHeaders['Content-Length'] = '123';
+  const response = await request(app)
+    .head('/http/serper/metadata')
+    .set('Authorization', 'Bearer hub-test-token')
+    .expect(200);
+  expect(response.headers['content-length']).toBe('123');
+  expect(response.text).toBeUndefined();
+});
+
+it('preserves compressed request and response bytes with their encoding and length', async () => {
+  const compressed = gzipSync(Buffer.from('opaque compressed fixture'));
+  echoBody = true;
+  upstreamHeaders = {
+    'Content-Type': 'application/octet-stream',
+    'Content-Encoding': 'gzip',
+    'Content-Length': String(compressed.length),
+  };
+  const listener = createServer(app);
+  await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
+  try {
+    const response = await new Promise<{
+      bytes: Buffer;
+      headers: import('node:http').IncomingHttpHeaders;
+    }>((resolve, reject) => {
+      const call = httpRequest(
+        {
+          hostname: '127.0.0.1',
+          port: (listener.address() as { port: number }).port,
+          path: '/http/serper/echo',
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer hub-test-token',
+            'Content-Type': 'application/octet-stream',
+            'Content-Encoding': 'gzip',
+            'Content-Length': String(compressed.length),
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => resolve({ bytes: Buffer.concat(chunks), headers: res.headers }));
+          res.on('error', reject);
+        },
+      );
+      call.on('error', reject);
+      call.end(compressed);
+    });
+    expect(response.bytes).toEqual(compressed);
+    expect(response.headers['content-encoding']).toBe('gzip');
+    expect(response.headers['content-length']).toBe(String(compressed.length));
+    expect(seenHeaders['content-encoding']).toBe('gzip');
+    expect(seenHeaders['content-length']).toBe(String(compressed.length));
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      listener.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});
+
+it('keeps the exact configured path when no suffix is supplied, including a query', async () => {
+  resource.url += '/exact-prefix';
+  await request(app)
+    .get('/http/serper?q=1')
+    .set('Authorization', 'Bearer hub-test-token')
+    .expect(200);
+  expect(seen.url).toBe('/exact-prefix?q=1');
 });

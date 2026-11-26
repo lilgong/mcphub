@@ -21,6 +21,22 @@ Custom MCP implementations and dependencies can be imported as independent MCPB 
 
 Catalog namespaces keep public MCPs at `/mcp/{server}` and benchmark MCPs at `/mcp/{catalog}/{server}`. Logical MCP names stay the same, while connections, credentials, targets and limits remain scoped. See [catalog namespaces](docs/features/catalogs.mdx).
 
+The fork release **v2.0** is documented in [release notes](docs/releases/v2.0.md).
+
+## Local v2 deployment
+
+Use the repository root `.env` and `compose.yaml`:
+
+```bash
+docker compose up -d
+docker compose ps
+```
+
+Hub, database, worker and Relay settings share this single `.env`; worker
+containers receive only their own runtime settings. Builds use this checkout's
+Dockerfile and public base images. See [deployment instructions](deploy/v2/README.md)
+before preparing a fresh installation or updating a running deployment.
+
 ## 🌐 Website, Demo & Docs
 
 - **Website**: [mcphub.app](https://www.mcphub.app/)

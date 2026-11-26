@@ -1,3 +1,9 @@
+import {
+  browserTimeZone,
+  localCalendarDate,
+  localDateRange,
+  localMonthEnd,
+} from '../utils/localCalendar';
 import LogCatalogFilter from './LogCatalogFilter';
 import LogServerIdentity from './LogServerIdentity';
 import { RefreshCw } from 'lucide-react';
@@ -13,9 +19,12 @@ interface Row {
   success: number;
   errors: number;
   durationMs: number;
+  credentialId?: string;
+  credentialSuffix?: string;
 }
 interface Result {
   rows: Row[];
+  keyRows?: Row[];
   total: number;
   success: number;
   errors: number;
@@ -24,46 +33,71 @@ interface Result {
 }
 export default function CallStatistics() {
   const { t } = useTranslation();
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(localCalendarDate().slice(0, 7));
   const [start, setStart] = useState(month + '-01');
-  const [end, setEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [end, setEnd] = useState(localCalendarDate());
   const [server, setServer] = useState('');
   const [catalog, setCatalog] = useState('*');
-  const [metric, setMetric] = useState('tool');
+  const [metric, setMetric] = useState('yibu');
   const [key, setKey] = useState('');
   const [fingerprint, setFingerprint] = useState('');
   const [data, setData] = useState<Result>();
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
+    if (!start || !end || end < start) {
+      setLoading(false);
+      return;
+    }
     let active = true;
+    const controller = new AbortController();
+    setLoading(true);
+    setData(undefined);
+    setError(false);
     const query = new URLSearchParams({
       server,
       ...(catalog !== '*' ? { catalog } : {}),
       metric,
-      ...(metric === 'upstream' && fingerprint ? { credentialId: fingerprint } : {}),
-      start: start + 'T00:00:00Z',
-      end: end + 'T23:59:59.999Z',
+      ...(metric !== 'tool' && fingerprint ? { credentialId: fingerprint } : {}),
+      ...localDateRange(start, end),
+      timeZone: browserTimeZone(),
     });
-    void apiGet<{ success: boolean; data: Result }>(`/logs/statistics?${query}`)
-      .then((result) => {
-        if (active) {
-          setError(!result.success);
-          if (result.success) setData(result.data);
-        }
+    const timer = window.setTimeout(() => {
+      void apiGet<{ success: boolean; data: Result }>(`/logs/statistics?${query}`, {
+        signal: controller.signal,
       })
-      .catch(() => {
-        if (active) setError(true);
-      });
+        .then((result) => {
+          if (active) {
+            setError(!result.success);
+            if (result.success) setData(result.data);
+          }
+        })
+        .catch(() => {
+          if (active) setError(true);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 350);
     return () => {
       active = false;
+      controller.abort();
+      window.clearTimeout(timer);
     };
   }, [catalog, server, start, end, refresh, metric, fingerprint]);
+  const rows = metric !== 'tool' ? (data?.keyRows ?? data?.rows) : data?.rows;
   const input = 'hub-input';
   return (
     <section className="space-y-5">
       <p className="hub-sub">
-        {t(metric === 'upstream' ? 'statistics.upstreamDescription' : 'statistics.description')}
+        {t(
+          metric === 'yibu'
+            ? 'statistics.yibuDescription'
+            : metric === 'upstream'
+              ? 'statistics.upstreamDescription'
+              : 'statistics.description',
+        )}
       </p>
       <div className="hub-card flex flex-wrap items-end gap-3 p-4">
         <LogCatalogFilter value={catalog} onChange={setCatalog} refresh={refresh} />
@@ -77,6 +111,7 @@ export default function CallStatistics() {
               setData(undefined);
             }}
           >
+            <option value="yibu">{t('statistics.yibuCalls')}</option>
             <option value="tool">{t('statistics.toolCalls')}</option>
             <option value="upstream">{t('statistics.upstreamCalls')}</option>
           </select>
@@ -91,17 +126,16 @@ export default function CallStatistics() {
               if (!e.target.value) return;
               setMonth(e.target.value);
               setStart(e.target.value + '-01');
-              const date = new Date(e.target.value + '-01T00:00:00Z');
-              date.setUTCMonth(date.getUTCMonth() + 1);
-              date.setUTCDate(0);
-              setEnd(date.toISOString().slice(0, 10));
+              setEnd(localMonthEnd(e.target.value));
             }}
           />
         </label>
         <label className="hub-field">
-          <span className="hub-label">{t('statistics.start')}</span>
+          <span className="hub-label">
+            {t('statistics.start', { timeZone: browserTimeZone() })}
+          </span>
           <input
-            aria-label={t('statistics.start')}
+            aria-label={t('statistics.start', { timeZone: browserTimeZone() })}
             className={`${input} block`}
             type="date"
             value={start}
@@ -109,9 +143,9 @@ export default function CallStatistics() {
           />
         </label>
         <label className="hub-field">
-          <span className="hub-label">{t('statistics.end')}</span>
+          <span className="hub-label">{t('statistics.end', { timeZone: browserTimeZone() })}</span>
           <input
-            aria-label={t('statistics.end')}
+            aria-label={t('statistics.end', { timeZone: browserTimeZone() })}
             className={`${input} block`}
             type="date"
             value={end}
@@ -122,6 +156,7 @@ export default function CallStatistics() {
           <span className="hub-label">{t('statistics.server')}</span>
           <input
             aria-label={t('statistics.server')}
+            placeholder={t('statistics.serverPlaceholder')}
             className={`${input} block w-40`}
             value={server}
             onChange={(e) => setServer(e.target.value)}
@@ -132,7 +167,7 @@ export default function CallStatistics() {
           {t('callLogs.refresh')}
         </button>
       </div>
-      {metric === 'upstream' && (
+      {metric !== 'tool' && (
         <div className="hub-card space-y-3 p-4">
           <label className="hub-field">
             <span className="hub-label">{t('statistics.upstreamKey')}</span>
@@ -141,6 +176,7 @@ export default function CallStatistics() {
                 className="hub-input min-w-0 flex-1"
                 sensitive
                 secretLabel={t('statistics.upstreamKey')}
+                aria-label={t('statistics.upstreamKey')}
                 autoComplete="off"
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
@@ -179,13 +215,20 @@ export default function CallStatistics() {
       )}
       {metric === 'upstream' && <p className="hub-sub text-sm">{t('statistics.coverage')}</p>}
       {!!data?.unavailableSources?.length && <p role="alert">{t('statistics.incomplete')}</p>}
+      {loading && (
+        <p role="status" className="hub-sub">
+          {t('statistics.loading')}
+        </p>
+      )}
       {error && <p role="alert">{t('callLogs.failed')}</p>}
       {data?.available === false && <p>{t('statistics.unavailable')}</p>}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {(['total', 'success', 'errors'] as const).map((field) => (
           <div className="hub-card p-5" key={field}>
             <p className="hub-sub">{t(`statistics.${field}`)}</p>
-            <p className="mt-2 text-3xl font-semibold hub-num">{data?.[field] ?? 0}</p>
+            <p className="mt-2 text-3xl font-semibold hub-num">
+              {loading ? '—' : (data?.[field] ?? 0)}
+            </p>
           </div>
         ))}
       </div>
@@ -193,7 +236,10 @@ export default function CallStatistics() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr>
-              {['server', 'total', 'success', 'errors'].map((field) => (
+              {(metric !== 'tool'
+                ? ['server', 'credential', 'total', 'success', 'errors']
+                : ['server', 'total', 'success', 'errors']
+              ).map((field) => (
                 <th className="bg-[var(--hub-bg)] p-4 text-xs font-medium hub-sub" key={field}>
                   {t(`statistics.${field}`)}
                 </th>
@@ -201,7 +247,7 @@ export default function CallStatistics() {
             </tr>
           </thead>
           <tbody>
-            {data?.rows.map((row, i) => (
+            {rows?.map((row, i) => (
               <tr className="border-t border-[var(--hub-line)]" key={i}>
                 <td className="p-4 font-medium">
                   <LogServerIdentity
@@ -210,6 +256,20 @@ export default function CallStatistics() {
                     showCatalog={catalog === '*'}
                   />
                 </td>
+                {metric !== 'tool' && (
+                  <td className="p-4">
+                    <span className="font-mono">
+                      {row.credentialSuffix
+                        ? `…${row.credentialSuffix}`
+                        : row.credentialId || t('statistics.unknownKey')}
+                    </span>
+                    {row.credentialSuffix && row.credentialId && (
+                      <span className="hub-sub mt-1 block text-xs font-mono">
+                        {row.credentialId}
+                      </span>
+                    )}
+                  </td>
+                )}
                 <td className="p-4 hub-num">{row.calls}</td>
                 <td className="p-4 hub-num">{row.success}</td>
                 <td className="p-4 hub-num">{row.errors}</td>
@@ -217,7 +277,7 @@ export default function CallStatistics() {
             ))}
           </tbody>
         </table>
-        {data?.rows.length === 0 && <p className="p-5 hub-sub">{t('callLogs.empty')}</p>}
+        {rows?.length === 0 && <p className="p-5 hub-sub">{t('callLogs.empty')}</p>}
       </div>
     </section>
   );

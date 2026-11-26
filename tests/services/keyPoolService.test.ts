@@ -117,6 +117,19 @@ describe('key pool scheduling', () => {
     await expect(service.request('context7', target, abort.signal)).rejects.toThrow();
     expect(send).not.toHaveBeenCalled();
   });
+  test('waits for asynchronous key admission and never sends after its rejection', async () => {
+    let rejectAdmission!: (error: Error) => void;
+    const pendingAdmission = new Promise<void>((_resolve, reject) => {
+      rejectAdmission = reject;
+    });
+    audit.mockReturnValueOnce(pendingAdmission);
+    const pending = service.request('context7', target, signal());
+    await Promise.resolve();
+    expect(send).not.toHaveBeenCalled();
+    rejectAdmission(new Error('audit sync failed'));
+    await expect(pending).rejects.toThrow('audit sync failed');
+    expect(send).not.toHaveBeenCalled();
+  });
   test('fixed destinations reject redirects/SSRF-shaped targets and strip legacy keys', async () => {
     for (const url of [
       'http://context7.com/api/v2/search',

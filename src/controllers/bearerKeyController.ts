@@ -82,6 +82,25 @@ export const getBearerKeys = async (req: Request, res: Response): Promise<void> 
   }
 };
 
+export const getBearerKeyToken = async (req: Request, res: Response): Promise<void> => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const user = getAuthenticatedUser(req);
+    if (!user?.username) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const key = await getBearerKeyDao().findById(req.params.id);
+    if (!key || !(await canManageKey(user, key))) {
+      res.status(404).json({ success: false, message: 'Key not found' });
+      return;
+    }
+    res.json({ success: true, data: { token: key.token } });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to read key' });
+  }
+};
+
 const createBearerKeyCore = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = getAuthenticatedUser(req);

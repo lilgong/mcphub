@@ -295,6 +295,13 @@ export const normalizeServerConfigForPersistence = (config: ServerConfig): Serve
     throw new ServerConfigValidationError('Invalid workspace credential declaration');
   }
   const normalizedType = inferServerType(config);
+  if (
+    config.workspaceSchema?.connection &&
+    config.targets?.some((target) => target.kind === 'task')
+  )
+    throw new ServerConfigValidationError(
+      'Task MCP launch configuration is owned by its benchmark adapter',
+    );
   if (config.targets?.length && config.credentialTemplate?.length)
     throw new ServerConfigValidationError(
       'Target connections and personal credential templates cannot be combined',

@@ -19,6 +19,10 @@ only. Keep target/task inventory within the server configuration authorization b
 shared users must not receive other applications' task IDs or target details. See
 [target connections](../features/target-connections.mdx).
 
+Tool discovery and smart routing preserve the upstream `inputSchema`, including its
+`$schema` dialect declaration. Model API compatibility transformations belong to the
+client adapter, not the MCP forwarding boundary.
+
 ## Persistence changes
 
 When adding or changing a persisted field, update every applicable layer:
@@ -57,6 +61,12 @@ bounded by both the group's grants and the owner's current visibility. New group
 use explicit user kind; migrated operator group keys preserve their kind and token while
 adding ownership. Keep dashboard configuration authorization separate from invocation
 permissions. Startup migration removes legacy memberships and must never rotate keys.
+Key lists remain masked. The authenticated single-key token endpoint permits repeat
+viewing only by its manager (the group owner or an administrator), sends
+`Cache-Control: no-store`, and never rotates a key while revealing it.
+Server deletion removes its exact canonical name from calling-group grants. Group
+saves and deletion cleanup share one mutation queue; group listings omit dangling
+references so historical deleted resources do not inflate counts or block saves.
 
 ## Database recovery
 
@@ -112,3 +122,72 @@ field names or execute benchmark preparation scripts.
 Workspace schema `managed` entries are documentation only. Do not turn generated or
 task-owned fields into operator credential inputs or export their default strings
 as credentials. Managed-only declarations show guidance, not an account editor.
+
+Workspace HTTP bindings are operator-declared fixed HTTPS upstreams whose credential
+references must name a declared secret value or declared file/secret JSON field.
+Forwarded SDK Authorization is temporary run material, never a source for account
+storage. Stream opaque bodies, preserve encoded object paths and compression;
+never inject account keys into allowlisted asset origins or follow redirects on
+the server. gRPC uses unary frames and trailers without changing SDK serializers.
+Raw preparation/grading and Git HTTP
+requests require the owning live workspace-run capability plus live group/server
+grants. Resolve account secrets again after scheduler admission; never mutate the
+registered MCP environment. Reject redirects and unsafe upstreams. Audit is required
+before dispatch; record credential fingerprints rather than request headers/bodies.
+The API auth allowlist grants access only to this capability-protected invocation
+endpoint, never to account management. This gateway does not intercept arbitrary
+benchmark network access; each client/SDK must be adapted explicitly.
+
+Tool and key audit records use asynchronous durable filesystem operations, serialized
+per file. Concurrent appends share bounded batches (128 records / 256 KiB, except an
+individual oversized record) and one file fsync; there is no fixed batching timer.
+Each caller resolves only after its batch and directory entries have synced. A batch
+failure rejects all its callers without poisoning subsequent batches.
+Admission must finish before dispatching a tool or upstream credential;
+HTTP, streaming HTTP and gRPC dispatchers explicitly await upstream admission.
+Synchronous diagnostic producers may enqueue writes, but the audited invocation must
+wait for those writes before returning. Disk errors fail admission or completion;
+they must not silently drop records or block the HTTP event loop with synchronous fsync.
+
+
+Workspace-run lifecycle metadata must remain bounded and secret-free. Keep only
+start/heartbeat/sync timestamps, enum error/exit reasons and the run ID. Archive
+the last summary under `@workspace-last-run` before deleting an active lease.
+Recovery requires dashboard administrator authentication, exact current run ID
+and explicit stop/authorization-review acknowledgments, even after expiry. A
+calling group key cannot perform recovery. Clients remain responsible for stopping
+their task processes/containers and synchronizing authorization before release.
+Interactive workspace shells hold leases until shell exit; benchmark command
+completion inside such a shell must not implicitly release its credentials.
+
+Resident account configurations use encrypted `WorkspaceCredentials.serverConnections`,
+keyed by the existing MCP name. `workspaceSchema.connection` opts into the shared
+account editor; `enabled` selects account routing rather than single shared routing.
+Only public launch metadata belongs in server target entries. Re-resolve stored
+account configurations on acquisition, enforce account and MCP grants, require a bare
+account selector, and never fall back to the global key when account selection fails.
+Account revision/lease protection applies to launch changes as well as credentials.
+The startup migration moves scoped static targets into this store and rewrites exact
+group selectors with the account names, preserving target ACLs and versions. Task
+adapters retain ownership of task MCP executables and process lifecycle.
+
+Standard single connections may opt into task callbacks in the server editor. This
+changes Hub routing only: the benchmark must launch its own backend and register
+the callback. Do not treat the checkbox as automatic task-container provisioning.
+Task routes default to no extra callback deadline or response-size cap; the
+benchmark adapter retains its native client timeout.
+
+Account `enabled` is admission-only and defaults to true for existing records. Administrators
+may disable an occupied account without changing credentials or interrupting its run.
+Automatic allocation skips disabled accounts; explicit allocation rejects them. Existing
+capabilities still renew, synchronize OAuth and release. Status updates and OAuth file
+writes share the workspace mutation queue so token rotation cannot overwrite admission state.
+
+Call-detail searches read complete source-file snapshots before applying filters or
+pagination; never impose a tail-byte or per-day source-file cap. A process-local,
+bounded metadata index resumes appended files at the last complete JSONL line.
+Replacement/truncation rebuilds that source. Cold reads yield between chunks;
+unchanged sources reuse the index. This disposable cache contains only display/join
+metadata, never request arguments, headers or raw credential material, and does
+not change raw logs or persistent statistics. Dashboard refreshes must not overlap
+within one filter generation or let an obsolete generation replace current results.

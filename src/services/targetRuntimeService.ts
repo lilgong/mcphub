@@ -1,4 +1,5 @@
 import { workspaceDefinition } from './workspaceRuntimeService.js';
+import { hasResidentAccounts } from '../utils/accountConnection.js';
 import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
 import type { ServerConfig, ServerInfo } from '../types/index.js';
 import type { RequestPrincipal } from './authorizationService.js';
@@ -97,9 +98,10 @@ export class TargetRuntimeService {
     if (!this.liveEntries.delete(entry)) return;
     this.close(info);
   }
-  invalidate(server?: string, nextDefinition?: ServerConfig): void {
+  invalidate(server?: string, nextDefinition?: ServerConfig, account?: string): void {
     for (const [key, entry] of this.entries) {
       if (server && entry.server !== server) continue;
+      if (account && entry.target !== account) continue;
       const next = nextDefinition?.targets?.find((target) => target.path === entry.target);
       if (
         nextDefinition &&
@@ -123,6 +125,18 @@ export class TargetRuntimeService {
     definition: ServerConfig,
     run: <T>(start: () => Promise<T>) => Promise<T> = (start) => start(),
   ): Promise<PromiseSettledResult<ServerInfo | undefined>[]> {
+    if (hasResidentAccounts(definition)) {
+      const targets = await Promise.all(
+        (definition.targets ?? []).map(async (target) => {
+          const resolved = await workspaceDefinition(server, definition, target.path, {
+            username: 'hub',
+            isAdmin: true,
+          });
+          return resolved?.targets?.[0] ?? target;
+        }),
+      );
+      definition = { ...definition, targets };
+    }
     this.invalidate(server, definition);
     if (definition.enabled === false) return [];
     const targets =
@@ -132,7 +146,13 @@ export class TargetRuntimeService {
     return Promise.allSettled(
       targets.map((target) =>
         run(async () => {
-          const current = this.loadDefinition ? await this.loadDefinition(server) : definition;
+          let current = this.loadDefinition ? await this.loadDefinition(server) : definition;
+          if (current)
+            current =
+              (await workspaceDefinition(server, current, target.path, {
+                username: 'hub',
+                isAdmin: true,
+              })) ?? current;
           const next = current?.targets?.find((entry) => entry.path === target.path);
           if (
             !current ||

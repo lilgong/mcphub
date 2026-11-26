@@ -52,3 +52,15 @@ export function matchesLogScope(
     (!query.server || server === query.server || splitServerKey(server).name === query.server)
   );
 }
+
+/** Statistics accept the same case-insensitive MCP text search as call details. */
+export function matchesStatsScope(
+  server: string,
+  query: { server?: string; catalog?: string },
+  catalog = splitServerKey(server).catalog,
+) {
+  return (
+    (query.catalog === undefined || query.catalog === catalog) &&
+    (!query.server?.trim() || server.toLowerCase().includes(query.server.trim().toLowerCase()))
+  );
+}

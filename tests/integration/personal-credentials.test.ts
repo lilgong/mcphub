@@ -13,7 +13,7 @@ import {
   getGroupResources,
   saveUserGroup,
 } from '../../src/controllers/userGroupController.js';
-import { getBearerKeys, createBearerKey } from '../../src/controllers/bearerKeyController.js';
+import { getBearerKeys, getBearerKeyToken, createBearerKey } from '../../src/controllers/bearerKeyController.js';
 import { RequestContextService } from '../../src/services/requestContextService.js';
 import { logger } from '../../src/utils/logger.js';
 import {
@@ -52,7 +52,7 @@ import {
   listMyCredentials,
   updateMyCredential,
 } from '../../src/controllers/credentialBindingController.js';
-import { getServerConfig, getAllServers } from '../../src/controllers/serverController.js';
+import { getServerConfig, getAllServers, deleteServer } from '../../src/controllers/serverController.js';
 import {
   handleMcpPostRequest,
   handleSseConnection,
@@ -185,10 +185,14 @@ beforeAll(async () => {
   app.put('/api/credentials/:name', updateMyCredential);
   app.delete('/api/credentials/:name', updateMyCredential);
   app.get('/api/servers/:name', getServerConfig);
+  app.delete('/api/servers/:name', deleteServer);
   app.get('/api/servers', getAllServers);
   app.get('/api/workspace-credentials', workspaceManagement);
   app.put('/api/workspace-credentials/:catalog/:workspace', workspaceManagement);
   app.post('/api/workspace-runs', createWorkspaceRun);
+  app.all(/^\/api\/workspace-runs\/[^/]+\/http\/[^/]+\/[^/]+(?:\/.*)?$/, (_req, res) =>
+    res.status(204).end(),
+  );
   app.get('/api/workspace-runs/:id', workspaceRun);
   app.delete('/api/workspace-runs/:id', workspaceRun);
   app.post('/api/task-connections', registerTaskConnection);
@@ -200,6 +204,7 @@ beforeAll(async () => {
   app.put('/api/user-groups/:id', saveUserGroup);
   app.delete('/api/user-groups/:id', saveUserGroup);
   app.get('/api/auth/keys', getBearerKeys);
+  app.get('/api/auth/keys/:id/token', getBearerKeyToken);
   app.post('/api/auth/keys', createBearerKey);
   app.get('/api/groups', getGroups);
   app.get('/api/groups/:id', getGroup);
@@ -1318,6 +1323,31 @@ test('owned groups bind calling keys to their owner and cannot grant foreign pri
   ).body.data;
   expect(key.owner).toBe(alice);
   expect(key.kind).toBe('user');
+  for (const username of [alice, 'admin']) {
+    for (let visit = 0; visit < 2; visit++) {
+      const revealed = await request(app)
+        .get(`/api/auth/keys/${key.id}/token`)
+        .set('x-auth-token', apiToken(username))
+        .expect(200);
+      expect(revealed.headers['cache-control']).toBe('no-store');
+      expect(revealed.body.data).toEqual({ token: key.token });
+    }
+  }
+  const deniedKey = await request(app)
+    .get(`/api/auth/keys/${key.id}/token`)
+    .set('x-auth-token', apiToken(bob))
+    .expect(404);
+  expect(JSON.stringify(deniedKey.body)).not.toContain(key.token);
+  await request(app)
+    .get(`/api/auth/keys/${key.id}/token`)
+    .set('Authorization', `Bearer ${key.token}`)
+    .expect(401);
+  const keyList = await request(app)
+    .get('/api/auth/keys')
+    .set('x-auth-token', apiToken(alice))
+    .expect(200);
+  expect(JSON.stringify(keyList.body)).not.toContain(key.token);
+
   await request(app)
     .post('/api/auth/keys')
     .set('x-auth-token', apiToken(bob))
@@ -1401,6 +1431,14 @@ test('workspace group key authenticates setup and isolates two resident MCP acco
       .expect(200)
   ).body.data;
   expect(data.values.provider_token).toBe('account-a');
+  await request(app)
+    .post(`/api/workspace-runs/${run.id}/http/workspace-fixture/api/resource`)
+    .set('Authorization', `Bearer ${key.token}`)
+    .expect(204);
+  await request(app)
+    .post(`/api/workspace-runs/${run.id}/http/workspace-fixture/api/resource`)
+    .set('Authorization', 'Bearer invalid-key')
+    .expect(401);
   const identities = [];
   for (const account of ['account-a', 'account-b']) {
     const client = new Client({ name: 'workspace-e2e', version: '1' });
@@ -1424,3 +1462,28 @@ test('workspace group key authenticates setup and isolates two resident MCP acco
     .set('X-MCPHub-Run-Token', run.token)
     .expect(200);
 }, 30000);
+
+
+test('deleting a server removes exact group grants and cannot restore them on reimport', async () => {
+  const publicName = 'deleted-fetch-fixture';
+  const scopedName = `atlas::${publicName}`;
+  for (const name of [publicName, scopedName]) {
+    await getServerDao().create({ name, type: 'http-proxy', url: 'https://example.com', owner: 'admin', enabled: false });
+  }
+  const group = {
+    id: 'delete-grants-fixture', name: 'Delete grants', owner: 'admin', enabled: true,
+    servers: [{ name: publicName }, { name: scopedName }],
+  };
+  const config = await getSystemConfigDao().get();
+  await getSystemConfigDao().update({ userGroups: [...(config.userGroups ?? []), group] });
+  await request(app).delete(`/api/servers/${publicName}`).set('x-auth-token', apiToken('admin')).expect(200);
+  const saved = (await getSystemConfigDao().get()).userGroups!.find((entry) => entry.id === group.id)!;
+  expect(saved.servers).toEqual([{ name: scopedName }]);
+  await getServerDao().create({ name: publicName, type: 'http-proxy', url: 'https://example.com', owner: 'admin', enabled: false });
+  const listed = await request(app).get('/api/user-groups').set('x-auth-token', apiToken('admin')).expect(200);
+  expect(listed.body.data.find((entry) => entry.id === group.id).servers).toEqual([{ name: scopedName }]);
+  // Old dangling grants are also hidden from counts and permission-editor saves.
+  await getServerDao().delete(scopedName);
+  const historical = await request(app).get('/api/user-groups').set('x-auth-token', apiToken('admin')).expect(200);
+  expect(historical.body.data.find((entry) => entry.id === group.id).servers).toEqual([]);
+});

@@ -1,15 +1,21 @@
-import { usageLogDirectories, matchesLogScope } from './usageLogDirectories.js';
+import { usageLogDirectories, matchesStatsScope } from './usageLogDirectories.js';
 import { splitServerKey } from '../utils/catalog.js';
 import { createReadStream } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import { keyPoolLogDirectory } from './keyPoolService.js';
 import type { ServerCallStats, StatsQuery } from './callStatsService.js';
+
+export interface UpstreamKeyStats extends ServerCallStats {
+  credentialId: string;
+  credentialSuffix?: string;
+}
 
 /** Complete upstream attempts only. One HTTP attempt may carry multiple credential roles. */
 export async function getUpstreamStats(query: StatsQuery) {
   const groups = new Map<string, ServerCallStats>();
+  const keyGroups = new Map<string, UpstreamKeyStats>();
   const seen = new Set<string>();
   const unavailableSources: string[] = [];
   const recordedServers = new Set<string>();
@@ -35,20 +41,29 @@ export async function getUpstreamStats(query: StatsQuery) {
       identity?.server || (source === 'mcp' ? aliases[rawServer] || rawServer : rawServer);
     const catalog = identity?.catalog ?? splitServerKey(server).catalog;
     recordedServers.add(server);
-    if (!matchesLogScope(server, query, catalog)) return;
-    let ids = [String(value.credential_id || '')];
+    if (!matchesStatsScope(server, query, catalog)) return;
+    let credentials = [
+      {
+        id: String(value.credential_id || ''),
+        suffix: String(value.credential_suffix || value.key_label || '').replace(/^…/, ''),
+      },
+    ];
     if (source === 'http') {
       try {
-        const credentials = JSON.parse(String(value.upstream_credentials || '[]')) as {
+        const parsed = JSON.parse(String(value.upstream_credentials || '[]')) as {
           id?: string;
+          suffix?: string;
         }[];
-        if (!Array.isArray(credentials)) return;
-        ids = credentials.map((item) => String(item?.id || ''));
+        if (!Array.isArray(parsed)) return;
+        credentials = parsed.map((item) => ({
+          id: String(item?.id || ''),
+          suffix: String(item?.suffix || ''),
+        }));
       } catch {
         return;
       }
     }
-    if (query.credentialId && !ids.includes(query.credentialId)) return;
+    if (query.credentialId && !credentials.some((item) => item.id === query.credentialId)) return;
     const id = String(source === 'http' ? value.upstream_request_id || '' : value.request_id || '');
     if (!id || seen.has(`${source}:${catalog}:${server}:${id}`)) return;
     seen.add(`${source}:${catalog}:${server}:${id}`);
@@ -73,6 +88,29 @@ export async function getUpstreamStats(query: StatsQuery) {
     if (typeof value.duration_ms === 'number' && Number.isFinite(value.duration_ms))
       row.durationMs += value.duration_ms;
     groups.set(groupKey, row);
+    if (!credentials.length) credentials = [{ id: '', suffix: '' }];
+    // Multiple roles carrying the same credential still represent one request per key.
+    for (const credential of new Map(credentials.map((item) => [item.id, item])).values()) {
+      if (query.credentialId && credential.id !== query.credentialId) continue;
+      const credentialId = /^[a-f0-9]{16}$/.test(credential.id) ? credential.id : '';
+      const key = `${groupKey}:${credentialId}`;
+      const keyRow = keyGroups.get(key) || {
+        server,
+        catalog,
+        credentialId,
+        credentialSuffix: credentialId ? credential.suffix.slice(-4) || undefined : undefined,
+        calls: 0,
+        success: 0,
+        errors: 0,
+        durationMs: 0,
+      };
+      keyRow.calls++;
+      if (failed) keyRow.errors++;
+      else keyRow.success++;
+      if (typeof value.duration_ms === 'number' && Number.isFinite(value.duration_ms))
+        keyRow.durationMs += value.duration_ms;
+      keyGroups.set(key, keyRow);
+    }
   };
   const scan = async (
     directory: string,
@@ -143,6 +181,7 @@ export async function getUpstreamStats(query: StatsQuery) {
   const rows = [...groups.values()].sort((a, b) => b.calls - a.calls);
   return {
     rows,
+    keyRows: [...keyGroups.values()].sort((a, b) => b.calls - a.calls),
     total: rows.reduce((n, r) => n + r.calls, 0),
     success: rows.reduce((n, r) => n + r.success, 0),
     errors: rows.reduce((n, r) => n + r.errors, 0),

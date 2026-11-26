@@ -90,11 +90,26 @@ export const getCallLogs = async (req: Request, res: Response): Promise<void> =>
   res.setHeader('Cache-Control', 'no-store');
   const date =
     typeof req.query.date === 'string' ? req.query.date : new Date().toISOString().slice(0, 10);
+  const start = typeof req.query.start === 'string' ? req.query.start : undefined;
+  const end = typeof req.query.end === 'string' ? req.query.end : undefined;
+  const validRange =
+    (req.query.start === undefined && req.query.end === undefined) ||
+    !!(
+      start &&
+      end &&
+      /Z$/.test(start) &&
+      /Z$/.test(end) &&
+      Number.isFinite(Date.parse(start)) &&
+      Number.isFinite(Date.parse(end)) &&
+      Date.parse(end) >= Date.parse(start) &&
+      Date.parse(end) - Date.parse(start) < 27 * 3600000
+    );
   const status = typeof req.query.status === 'string' ? req.query.status : 'all';
   const source = typeof req.query.source === 'string' ? req.query.source : 'all';
   const page = Number(req.query.page ?? 1);
   const limit = Number(req.query.limit ?? 50);
   if (
+    !validRange ||
     !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
     !Number.isFinite(Date.parse(date)) ||
     new Date(date).toISOString().slice(0, 10) !== date ||
@@ -116,6 +131,8 @@ export const getCallLogs = async (req: Request, res: Response): Promise<void> =>
       success: true,
       data: await service.getCallLogs({
         date,
+        start: start ? new Date(start).toISOString() : undefined,
+        end: end ? new Date(end).toISOString() : undefined,
         catalog:
           typeof req.query.catalog === 'string' ? req.query.catalog.slice(0, 160) : undefined,
         status,

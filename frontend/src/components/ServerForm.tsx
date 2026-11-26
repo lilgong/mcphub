@@ -1,4 +1,5 @@
-import ServerAccountEditor from './ServerAccountEditor';
+import RequestTimeoutEditor from './RequestTimeoutEditor';
+import ServerAccountEditor, { type ServerAccountEditorHandle } from './ServerAccountEditor';
 import { splitServerKey, validateServerKey } from '../../../src/utils/catalog';
 import HttpForwardEditor from './HttpForwardEditor';
 import {
@@ -15,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { X } from 'lucide-react';
 import { Server, EnvVar, ServerFormData, OpenApiToolStats } from '@/types';
-import { apiGet, apiPost } from '../utils/fetchInterceptor';
+import { apiGet, apiPost, type ApiResponse } from '../utils/fetchInterceptor';
 import { buildServerPayload } from '../utils/serverFormPayload';
 import {
   deselectShareUsers,
@@ -75,6 +76,9 @@ const ServerForm = ({
 }: ServerFormProps) => {
   const { t } = useTranslation();
   const { auth } = useAuth();
+  const accountEditor = useRef<ServerAccountEditorHandle>(null);
+  const submitting = useRef(false);
+  const [saving, setSaving] = useState(false);
   const [catalog, setCatalog] = useState(
     () => splitServerKey(initialData?.name || '').catalog || defaultCatalog,
   );
@@ -369,7 +373,6 @@ const ServerForm = ({
   );
   const [securityDetectionLoading, setSecurityDetectionLoading] = useState(false);
 
-  const [isRequestOptionsExpanded, setIsRequestOptionsExpanded] = useState<boolean>(false);
   const [isOAuthSectionExpanded, setIsOAuthSectionExpanded] = useState<boolean>(false);
   const [isKeepAliveSectionExpanded, setIsKeepAliveSectionExpanded] = useState<boolean>(false);
   const [isAdvancedExpanded, setIsAdvancedExpanded] = useState<boolean>(false);
@@ -444,20 +447,6 @@ const ServerForm = ({
       ...prev,
       oauth: {
         ...(prev.oauth || {}),
-        [field]: value,
-      },
-    }));
-  };
-
-  // Handle options changes
-  const handleOptionsChange = (
-    field: 'timeout' | 'resetTimeoutOnProgress' | 'maxTotalTimeout' | 'maxBufferSize',
-    value: number | boolean | undefined,
-  ) => {
-    setFormData((prev) => ({
-      ...prev,
-      options: {
-        ...prev.options,
         [field]: value,
       },
     }));
@@ -608,6 +597,7 @@ const ServerForm = ({
   // Submit handler for server configuration
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting.current) return;
     setError(null);
 
     // Server names become part of downstream tool identifiers, so they must
@@ -633,11 +623,40 @@ const ServerForm = ({
         setError(identity.message || 'Invalid catalog');
         return;
       }
-      onSubmit({ ...payload, catalog });
+      if (submitting.current) return;
+      submitting.current = true;
+      setSaving(true);
+      const accountChanged = accountEditor.current?.hasPendingChanges;
+      if (accountChanged && !(await accountEditor.current?.savePending())) {
+        setError(t('startupAccounts.failed'));
+        return;
+      }
+      // Account saves can change resident targets. Keep their newly saved
+      // settings instead of submitting the older server-form snapshot.
+      if (
+        formData.workspaceSchema?.connection &&
+        formData.workspaceSchema.enabled &&
+        initialData?.name &&
+        accountEditor.current
+      ) {
+        const latest = await apiGet<ApiResponse<{ config: Pick<ServerFormData, 'targets'> }>>(
+          `/servers/${encodeURIComponent(initialData.name)}`,
+        );
+        if (!latest.success || !latest.data) throw new Error(t('startupAccounts.failed'));
+        payload.config.targets = latest.data.config.targets;
+      }
+      await onSubmit({ ...payload, catalog });
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      submitting.current = false;
+      setSaving(false);
     }
   };
+
+  const showSharedConnection =
+    !formData.targets?.length &&
+    !(isEdit && formData.workspaceSchema?.connection && formData.workspaceSchema.enabled);
 
   return (
     <div className="hub-card hub-server-form p-6 w-full max-w-3xl max-h-screen overflow-y-auto">
@@ -873,24 +892,48 @@ const ServerForm = ({
         {serverType !== 'http-proxy' && (
           <TargetConnectionEditor
             value={formData.targets}
+            accountSchema={formData.workspaceSchema ?? { connection: true, enabled: false }}
+            taskSupported={
+              initialData?.config?.targets?.some((target) => target.kind === 'task') ||
+              (serverType !== 'openapi' &&
+                !initialData?.config?.credentialTemplate?.length &&
+                !initialData?.config?.proxy &&
+                !initialData?.config?.perSessionClient &&
+                !initialData?.config?.oauth &&
+                !formData.passthroughHeaders?.trim())
+            }
             managedFields={formData.workspaceSchema?.managed}
             managedStartupAccount={formData.workspaceSchema?.enabled === true}
             startupAccountEnabled={formData.workspaceSchema?.enabled === true}
             onStartupAccountChange={(enabled) =>
-              setFormData((previous) => ({
-                ...previous,
-                workspaceSchema: previous.workspaceSchema
-                  ? { ...previous.workspaceSchema, enabled }
-                  : undefined,
-              }))
+              setFormData((previous) => {
+                if (
+                  enabled &&
+                  previous.targets?.some((target) => target.kind === 'task') &&
+                  !previous.workspaceSchema?.values?.length &&
+                  !previous.workspaceSchema?.files?.length
+                )
+                  return previous;
+                return {
+                  ...previous,
+                  workspaceSchema: previous.workspaceSchema
+                    ? { ...previous.workspaceSchema, enabled }
+                    : { connection: true, enabled },
+                };
+              })
             }
             taskAccountEditor={
               isEdit &&
               initialData?.name &&
               formData.workspaceSchema &&
               (!!formData.workspaceSchema.values?.length ||
-                !!formData.workspaceSchema.files?.length) ? (
-                <ServerAccountEditor server={initialData.name} schema={formData.workspaceSchema} />
+                !!formData.workspaceSchema.files?.length ||
+                formData.workspaceSchema.connection) ? (
+                <ServerAccountEditor
+                  server={initialData.name}
+                  schema={formData.workspaceSchema}
+                  saveRef={accountEditor}
+                />
               ) : undefined
             }
             catalog={catalog}
@@ -940,7 +983,7 @@ const ServerForm = ({
             onChange={(targets) => setFormData((previous) => ({ ...previous, targets }))}
           />
         )}
-        {!formData.targets?.length && (
+        {showSharedConnection && (
           <>
             {serverType === 'stdio' && (
               <KeyPoolEditor
@@ -2472,136 +2515,18 @@ const ServerForm = ({
             </div>
           </>
         )}
-        <h3 className="hub-editor-heading">{t('uiLayout.execution')}</h3>
-        <p className="hub-config-note mb-4">{t('uiLayout.executionHint')}</p>
-        {formData.targets?.length && formData.targets.every((target) => target.kind === 'task') ? (
-          <p className="hub-config-note mb-5">{t('uiLayout.taskTimeout')}</p>
-        ) : null}
-        {formData.targets?.some((target) => target.kind === 'static') && (
-          <p className="hub-config-note mb-4">{t('uiLayout.workspaceTimeout')}</p>
-        )}
-        {/* Request Options Configuration */}
-        {serverType !== 'openapi' && serverType !== 'http-proxy' && !formData.targets?.length && (
-          <div>
-            <button
-              type="button"
-              aria-expanded={isRequestOptionsExpanded}
-              className="hub-editor-disclosure w-full"
-              onClick={() => setIsRequestOptionsExpanded(!isRequestOptionsExpanded)}
-            >
-              <span className="text-sm font-medium text-[var(--hub-ink-2)]">
-                {t('server.requestOptions')}
-              </span>
-              <span className="text-gray-500 text-sm">{isRequestOptionsExpanded ? '▼' : '▶'}</span>
-            </button>
-
-            {isRequestOptionsExpanded && (
-              <div className="py-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {serverType === 'stdio' && (
-                    <div>
-                      <label
-                        className="block text-gray-600 text-sm font-medium mb-1"
-                        htmlFor="maxBufferSize"
-                      >
-                        {t('server.maxBufferSize')}
-                      </label>
-                      <input
-                        type="number"
-                        id="maxBufferSize"
-                        value={formData.options?.maxBufferSize ?? ''}
-                        onChange={(e) =>
-                          handleOptionsChange(
-                            'maxBufferSize',
-                            e.target.value === '' ? undefined : Number(e.target.value),
-                          )
-                        }
-                        className="w-full py-2 px-3 form-input"
-                        placeholder="10485760"
-                        min="1"
-                        step="1"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        {t('server.maxBufferSizeDescription')}
-                      </p>
-                    </div>
-                  )}
-                  <div>
-                    <label
-                      className="block text-gray-600 text-sm font-medium mb-1"
-                      htmlFor="timeout"
-                    >
-                      {t('server.timeout')}
-                    </label>
-                    <input
-                      type="number"
-                      id="timeout"
-                      value={formData.options?.timeout || 60000}
-                      onChange={(e) =>
-                        handleOptionsChange('timeout', parseInt(e.target.value) || 60000)
-                      }
-                      className="w-full py-2 px-3 form-input"
-                      placeholder="30000"
-                      min="1000"
-                      max="300000"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">{t('server.timeoutDescription')}</p>
-                  </div>
-
-                  <div>
-                    <label
-                      className="block text-gray-600 text-sm font-medium mb-1"
-                      htmlFor="maxTotalTimeout"
-                    >
-                      {t('server.maxTotalTimeout')}
-                    </label>
-                    <input
-                      type="number"
-                      id="maxTotalTimeout"
-                      value={formData.options?.maxTotalTimeout || ''}
-                      onChange={(e) =>
-                        handleOptionsChange(
-                          'maxTotalTimeout',
-                          e.target.value ? parseInt(e.target.value) : undefined,
-                        )
-                      }
-                      className="w-full py-2 px-3 form-input"
-                      placeholder="Optional"
-                      min="1000"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      {t('server.maxTotalTimeoutDescription')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={formData.options?.resetTimeoutOnProgress ?? true}
-                      onChange={(e) =>
-                        handleOptionsChange('resetTimeoutOnProgress', e.target.checked)
-                      }
-                      className="mr-2"
-                    />
-                    <span className="text-gray-600 text-sm">
-                      {t('server.resetTimeoutOnProgress')}
-                    </span>
-                  </label>
-                  <p className="text-xs text-gray-500 mt-1 ml-6">
-                    {t('server.resetTimeoutOnProgressDescription')}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+        {serverType !== 'openapi' && serverType !== 'http-proxy' && showSharedConnection && (
+          <RequestTimeoutEditor
+            value={formData.options}
+            stdio={serverType === 'stdio'}
+            onChange={(options) => setFormData((previous) => ({ ...previous, options }))}
+          />
         )}
 
         <ServiceControls
           rateLimit={formData.rateLimit}
           relay={formData.relay}
-          stdio={!formData.targets?.length && serverType === 'stdio'}
+          stdio={showSharedConnection && serverType === 'stdio'}
           relaySupported={relaySupported}
           onChange={(value) => setFormData((previous) => ({ ...previous, ...value }))}
         />
@@ -2609,7 +2534,7 @@ const ServerForm = ({
           <button type="button" onClick={onCancel} className="hub-btn mr-2">
             {t('server.cancel')}
           </button>
-          <button type="submit" className="hub-btn primary">
+          <button type="submit" className="hub-btn primary" disabled={saving}>
             {isEdit ? t('server.save') : t('server.add')}
           </button>
         </div>

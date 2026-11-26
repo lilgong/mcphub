@@ -8,6 +8,11 @@ const makeOkResult = () => ({
   isError: false,
 });
 
+// Filesystem durability is covered by audit integration suites; these tests isolate client state.
+jest.mock('../../src/services/durableAuditService.js', () => ({
+  appendDurableAudit: jest.fn(async () => undefined),
+}));
+
 jest.mock('@modelcontextprotocol/client', () => ({
   ...jest.requireActual('@modelcontextprotocol/client'),
   Client: jest.fn().mockImplementation(() => {
@@ -244,7 +249,7 @@ describe('mcpService per-session client isolation (perSessionClient)', () => {
     // closeServer/killStdioProcessTree schedule a 2s SIGKILL fallback timer.
     // Flush it so it does not keep the event loop alive between tests, then
     // restore the process.kill spy.
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
     jest.clearAllTimers();
     jest.useRealTimers();
     jest.restoreAllMocks();
@@ -330,7 +335,7 @@ describe('mcpService per-session client isolation (perSessionClient)', () => {
   });
 
   it('bounds modern state admission and recovers after idle cleanup without shared fallback', async () => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
     const info = makeServerInfo({ perSessionClient: true });
     mcpService.setServerInfosForTest([info]);
     try {
@@ -376,7 +381,7 @@ describe('mcpService per-session client isolation (perSessionClient)', () => {
   });
 
   it('expires idle modern clients but pins running tool calls', async () => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
     mcpService.setServerInfosForTest([makeServerInfo({ perSessionClient: true })]);
     await modernCall();
     const client = mockCreatedClients[0];
@@ -403,7 +408,7 @@ describe('mcpService per-session client isolation (perSessionClient)', () => {
   });
 
   it('uses isolated modern cookie jars and clears them on expiry and shutdown', async () => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
     const info = makeServerInfo({ type: 'openapi', openapi: { cookieSession: true } });
     const jars = new Map<string, number>();
     info.openApiClient = {

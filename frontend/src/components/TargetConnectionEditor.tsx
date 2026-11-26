@@ -1,3 +1,5 @@
+import SettingHint from './SettingHint';
+import RequestTimeoutEditor from './RequestTimeoutEditor';
 import type { WorkspaceCredentialSchema } from '../../../src/types/workspace';
 import { DEFAULT_TASK_TARGET } from '../../../src/utils/taskTarget';
 import { useState, type ReactNode } from 'react';
@@ -12,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import type { TargetConnection, TargetConnectionConfig } from '../../../src/types/targetConnection';
 import ServiceControls from './ServiceControls';
 import KeyPoolEditor from './KeyPoolEditor';
+import { supportsAccountConfiguration } from '../../../src/utils/accountMode';
 export default function TargetConnectionEditor({
   value,
   onChange,
@@ -23,6 +26,8 @@ export default function TargetConnectionEditor({
   startupAccountEnabled = false,
   onStartupAccountChange,
   onUseSingle,
+  accountSchema,
+  taskSupported = false,
 }: {
   value?: TargetConnection[];
   onChange: (value: TargetConnection[]) => void;
@@ -34,13 +39,23 @@ export default function TargetConnectionEditor({
   startupAccountEnabled?: boolean;
   onStartupAccountChange?: (enabled: boolean) => void;
   onUseSingle?: (connection?: TargetConnectionConfig) => void;
+  accountSchema?: WorkspaceCredentialSchema;
+  taskSupported?: boolean;
 }) {
   const { t } = useTranslation();
   const targets = value || [];
   const taskOnly =
     targets.length === 1 && targets[0].path === DEFAULT_TASK_TARGET && targets[0].kind === 'task';
   const [expanded, setExpanded] = useState<number | null>(value?.length === 1 ? 0 : null);
-  const [previousTask, setPreviousTask] = useState<TargetConnection[] | undefined>();
+  const taskEnabled = targets.some((target) => target.kind === 'task');
+  const accountsSupported = supportsAccountConfiguration({
+    targets,
+    workspaceSchema: accountSchema,
+  });
+  const accountBacked = !!accountSchema;
+  const multiple = taskOnly
+    ? startupAccountEnabled
+    : !!targets.length || (accountSchema?.connection === true && startupAccountEnabled);
   const [previousTargets, setPreviousTargets] = useState<TargetConnection[]>([]);
   const patch = (index: number, changes: Partial<TargetConnection>) =>
     onChange(targets.map((target, i) => (i === index ? { ...target, ...changes } : target)));
@@ -49,64 +64,100 @@ export default function TargetConnectionEditor({
     <section className="hub-editor-section">
       <h3 className="hub-editor-heading">{t('uiLayout.connection')}</h3>
       <div className="hub-mode-tabs" role="group" aria-label={t('targets.mode')}>
-        {(['single', 'accounts', 'task'] as const).map((mode) => {
-          const active = mode === (taskOnly ? 'task' : targets.length ? 'accounts' : 'single');
+        {(['single', 'accounts'] as const).map((mode) => {
+          const active = mode === (multiple ? 'accounts' : 'single');
           return (
-            <button
-              key={mode}
-              type="button"
-              className={`hub-mode-tab ${active ? 'is-active' : ''}`}
-              aria-pressed={active}
-              onClick={() => {
-                if (active) return;
-                setExpanded(0);
-                if (taskOnly) setPreviousTask(targets);
-                if (targets.length && !taskOnly) setPreviousTargets(targets);
-                if (mode === 'single') {
-                  onUseSingle?.(
-                    currentConnection ?? targets.find((target) => target.kind === 'static')?.config,
-                  );
-                  onChange([]);
-                }
-                if (mode === 'accounts')
-                  onChange(
-                    previousTargets.length
-                      ? previousTargets
-                      : [
-                          {
-                            path: `${catalog || 'workspace'}/official`,
-                            kind: 'static',
-                            enabled: true,
-                            config: structuredClone(
-                              currentConnection ?? targets[0]?.config ?? { type: 'stdio' },
-                            ),
-                          },
-                        ],
-                  );
-                if (mode === 'task')
-                  onChange(
-                    previousTask ?? [
-                      {
-                        path: DEFAULT_TASK_TARGET,
-                        kind: 'task',
-                        enabled: true,
-                        config: structuredClone(targets[0]?.config ?? currentConnection ?? {}),
-                        startupEnvKeys: targets[0]?.startupEnvKeys ?? [],
-                      },
-                    ],
-                  );
-              }}
-            >
-              {t(`uiLayout.mode_${mode}`)}
-            </button>
+            <div className="hub-mode-choice" key={mode}>
+              <button
+                type="button"
+                className={`hub-mode-tab ${active ? 'is-active' : ''}`}
+                aria-pressed={active}
+                disabled={mode === 'accounts' && !accountsSupported}
+                onClick={() => {
+                  if (active || (mode === 'accounts' && !accountsSupported)) return;
+                  setExpanded(0);
+                  if (targets.length && !taskOnly) setPreviousTargets(targets);
+                  if (mode === 'single') {
+                    onStartupAccountChange?.(false);
+                    if (!taskEnabled) {
+                      onUseSingle?.(
+                        currentConnection ??
+                          targets.find((target) => target.kind === 'static')?.config,
+                      );
+                      onChange([]);
+                    }
+                  } else if (accountBacked) {
+                    onStartupAccountChange?.(true);
+                  } else {
+                    onChange(
+                      previousTargets.length
+                        ? previousTargets
+                        : [
+                            {
+                              path: 'account-a',
+                              kind: 'static',
+                              enabled: true,
+                              config: structuredClone(currentConnection ?? { type: 'stdio' }),
+                            },
+                          ],
+                    );
+                  }
+                }}
+              >
+                {t(`accountModes.${mode}`)}
+              </button>
+              <SettingHint
+                label={t('editorHints.details', { name: t(`accountModes.${mode}`) })}
+                unavailable={mode === 'accounts' && !accountsSupported}
+              >
+                {t(
+                  mode === 'accounts' && !accountsSupported
+                    ? 'accountModes.taskNoAccounts'
+                    : mode === 'accounts'
+                      ? 'accountModes.multiHelp'
+                      : 'accountModes.singleHelp',
+                )}
+              </SettingHint>
+            </div>
           );
         })}
       </div>
-      <p className="hub-config-description">
-        {t(`uiLayout.help_${taskOnly ? 'task' : targets.length ? 'accounts' : 'single'}`)}
-      </p>
+      {taskSupported && (!multiple || taskEnabled) && (
+        <div className="flex items-center gap-2 mb-5">
+          <label className="hub-checkbox-label">
+            <input
+              type="checkbox"
+              checked={taskEnabled}
+              disabled={taskEnabled && !currentConnection?.command && !currentConnection?.url}
+              onChange={(event) =>
+                onChange(
+                  event.target.checked
+                    ? [
+                        {
+                          path: DEFAULT_TASK_TARGET,
+                          kind: 'task',
+                          enabled: true,
+                          config: {
+                            ...structuredClone(currentConnection ?? {}),
+                            options: { timeout: 0, maxBufferSize: 0 },
+                          },
+                          startupEnvKeys: [],
+                        },
+                      ]
+                    : [],
+                )
+              }
+            />
+            <span>{t('accountModes.task')}</span>
+          </label>
+          <SettingHint label={t('editorHints.details', { name: t('accountModes.task') })}>
+            {t('accountModes.taskHelp')}
+          </SettingHint>
+        </div>
+      )}
+      {multiple && accountBacked && taskAccountEditor}
       <div className={taskOnly ? '' : 'hub-account-list'}>
-        {targets.map((target, index) => (
+        {(accountSchema?.connection && multiple ? [] : targets).map((target, index) => (
           <fieldset
             key={index}
             className={taskOnly ? 'hub-task-config' : 'hub-account-item'}
@@ -122,7 +173,7 @@ export default function TargetConnectionEditor({
               >
                 <span className="hub-account-identity">
                   <span className="hub-account-name">
-                    {target.path.split('/').slice(-1)[0] || t('uiLayout.newWorkspace')}
+                    {target.path || t('uiLayout.newWorkspace')}
                   </span>
                   {target.path && <span className="hub-account-caption">{target.path}</span>}
                 </span>
@@ -145,48 +196,38 @@ export default function TargetConnectionEditor({
               hidden={!taskOnly && expanded !== index}
               className={taskOnly ? 'space-y-5' : 'hub-account-body space-y-5'}
             >
-              <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
-                <label className="hub-config-toggle sm:col-span-2">
-                  <span>{t(taskOnly ? 'uiLayout.taskEnabled' : 'targets.enabled')}</span>
-                  <input
-                    className="hub-config-checkbox"
-                    type="checkbox"
-                    checked={target.enabled !== false}
-                    onChange={(e) => patch(index, { enabled: e.target.checked })}
-                  />
-                </label>
-                {!taskOnly && (
-                  <label className="sm:col-span-2">
-                    {t('uiLayout.workspaceName')}
-                    <input
-                      className={input}
-                      aria-label={`${t('uiLayout.workspaceName')} ${index + 1}`}
-                      value={target.path.split('/').slice(-1)[0] || ''}
-                      required
-                      pattern="[A-Za-z0-9_-]+"
-                      onChange={(event) => {
-                        const prefix = target.path.includes('/')
-                          ? target.path.slice(0, target.path.lastIndexOf('/'))
-                          : catalog || 'workspace';
-                        patch(index, { path: `${prefix}/${event.target.value}` });
-                      }}
-                    />
-                    <span className="hub-config-note">
-                      {t('uiLayout.routeSelector')}: {target.path}
-                    </span>
-                  </label>
-                )}
-              </div>
-              <label className="hub-field">
-                <span className="hub-label">{t('targets.version')}</span>
-                <input
-                  className="hub-input"
-                  aria-label={`${t('targets.version')} ${index + 1}`}
-                  value={target.version || ''}
-                  onChange={(event) => patch(index, { version: event.target.value || undefined })}
-                />
-                <span className="hub-sub text-xs">{t('targets.versionHint')}</span>
-              </label>
+              {!taskOnly && (
+                <div className="hub-config-fields grid gap-4 sm:grid-cols-2">
+                  {!taskOnly && (
+                    <label className="hub-config-toggle sm:col-span-2">
+                      <span>{t(taskOnly ? 'uiLayout.taskEnabled' : 'targets.enabled')}</span>
+                      <input
+                        className="hub-config-checkbox"
+                        type="checkbox"
+                        checked={target.enabled !== false}
+                        onChange={(e) => patch(index, { enabled: e.target.checked })}
+                      />
+                    </label>
+                  )}
+                  {!taskOnly && (
+                    <label className="sm:col-span-2">
+                      {t('uiLayout.workspaceName')}
+                      <input
+                        className={input}
+                        aria-label={`${t('uiLayout.workspaceName')} ${index + 1}`}
+                        value={target.path}
+                        required
+                        pattern="[A-Za-z0-9_.-]+"
+                        onChange={(event) => patch(index, { path: event.target.value })}
+                      />
+                      <span className="hub-config-note">
+                        {t('uiLayout.routeSelector')}: {target.path}
+                      </span>
+                    </label>
+                  )}
+                </div>
+              )}
+              {!taskOnly && <p className="hub-config-note">{t('accountModes.versionHelp')}</p>}
               {target.kind === 'static' && (
                 <>
                   <div className="space-y-4">
@@ -370,23 +411,9 @@ export default function TargetConnectionEditor({
                   />
                 </>
               )}
-              {taskOnly && target.kind === 'task' && taskAccountEditor && (
-                <div className="border-t border-[var(--hub-line)] pt-4 space-y-4">
-                  <label className="hub-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={startupAccountEnabled}
-                      onChange={(event) => onStartupAccountChange?.(event.target.checked)}
-                    />
-                    <span>{t('startupAccounts.enable')}</span>
-                  </label>
-                  <p className="hub-config-note">{t('startupAccounts.optional')}</p>
-                  {startupAccountEnabled && taskAccountEditor}
-                </div>
-              )}
               {taskOnly && !!managedFields?.length && (
-                <div className="space-y-3 border-t border-[var(--hub-line)] pt-4">
-                  <h4 className="hub-label">{t('startupAccounts.managedTitle')}</h4>
+                <details className="hub-setting-advanced">
+                  <summary>{t('startupAccounts.managedTitle')}</summary>
                   <dl className="space-y-4">
                     {managedFields.map((field) => (
                       <div key={field.name} className="space-y-1">
@@ -405,29 +432,40 @@ export default function TargetConnectionEditor({
                       </div>
                     ))}
                   </dl>
-                </div>
+                </details>
               )}
               {target.kind === 'task' && (
                 <>
-                  {!managedStartupAccount && (
-                    <label className="hub-field">
-                      <span className="hub-label">{t('targets.startupNames')}</span>
-                      <textarea
-                        className="hub-input"
-                        rows={3}
-                        style={{ height: 'auto', minHeight: 88 }}
-                        value={(target.startupEnvKeys || []).join('\n')}
-                        onChange={(event) =>
-                          patch(index, {
-                            startupEnvKeys: event.target.value
-                              .split('\n')
-                              .map((value) => value.trim())
-                              .filter(Boolean),
-                          })
-                        }
+                  <details className="hub-setting-advanced">
+                    <summary>{t('callSettings.taskAdvanced')}</summary>
+                    <label className="hub-checkbox-label mb-4">
+                      <input
+                        type="checkbox"
+                        checked={target.enabled !== false}
+                        onChange={(event) => patch(index, { enabled: event.target.checked })}
                       />
+                      {t('callSettings.acceptTasks')}
                     </label>
-                  )}
+                    {!managedStartupAccount && (
+                      <label className="hub-field">
+                        <span className="hub-label">{t('targets.startupNames')}</span>
+                        <textarea
+                          className="hub-input"
+                          rows={3}
+                          style={{ height: 'auto', minHeight: 88 }}
+                          value={(target.startupEnvKeys || []).join('\n')}
+                          onChange={(event) =>
+                            patch(index, {
+                              startupEnvKeys: event.target.value
+                                .split('\n')
+                                .map((value) => value.trim())
+                                .filter(Boolean),
+                            })
+                          }
+                        />
+                      </label>
+                    )}
+                  </details>
                   <ServiceControls
                     hideRateLimit
                     stdio
@@ -442,55 +480,13 @@ export default function TargetConnectionEditor({
                   />
                 </>
               )}
-              {target.kind === 'static' && (
-                <details className="hub-config-advanced">
-                  <summary>{t('server.requestOptions')}</summary>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label className="hub-field">
-                      <span className="hub-label">{t('server.timeout')} (ms)</span>
-                      <input
-                        className="hub-input"
-                        type="number"
-                        min="1000"
-                        aria-label={`${t('server.timeout')} ${index + 1}`}
-                        value={target.config?.options?.timeout ?? 60000}
-                        onChange={(event) =>
-                          patch(index, {
-                            config: {
-                              ...target.config,
-                              options: {
-                                ...target.config?.options,
-                                timeout: Number(event.target.value),
-                              },
-                            },
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="hub-checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={target.config?.options?.resetTimeoutOnProgress ?? false}
-                        onChange={(event) =>
-                          patch(index, {
-                            config: {
-                              ...target.config,
-                              options: {
-                                ...target.config?.options,
-                                resetTimeoutOnProgress: event.target.checked,
-                              },
-                            },
-                          })
-                        }
-                      />
-                      {t('server.resetTimeoutOnProgress')}
-                    </label>
-                  </div>
-                </details>
-              )}
-              <p className="hub-config-note">
-                {t(taskOnly ? 'uiLayout.taskAccess' : 'targets.accessManagedHint')}
-              </p>
+              <RequestTimeoutEditor
+                task={target.kind === 'task'}
+                resetDefault={false}
+                stdio={target.config?.type === 'stdio'}
+                value={target.config?.options}
+                onChange={(options) => patch(index, { config: { ...target.config, options } })}
+              />
 
               {!taskOnly && (
                 <div className="hub-account-actions">
@@ -527,7 +523,7 @@ export default function TargetConnectionEditor({
           </fieldset>
         ))}
       </div>
-      {!taskOnly && targets.length > 0 && (
+      {!accountBacked && !taskOnly && targets.length > 0 && (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getCallLogs, readAuditTail, CallLogQuery } from '../../src/services/callLogService.js';
@@ -28,6 +28,59 @@ describe('call log reader', () => {
   });
   const jsonl = (records: object[]) =>
     records.map((value) => JSON.stringify(value)).join('\n') + '\n';
+  test('shows shared arXiv responses without inventing upstream attempts', async () => {
+    await writeFile(
+      process.env.MCPHUB_RELAY_LOG_FILE!,
+      jsonl([
+        {
+          event: 'http_coalesced',
+          request_id: 'shared-query',
+          timestamp: `${query.date}T10:00:00Z`,
+          host: 'export.arxiv.org',
+          upstream_group: 'arxiv',
+          path: '/api/query',
+          status: 429,
+          category: 'rate_limit',
+          cache_status: 'coalesced',
+          attempts: 0,
+        },
+      ]),
+    );
+    const result = await getCallLogs({ ...query, source: 'relay' });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      id: 'shared-query',
+      cacheStatus: 'coalesced',
+      httpStatus: 429,
+    });
+    expect(result.rows[0].attempts).toBeUndefined();
+  });
+  test('shows local Relay cache hits explicitly without inventing upstream attempts', async () => {
+    await writeFile(
+      process.env.MCPHUB_RELAY_LOG_FILE!,
+      jsonl([
+        {
+          event: 'cache_hit',
+          request_id: 'cached',
+          timestamp: `${query.date}T10:00:00Z`,
+          host: 'overpass-api.de',
+          upstream_group: 'osm-overpass',
+          status: 200,
+          category: 'success',
+          cache_status: 'hit',
+          attempts: 0,
+        },
+      ]),
+    );
+    const result = await getCallLogs({ ...query, source: 'relay', errorsOnly: false });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      id: 'cached',
+      cacheStatus: 'hit',
+      httpStatus: 200,
+      outcome: 'success',
+    });
+  });
   test('joins tool diagnostics, keeps queue errors, filters real status and omits secrets', async () => {
     await writeFile(
       join(root, `${query.date}.jsonl`),
@@ -283,6 +336,64 @@ describe('call log reader', () => {
     });
     expect(JSON.stringify(result)).not.toContain('do-not-expose');
   });
+  test('searches full daily history and keeps totals as unrelated calls append', async () => {
+    const file = join(root, `${query.date}.jsonl`);
+    const record = (id: string, server: string) => [
+      { event: 'completed', request_id: id, server, status: 'success' },
+      {
+        event: 'finished',
+        request_id: id,
+        ts: `${query.date}T09:00:00Z`,
+        tool: 'maps_search',
+        status: 'success',
+      },
+    ];
+    await writeFile(
+      file,
+      jsonl(record('early', 'toolathlon::google_map')) +
+        jsonl([{ event: 'started', padding: 'x'.repeat(1024) }]).repeat(4500),
+    );
+    const filtered = { ...query, source: 'tool', server: 'google_map', errorsOnly: false };
+    expect(await getCallLogs(filtered)).toMatchObject({
+      total: 1,
+      truncated: false,
+      rows: [{ id: 'early' }],
+    });
+    await appendFile(file, jsonl(record('other', 'atlas::fetch')));
+    expect(await getCallLogs(filtered)).toMatchObject({ total: 1, rows: [{ id: 'early' }] });
+    await appendFile(file, jsonl(record('later', 'toolathlon::google_map')));
+    const page1 = await getCallLogs({ ...filtered, limit: 1 });
+    const page2 = await getCallLogs({ ...filtered, page: 2, limit: 1 });
+    expect(page1.total).toBe(2);
+    expect(page2.total).toBe(2);
+    expect([page1.rows[0].id, page2.rows[0].id]).toEqual(['early', 'later']);
+  });
+
+  test('includes all upstream log files instead of silently stopping at 32', async () => {
+    const directory = join(process.env.MCP_USAGE_LOG_DIR!, '2026-10');
+    await mkdir(directory, { recursive: true });
+    await Promise.all(
+      Array.from({ length: 35 }, (_, i) =>
+        writeFile(
+          join(directory, `service-${i}_20261009.jsonl`),
+          jsonl([
+            {
+              event: 'finished',
+              request_id: `upstream-${i}`,
+              service: 'serper',
+              ts: `${query.date}T10:00:00Z`,
+              status: 200,
+            },
+          ]),
+        ),
+      ),
+    );
+    expect(await getCallLogs({ ...query, source: 'yibu', errorsOnly: false })).toMatchObject({
+      total: 35,
+      truncated: false,
+    });
+  });
+
   test('bounded tail tolerates partial appends and missing files', async () => {
     const file = join(root, 'partial');
     await writeFile(file, 'x'.repeat(100) + '\n{"ok":true}\n{"partial":');
@@ -453,4 +564,145 @@ describe('call log reader', () => {
       expect(result.rows[0]).toMatchObject({ id, catalog });
     }
   });
+});
+
+test('GitHub diagnostics retain account, phase, endpoint and wait without overriding final duration', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'github-call-log-'));
+  const previous = process.env.MCPHUB_AUDIT_LOG_DIR;
+  process.env.MCPHUB_AUDIT_LOG_DIR = root;
+  try {
+    await writeFile(
+      join(root, '2026-10-29.jsonl'),
+      [
+        {
+          event: 'github_dispatched',
+          request_id: 'github',
+          github_account_id: '123',
+          wait_ms: 1000,
+          attempt: 2,
+        },
+        {
+          event: 'upstream_finished',
+          request_id: 'github',
+          http_status: 200,
+          upstream_host: 'api.github.com',
+          upstream_path: '/user/repos',
+          duration_ms: 10,
+        },
+        {
+          event: 'finished',
+          request_id: 'github',
+          server: 'toolathlon::github',
+          tool: 'HTTP POST',
+          phase: 'prepare',
+          status: 'success',
+          ts: '2026-10-29T12:00:00Z',
+          duration_ms: 1100,
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join('\n') + '\n',
+    );
+    const result = await getCallLogs({
+      date: '2026-10-29',
+      source: 'tool',
+      status: 'all',
+      errorsOnly: false,
+      server: '',
+      page: 1,
+      limit: 20,
+    });
+    expect(result.rows[0]).toMatchObject({
+      githubAccountId: '123',
+      phase: 'prepare',
+      upstream: 'api.github.com/user/repos',
+      attempts: 2,
+      waitMs: 1000,
+      durationMs: 1100,
+      httpStatus: 200,
+    });
+  } finally {
+    if (previous === undefined) delete process.env.MCPHUB_AUDIT_LOG_DIR;
+    else process.env.MCPHUB_AUDIT_LOG_DIR = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('local dates merge UTC files across month boundaries and retain only matching timestamps', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'call-local-day-'));
+  const old = { ...process.env };
+  const jsonl = (rows: object[]) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+  try {
+    process.env.MCPHUB_AUDIT_LOG_DIR = join(root, 'audit');
+    process.env.MCPHUB_KEY_POOL_LOG_DIR = join(root, 'keys');
+    process.env.MCP_USAGE_LOG_DIR = join(root, 'usage');
+    process.env.MCPHUB_RELAY_LOG_FILE = join(root, 'relay.jsonl');
+    for (const directory of [
+      'audit',
+      'keys',
+      'usage/catalogs/atlas/exa/2026-10',
+      'usage/catalogs/atlas/exa/2026-11',
+    ])
+      await mkdir(join(root, directory), { recursive: true });
+    const times = [
+      '2026-10-31T15:59:59.999Z',
+      '2026-10-31T16:00:00.000Z',
+      '2026-11-01T15:59:59.999Z',
+      '2026-11-01T16:00:00.000Z',
+    ];
+    for (const day of ['2026-10-31', '2026-11-01']) {
+      const records = times
+        .filter((ts) => ts.startsWith(day))
+        .map((ts) => ({
+          event: 'finished',
+          ts,
+          request_id: ts,
+          group: 'exa',
+          server: 'exa',
+          status: 'error',
+          outcome: 'error',
+        }));
+      await writeFile(join(root, 'audit', `${day}.jsonl`), jsonl(records));
+      await writeFile(join(root, 'keys', `${day}.jsonl`), jsonl(records));
+      await writeFile(
+        join(
+          root,
+          'usage/catalogs/atlas/exa',
+          day.slice(0, 7),
+          `exa_${day.replace(/-/g, '')}.jsonl`,
+        ),
+        jsonl(records.map((r) => ({ ...r, service: 'exa', status: 500 }))),
+      );
+    }
+    await writeFile(
+      join(root, 'relay.jsonl'),
+      jsonl(
+        times.map((timestamp) => ({
+          event: 'http_finished',
+          timestamp,
+          request_id: timestamp,
+          status: 500,
+        })),
+      ),
+    );
+    const result = await getCallLogs({
+      ...query,
+      date: '2026-11-01',
+      start: times[1],
+      end: times[2],
+      errorsOnly: false,
+    });
+    expect(result.total).toBe(8);
+    for (const source of ['tool', 'yibu', 'key_pool', 'relay']) {
+      expect(
+        result.rows
+          .filter((r) => r.source === source)
+          .map((r) => r.timestamp)
+          .sort(),
+      ).toEqual([times[1], times[2]]);
+    }
+  } finally {
+    process.env = old;
+    await rm(root, { recursive: true, force: true });
+  }
 });

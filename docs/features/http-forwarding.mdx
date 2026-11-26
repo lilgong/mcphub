@@ -35,7 +35,7 @@ Configure `MCPHUB_AUDIT_LOG_DIR` to a persistent, writable directory. Every disp
 
 HTTP forwarding is implemented in the project code and included in builds/images of this branch. Resource settings use the existing JSON or database server storage, including import/export; no extra process or port is needed. Mount the settings and audit directory outside the container before deployment. Existing deployments do not change until a new build is deployed.
 
-This initial implementation forwards buffered HTTP APIs with up to 1 MiB requests and 8 MiB responses. MCP target connections, MCP key-pool adapters, wrapper Relay routing, browser cookie sessions, WebSocket connections and streaming responses are not supported by this server type. Admin-owned resources may address internal upstream services; other owners are subject to the existing SSRF protections.
+HTTP request and response bodies stream with backpressure, preserving binary and compressed bytes without fixed 1 MiB/8 MiB payload limits. The configured request timeout still applies; client disconnection cancels the upstream request. Business headers, including conditional requests and checksums, are retained. Hub credentials, client credential headers, cookies and hop-by-hop headers are isolated; configured upstream credentials take precedence. Redirects remain under client control: `Location` is preserved and same-resource locations are rewritten to continue through Hub. MCP target connections, MCP key-pool adapters, wrapper Relay routing, browser cookie sessions and WebSocket connections are not supported by this server type. Admin-owned resources may address internal upstream services; other owners are subject to the existing SSRF protections.
 
 ### Per-key usage
 
@@ -61,3 +61,35 @@ Coverage is partial: MCPs without upstream request instrumentation cannot supply
 usage, older key-pool records without fingerprints cannot be matched, and older forwarding
 records lack completed credential-attributed attempts. Missing records do not prove zero
 usage. This feature does not infer credentials from arbitrary environment variables.
+
+
+### Encoded resource names
+
+Both HTTP entry points retain original path and query encoding. Spaces, Unicode,
+encoded slashes, percent signs, question marks and hash characters remain resource
+name data. Validation rejects raw query/fragment separators, control characters,
+backslashes and actual dot path segments, rather than recursively decoding object
+names into a different path. The configured upstream origin and path prefix remain
+fixed. Workspaces use the same validation and business-header handling; streaming
+bindings retain their existing client-controlled deadlines.
+
+### Workspace HTTP request budgets
+
+Authenticated workspace requests can send `X-MCPHub-Upstream-Timeout-Ms` as a
+positive integer in milliseconds. The header is consumed by Hub and never sent to
+the upstream. HTTP read inactivity is bounded after admission; shared rate/queue
+policies are unchanged. An operator's finite server timeout remains an upper bound.
+Without a caller budget, a finite server setting applies; otherwise
+`MCPHUB_WORKSPACE_HTTP_TIMEOUT_MS` defaults to 300000 ms. Streamed bodies reset the
+idle timer on progress and do not expire solely because a large transfer takes
+longer than the idle budget. gRPC unary requests use a finite execution deadline.
+The client transport must reserve its own queue/delivery allowance. Timeouts do not
+trigger a new HTTP replay.
+
+Account HTTP bindings can select `egress: "ip-pool"` to use Hub's configured
+`IPWO_PROXY_HOST`, `IPWO_PROXY_PORT`, `IPWO_PROXY_USERNAME` and
+`IPWO_PROXY_PASSWORD`. This HTTPS CONNECT transport preserves upstream authentication,
+all supported HTTP methods and streaming uploads/downloads. Pool credentials remain in
+Hub; account authentication and audit records retain the selected workspace identity.
+Missing pool configuration fails the request rather than silently using direct egress.
+The binding's existing response/read timeout still applies. Other bindings remain direct.

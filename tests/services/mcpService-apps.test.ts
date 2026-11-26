@@ -567,7 +567,7 @@ describe('mcpService MCP Apps transparent proxy', () => {
         outputSchema: { type: 'object' },
         annotations: { readOnlyHint: true },
         icons: [{ src: 'https://example.com/dashboard.svg' }],
-        inputSchema: { type: 'object' },
+        inputSchema: { type: 'object', $schema: 'https://json-schema.org/draft/2020-12/schema' },
         _meta: { trace: 'keep-me' },
       }),
     ]);

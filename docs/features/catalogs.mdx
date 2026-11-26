@@ -129,6 +129,13 @@ an entire call lifecycle in its start-day file. Final records supply the authori
 outcome, total duration and error classification; diagnostic records only fill fields
 that the final record does not contain. Truncated tails remain explicitly marked.
 
+PubMed's four public tools can report an upstream failure inside a JSON `error`
+result while leaving the MCP protocol error flag unset. Audit and activity records
+recognize these explicit error envelopes, including their reported HTTP status.
+Successful article text and empty search results remain successful. This affects
+reporting only: tool results, tool-call counting, scheduler policies and retries
+are unchanged. Historical audit records are not reclassified automatically.
+
 Relay logs require a readable, operator-configured local file (including a mounted
 external Relay log). An absent or unreadable file is reported as unavailable, not as
 proof of zero requests. Unattributed Relay records appear under **Unassigned records**
@@ -205,8 +212,16 @@ is a credential-export permission for trusted preparation/grading processes, sep
 from the group's existing MCP permissions. Only dashboard administrators can edit
 workspace accounts; calling keys cannot manage them.
 
-`POST /api/workspace-runs` accepts `{catalog, workspace}` and returns a run ID and
-capability token. Subsequent `GET`, `PUT` and `DELETE /api/workspace-runs/:id` require
+`GET /api/workspace-runs?catalog=toolathlon` returns an `accounts` list containing
+only the caller's authorized account names, occupancy, expiration and recovery state.
+It returns no credentials or run capabilities and never reserves, renews or releases an
+account. Occupancy comes from Hub leases, including runs started outside a platform.
+
+`POST /api/workspace-runs` accepts `{catalog, workspace}` and returns a run ID,
+capability token and selected workspace. Omitting `workspace` automatically claims an
+authorized free account under the same mutation lock. If all authorized accounts are
+occupied it returns 409; a preceding availability read never grants a reservation.
+Subsequent `GET`, `PUT` and `DELETE /api/workspace-runs/:id` require
 both the original calling key and `X-MCPHub-Run-Token`. GET exports the selected account,
 PUT renews its ten-minute lease and DELETE releases it. One workspace has one run.
 These responses use `Cache-Control: no-store`.
@@ -248,17 +263,41 @@ The form and optional full source preview edit the same document. New accounts r
 only public defaults; untouched placeholder documents are not saved as empty tokens.
 Caller keys and non-admin users cannot use this credential editor or read endpoint.
 
-An account is a preparation-time credential choice, not a second runtime target.
-Task connections still select each task's registered callback. Choosing another account
-in the editor never changes server routing or the benchmark's launch settings; the
-launcher must explicitly select the account when starting an evaluation.
+The account view loads input declarations from the administrator-only `/api/servers/:name/accounts` metadata API; the runtime server list contains summaries, not credential schemas. Metadata failures are reported rather than displayed as an empty account.
 
-The task editor nests startup accounts under task connections. The optional
-`workspaceSchema.enabled` flag defaults to false; no extra account UI is shown in
-single/static-target modes. Disabling preserves stored credentials but excludes its
-declared inputs from newly exported run bundles, unless another enabled MCP declares
-the same shared input. Existing registrations without this optional schema retain
-their original credential and routing behavior.
+The Credentials page also provides an account view: select a space and account to edit all declared MCP inputs together. Identical shared inputs, such as Google authorization for Calendar, Sheets and Forms, appear once and list their associated MCPs. This view reuses the administrator-only per-server editor and the same stored account. Account permissions, occupancy, revision checks and OAuth state are shared between both entry points. Creating an account does not copy another account's credentials. The advanced fields/files editor and the server editor remain available.
+
+The server editor has two configuration modes: **Single connection** and
+**Multiple accounts / versions**. Each account directly owns its launch configuration
+and credentials; there is no separate connection identifier or credential reference.
+Resident MCPs declare `workspaceSchema.connection: true`. Their per-account commands,
+arguments, environment and headers are encrypted in the same account record as task
+credentials (`serverConnections`). Server target lists retain only launch metadata
+for discovery and calling-group selection. Updates replace only this MCP's fields;
+existing account revision and lease checks apply. Explicit account reads and launch
+default reads (`GET /api/servers/:name/accounts?defaults=1`) require dashboard admin
+authentication, use `no-store`, and never copy shared environment/header credentials
+into a new account. Calling groups must be granted both the account and MCP.
+
+Resident calls select a bare account name through `X-MCPHub-Target`, for example
+`official` or `account-a`; the space is already part of the MCP URL. Missing or
+unconfigured accounts fail without falling back to shared credentials. The installed
+package, executable and arguments determine each actual MCP version; a display
+version is never an installation selector. Existing scoped static targets migrate
+into encrypted accounts on startup, preserving executables, credentials, ACLs and
+calling-group grants. Space prefixes are removed from account selectors and grants
+together; no prefixed route alias is added. Single-connection mode preserves saved
+accounts while using the shared server configuration.
+
+**Task connection** is an independent option shown only for existing task adapters.
+The benchmark starts and registers its MCP processes; Hub does not launch those task
+instances. Task identity and account choice remain independent. A task-only server
+without account credentials does not require an account. With multiple accounts,
+the launcher selects the account and each task keeps its own callback and state.
+Task-side executable versions remain owned by the benchmark adapter and cannot be
+changed through Hub's resident-launch editor. Disabling `workspaceSchema.enabled`
+retains account credentials but excludes declared inputs from new run bundles,
+unless another enabled declaration uses the same shared input.
 
 `workspaceSchema.managed` documents variables supplied or overridden by a task,
 generated paths, and public defaults. Entries contain `name`, `source` (`task`,
@@ -267,3 +306,113 @@ They are display metadata only: they never inject credentials or change task rou
 A declaration containing only managed entries shows guidance without enabling an
 account editor. JSON document templates expose their public defaults separately
 from editable credential fields; saved secret values are not enumerated as defaults.
+
+## Preparation and grading HTTP requests
+
+Task MCP callbacks do not intercept API requests made by preparation or grading
+scripts. Operators can declare fixed `workspaceSchema.http` upstream bindings for
+those requests. A binding contains `id`, an HTTPS `url`, and a `credential` with
+`value` (a declared secret value name), `header`, and an optional `prefix`.
+SDK bindings may instead reference a declared credential `file` and optional JSON
+`field`, with `forward: true` to accept the SDK temporary Authorization header.
+Only credential fingerprints are recorded; SDK refresh/signing remains client-side.
+For Basic authentication, use `username`; Hub encodes that username and the saved
+secret. Optional public headers support `accept`, `content-type`, and
+`x-github-api-version` and `notion-version`. Bindings contain references, never credential values.
+
+Call `METHOD /api/workspace-runs/:runId/http/:server/:bindingId/:path` with the
+calling group key and `X-MCPHub-Run-Token`. Hub rechecks the live run, account grant
+and MCP grant before dispatch, resolves credentials in the selected account, and
+uses the registered MCP's existing scheduler. Requests have durable audit records,
+upstream status codes and credential fingerprints; headers, bodies and secret
+values are not logged. A failed admission record prevents dispatch. Calls never
+fall back to direct access. With `streaming: true`, binary uploads/downloads
+(including Git packs) stream with backpressure without a whole-body size cap or
+transparent decompression. Nonstreaming HTTP and unary gRPC bodies are limited to
+64 MiB. `protocol: grpc` forwards native unary frames and status trailers. The
+caller owns its network deadline; disconnects cancel upstream work. Hub never
+follows redirects; adapted SDKs resolve them using the original provider URL,
+without forwarding Hub credentials to another origin.
+
+Optional `assetHosts` declares allowed public HTTPS storage/CDN host patterns for
+a streaming binding. The client supplies `X-MCPHub-Asset-URL`; Hub validates the
+origin and DNS, retains run/grant checks and scheduling, and never injects the
+account key into asset requests. Only temporary SDK authorization may be
+forwarded. An optional `responseError` JSON rule marks provider application
+failures for audit without changing their HTTP status or body.
+The account declaration must be enabled. Selecting another account never mutates
+the shared server's environment or another run's credential state.
+
+Clients must explicitly use this endpoint. Merely importing a task registration
+or exporting an account does not intercept arbitrary SDK, SQL or shell requests.
+
+
+## Workspace run lifecycle and recovery
+
+Opening a workspace terminal acquires its account until that terminal exits.
+Completing or cancelling a command inside that terminal does not release it.
+When the launcher directly wraps an evaluation command, command completion or
+cancellation triggers cleanup, authorization synchronization and account release.
+Repeated interruption during cleanup is ignored so it cannot interrupt token
+persistence. Clients must confirm their own task containers are stopped before
+releasing an account; Hub does not manage benchmark containers.
+
+Administrator account editors show safe run metadata: start, heartbeat, last
+successful authorization sync, last failure category and the previous exit reason.
+Capabilities, owner key identifiers and credential material are never included.
+`PUT /api/workspace-runs/:id` accepts `syncComplete` and the bounded error codes
+`sync_failed`, `connection_failed`, `cleanup_failed`. `DELETE` accepts an optional
+`exitReason`: `completed`, `cancelled`, `command_failed`, `startup_failed`.
+All calls still require the original owner, live group access and run capability.
+
+Administrator recovery uses the existing account `/release` endpoint, requiring
+`runId`, `stopped: true` and `authorizationReviewed: true`. The exact run ID avoids
+releasing a newer run after a stale page refresh. Recovery does not stop remote
+processes or recover unpersisted OAuth files. It permits deliberate recovery of a
+residual unexpired lease after the administrator checks that the old run stopped;
+there is no automatic release on timeout. The encrypted store retains only the
+most recent run summary for each account, not an unbounded history.
+
+
+Account reads also normalize legacy saved PEM private-key line escapes and validate
+recognizable unencrypted PEM keys. This affects the exported view only; it does
+not rewrite active OAuth state or rotate credentials. New saves already normalize
+these values. Ordinary secrets containing literal escapes are left unchanged.
+
+### GitHub request coordination
+
+GitHub HTTP bindings use a shared request queue keyed by the upstream GitHub user
+ID, so different tokens for the same user share admission across spaces and runs.
+Tasks retain their existing parallelism and account selection. REST writes and Git
+pushes wait at least one second after the preceding mutation; GraphQL queries and
+Git fetches are classified separately from writes. Requests remain cancellable by
+the original client deadline.
+
+The queue observes `Retry-After` and `X-RateLimit-*`, pauses all subsequent requests
+for the affected account, and retries an explicitly rejected non-streaming rate-limit
+response at most twice. Streaming Git transfers, ambiguous network failures, and
+ordinary permission/validation failures are never replayed automatically. Revoked
+tokens and suspended accounts stop further dispatch rather than becoming a retry
+loop. Credential-to-user mappings and cooldown deadlines are encrypted in the
+existing credential store and survive Hub restart. Queue admission is coordinated
+within one Hub process; direct requests and other Hub deployments do not share it.
+
+Toolathlon's Hub adapter routes the original GitHub MCP through a loopback-only
+HTTP proxy using the binary's existing `GITHUB_HOST` option. The proxy holds only
+run capabilities and a random local credential; the real upstream token is resolved
+in Hub. Declare `api`, `raw`, `uploads`, and streaming `git` HTTPS bindings for
+`api.github.com`, `raw.githubusercontent.com`, `uploads.github.com`, and `github.com`.
+Preprocessing, grading and MCP calls use the same request queue. No extra task
+container or GitHub account pool is involved, and tool definitions stay unchanged.
+
+Call log details include the upstream host/path (without query strings), GitHub
+account ID, preparation/tool/evaluation phase, attempts and queue wait. Individual
+upstream attempts retain their own audit records and credential fingerprints.
+
+Account credential declarations may mark value fields, document fields or complete
+credential documents as `required: true`. Incomplete accounts remain editable drafts;
+saving them does not acquire a run. Automatic account allocation skips drafts, and
+explicitly starting one returns HTTP 422 with missing field names before creating a
+lease. Readiness checks cover enabled account declarations in the selected space and
+never send credentials upstream. Optional/generated OAuth state is not implicitly
+required. Existing runs keep their leases; this check applies to new claims only.

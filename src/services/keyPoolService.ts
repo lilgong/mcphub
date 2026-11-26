@@ -1,7 +1,7 @@
 import { keySuffix } from '../utils/keySuffix.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, openSync, writeSync, fsyncSync, closeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { appendDurableAudit } from './durableAuditService.js';
 import type { KeyPoolConfig, KeyPoolResponse } from '../types/keyPool.js';
 import { getServerDao } from '../dao/DaoFactory.js';
 
@@ -31,26 +31,13 @@ export function keyPoolLogDirectory(): string {
     )
   );
 }
-export function writeKeyAttempt(event: string, fields: Record<string, unknown>): void {
+export async function writeKeyAttempt(
+  event: string,
+  fields: Record<string, unknown>,
+): Promise<void> {
   const directory = keyPoolLogDirectory();
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
   const ts = new Date().toISOString();
-  const fd = openSync(join(directory, `${ts.slice(0, 10)}.jsonl`), 'a', 0o600);
-  try {
-    const line = Buffer.from(`${JSON.stringify({ ts, event, ...fields })}\n`);
-    if (writeSync(fd, line) !== line.length) throw new Error('Incomplete key audit write');
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  for (const path of [directory, dirname(directory)]) {
-    const fd = openSync(path, 'r');
-    try {
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
-  }
+  await appendDurableAudit(join(directory, `${ts.slice(0, 10)}.jsonl`), { ts, event, ...fields });
 }
 type Reason = 'quota_exhausted' | 'authorization' | 'rate_limit';
 interface State {
@@ -140,7 +127,10 @@ export class KeyPoolService {
       headers: Record<string, string>,
       signal: AbortSignal,
     ) => Promise<KeyPoolResponse>,
-    private audit = writeKeyAttempt,
+    private audit: (
+      event: string,
+      fields: Record<string, unknown>,
+    ) => void | Promise<void> = writeKeyAttempt,
     private now = Date.now,
   ) {}
   async request(server: string, target: string, signal: AbortSignal): Promise<KeyPoolResponse> {
@@ -196,12 +186,12 @@ export class KeyPoolService {
         path: url.pathname,
       };
       // Durable admission is mandatory before the credential reaches an upstream request.
-      this.audit('started', metadata);
+      await this.audit('started', metadata);
       let response: KeyPoolResponse;
       try {
         response = await this.send(upstream, headers, signal);
       } catch {
-        this.audit('finished', {
+        await this.audit('finished', {
           ...metadata,
           category: signal.aborted ? 'cancelled' : 'network_error',
           outcome: 'error',
@@ -212,7 +202,7 @@ export class KeyPoolService {
         );
       }
       const failure = classifyKeyResponse(pool.provider, response, this.now());
-      this.audit('finished', {
+      await this.audit('finished', {
         ...metadata,
         http_status: response.status,
         provider_status: failure.effectiveStatus,
@@ -235,7 +225,7 @@ export class KeyPoolService {
     const permanent = pool.keys.every((key) =>
       ['quota_exhausted', 'authorization'].includes(this.states.get(stateId(key))?.reason || ''),
     );
-    this.audit('pool_unavailable', {
+    await this.audit('pool_unavailable', {
       request_id: randomUUID(),
       server,
       category: permanent ? 'key_pool_exhausted' : 'rate_limit',

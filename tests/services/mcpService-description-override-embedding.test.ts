@@ -127,6 +127,7 @@ jest.mock('../../src/config/index.js', () => ({
 
 import {
   setServerInfosForTest,
+  normalizeToolForCache,
   syncCredentialServerToolEmbeddings,
   syncToolEmbedding,
   syncToolsAsVectorEmbeddings,
@@ -365,4 +366,16 @@ describe('MCP Service — embedding syncs per server', () => {
     expect(mockRemoveToolEmbeddings).not.toHaveBeenCalled();
     expect(mockSaveToolsAsVectorEmbeddings.mock.calls[0][2]).toBeUndefined();
   });
+});
+
+test('MCP discovery preserves the original upstream JSON Schema dialect', () => {
+  const inputSchema = {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    type: 'object',
+    properties: { query: { type: 'string' } },
+    required: ['query'],
+  };
+  const tool = normalizeToolForCache('example', { name: 'search', inputSchema });
+  expect(tool.inputSchema).toEqual(inputSchema);
+  expect(tool.inputSchema).not.toBe(inputSchema);
 });

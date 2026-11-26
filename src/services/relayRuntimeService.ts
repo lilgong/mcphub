@@ -29,9 +29,17 @@ const RELAY_ENV_KEYS = [
   'IPWO_PROXY_COUNTRY',
   'MCP_RELAY_MIN_INTERVAL_SECONDS',
   'MCP_RELAY_UPSTREAM_TIMEOUT_SECONDS',
+  'MCP_RELAY_ARXIV_IMMEDIATE_TIMEOUT_RETRY',
   'MCP_RELAY_REQUEST_TIMEOUT_SECONDS',
   'MCP_RELAY_MAX_RESPONSE_BYTES',
   'MCP_RELAY_USER_AGENT',
+  'MCP_RELAY_OVERPASS_CACHE_ENABLED',
+  'MCP_RELAY_OVERPASS_CACHE_PATH',
+  'MCP_RELAY_OVERPASS_CACHE_DAYS',
+  'MCP_RELAY_OVERPASS_REFRESH_DAYS',
+  'MCP_RELAY_ARXIV_CACHE_ENABLED',
+  'MCP_RELAY_ARXIV_CACHE_PATH',
+  'MCP_RELAY_ARXIV_CACHE_HOURS',
 ];
 
 /** Controls only the child created by this Hub; never kills an external relay. */
@@ -41,6 +49,12 @@ export class RelayRuntimeService {
   private controlToken = '';
   private busy = false;
   private lastError?: string;
+
+  async readiness(): Promise<{ state: string; healthy: boolean } | undefined> {
+    if (!(await getAtlasConfig()).relay.enabled) return undefined;
+    const { state, healthy } = await this.status();
+    return { state, healthy };
+  }
 
   private options() {
     const port = Number(process.env.MCP_RELAY_PORT || '3985');

@@ -575,3 +575,39 @@ it('preserves optional startup account declarations without changing task target
   expect(result.config.workspaceSchema).toEqual(workspaceSchema);
   expect(result.config.targets).toEqual(targets);
 });
+
+it('retains a converted single connection so task mode can be unchecked after reopening', () => {
+  const formData: ServerFormData = {
+    name: 'fetch',
+    command: 'node',
+    args: ['/package/launch.cjs'],
+    url: '',
+    arguments: '',
+    env: [],
+    headers: [],
+    options: { timeout: 100000 },
+    targets: [
+      {
+        path: 'task/default',
+        kind: 'task',
+        enabled: true,
+        config: {
+          type: 'stdio',
+          command: 'node',
+          args: ['/package/launch.cjs'],
+          options: { timeout: 0, maxBufferSize: 0 },
+        },
+      },
+    ],
+  };
+  const { config } = buildServerPayload({
+    formData,
+    serverType: 'stdio',
+    envVars: [],
+    headerVars: [],
+  });
+  expect(config.command).toBe('node');
+  expect(config.args).toEqual(['/package/launch.cjs']);
+  expect(config.options?.timeout).toBe(100000);
+  expect(config.targets?.[0].config?.options?.timeout).toBe(0);
+});

@@ -1,9 +1,13 @@
+import { copyInputSchema } from '../utils/inputSchema.js';
 import { workspaceDefinition } from './workspaceRuntimeService.js';
+import { hasResidentAccounts } from '../utils/accountConnection.js';
+import { residentAccountTargets } from './accountTargetService.js';
+import { credentialBindingEvents } from './credentialBindingService.js';
 import { WorkerStdioTransport } from '../clients/workerStdioTransport.js';
 import { runtimeWorkerFor, workerEnvironment } from './runtimeWorkerService.js';
 import { splitServerKey, validateServerKey } from '../utils/catalog.js';
 import { resolveMcpbPackageVersion, resolveMcpbVersions } from '../utils/mcpbVersion.js';
-import { getUserGroupPolicy, userGroupAllows } from './userGroupService.js';
+import { getUserGroupPolicy, userGroupAllows, withCallGroupMutation, removeCallGroupServerReferences } from './userGroupService.js';
 import { TargetRuntimeService } from './targetRuntimeService.js';
 import { taskConnections } from './taskConnectionService.js';
 import {
@@ -100,7 +104,7 @@ import {
 } from './smartRoutingService.js';
 import { getActivityLoggingService } from './activityLoggingService.js';
 import { toolCallScheduler } from './toolCallSchedulerService.js';
-import { withToolAudit } from './toolAuditService.js';
+import { withToolAudit, describeToolAuditFailure } from './toolAuditService.js';
 import { maybeCompressToolResult } from './toolResultCompressionService.js';
 import {
   assertHostedToolAllowed,
@@ -671,24 +675,12 @@ export const syncToolEmbedding = async (serverName: string, toolName: string) =>
   });
 };
 
-// Helper function to clean $schema field from inputSchema
-const cleanInputSchema = (schema: any): any => {
-  if (!schema || typeof schema !== 'object') {
-    return schema;
-  }
-
-  const cleanedSchema = { ...schema };
-  delete cleanedSchema.$schema;
-
-  return cleanedSchema;
-};
-
 export const normalizeToolForCache = (serverName: string, tool: McpTool): Tool => {
   return {
     ...tool,
     name: `${serverName}${getNameSeparator()}${tool.name}`,
     description: tool.description || '',
-    inputSchema: cleanInputSchema(tool.inputSchema || {}),
+    inputSchema: copyInputSchema(tool.inputSchema || {}),
   };
 };
 
@@ -2073,6 +2065,13 @@ export const initializeClientsFromSettings = async (
   options?: { reportEmbeddingProgress?: boolean },
 ): Promise<ServerInfo[]> => {
   const allServers: ServerConfigWithName[] = await getServerDao().findAll();
+  for (const definition of allServers) {
+    if (!hasResidentAccounts(definition)) continue;
+    const targets = await residentAccountTargets(definition.name, definition);
+    if (JSON.stringify(targets) !== JSON.stringify(definition.targets ?? []))
+      await getServerDao().update(definition.name, { targets });
+    definition.targets = targets;
+  }
   const existingServerInfos = serverInfos;
   const nextServerInfos: ServerInfo[] = [];
   const generation = ++initGeneration;
@@ -2143,7 +2142,11 @@ export const initializeClientsFromSettings = async (
         continue;
       }
 
-      if (hasCredentialTemplate(expandedConf) || expandedConf.targets?.length) {
+      if (
+        hasCredentialTemplate(expandedConf) ||
+        expandedConf.targets?.length ||
+        hasResidentAccounts(expandedConf)
+      ) {
         if (hasCredentialTemplate(expandedConf)) validateCredentialTemplate(expandedConf);
         nextServerInfos.push({
           name,
@@ -2302,7 +2305,7 @@ export const initializeClientsFromSettings = async (
           const mcpTools: Tool[] = openApiTools.map((tool) => ({
             name: `${name}${getNameSeparator()}${tool.name}`,
             description: tool.description,
-            inputSchema: cleanInputSchema(tool.inputSchema),
+            inputSchema: copyInputSchema(tool.inputSchema),
           }));
 
           // Update server info with successful initialization
@@ -3233,7 +3236,11 @@ export const addServer = async (
 export const removeServer = async (
   name: string,
 ): Promise<{ success: boolean; message?: string }> => {
-  const result = await getServerDao().delete(name);
+  const result = await withCallGroupMutation(async () => {
+    const deleted = await getServerDao().delete(name);
+    if (deleted) await removeCallGroupServerReferences(name);
+    return deleted;
+  });
   if (!result) {
     return { success: false, message: 'Failed to remove server' };
   }
@@ -4506,7 +4513,7 @@ const handleCallToolRequestCore = async (request: any, extra: any) => {
         server: targetServerInfo.name,
         tool: cleanToolName,
         duration,
-        status: result.isError ? 'error' : 'success',
+        status: describeToolAuditFailure(result, cleanToolName) ? 'error' : 'success',
         input: finalArgs,
         output: result,
         group,
@@ -4515,7 +4522,9 @@ const handleCallToolRequestCore = async (request: any, extra: any) => {
         keyName,
         sourceIp,
         hasCredentialTemplate: hasCredentialTemplate(targetServerInfo.config),
-        errorMessage: result.isError ? 'Tool returned error response' : undefined,
+        errorMessage: describeToolAuditFailure(result, cleanToolName)
+          ? 'Tool returned error response'
+          : undefined,
       });
 
       return await maybeCompressToolResult(result, {
@@ -4708,7 +4717,7 @@ const handleCallToolRequestCore = async (request: any, extra: any) => {
       server: serverInfo.name,
       tool: cleanToolName,
       duration,
-      status: result.isError ? 'error' : 'success',
+      status: describeToolAuditFailure(result, cleanToolName) ? 'error' : 'success',
       input: request.params.arguments,
       output: result,
       group,
@@ -4717,7 +4726,9 @@ const handleCallToolRequestCore = async (request: any, extra: any) => {
       keyName,
       sourceIp,
       hasCredentialTemplate: hasCredentialTemplate(serverInfo.config),
-      errorMessage: result.isError ? 'Tool returned error response' : undefined,
+      errorMessage: describeToolAuditFailure(result, cleanToolName)
+        ? 'Tool returned error response'
+        : undefined,
     });
 
     return await maybeCompressToolResult(result, {
@@ -5249,7 +5260,7 @@ const createPrincipalRuntime = async (
       info.tools = client.getTools().map((tool) => ({
         ...tool,
         name: `${name}${getNameSeparator()}${tool.name}`,
-        inputSchema: cleanInputSchema(tool.inputSchema),
+        inputSchema: copyInputSchema(tool.inputSchema),
       }));
     } else {
       const transport = await createTransportFromConfig(name, resolvedConfig);
@@ -5311,6 +5322,20 @@ const targetRuntimes = new TargetRuntimeService(
   closeServerRuntime,
   async (name) => getServerDao().findById(name),
 );
+credentialBindingEvents.on(
+  'workspace-changed',
+  ({ catalog, name }: { catalog: string; name: string }) => {
+    for (const info of serverInfos) {
+      if (
+        splitServerKey(info.name).catalog !== catalog ||
+        !info.config ||
+        !hasResidentAccounts(info.config)
+      )
+        continue;
+      targetRuntimes.invalidate(info.name, undefined, name);
+    }
+  },
+);
 
 /**
  * Resolve the tools of a personal-credential server on behalf of an explicit
@@ -5344,7 +5369,10 @@ const withPrincipalServers =
     if (
       !invocationLabels().target &&
       !serverInfos.some(
-        (info) => hasCredentialTemplate(info.config) || info.config?.targets?.length,
+        (info) =>
+          hasCredentialTemplate(info.config) ||
+          info.config?.targets?.length ||
+          (info.config && hasResidentAccounts(info.config)),
       )
     )
       return handler(request, extra);
@@ -5726,7 +5754,10 @@ export const getFilteredServerInfosForGroup = async (
       !userGroupAllows(
         userGroupPolicy,
         serverInfo.name,
-        serverInfo.config?.targets?.length ? requestedTarget : undefined,
+        serverInfo.config?.targets?.length ||
+          (serverInfo.config && hasResidentAccounts(serverInfo.config))
+          ? requestedTarget
+          : undefined,
       )
     )
       continue;

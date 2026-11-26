@@ -12,6 +12,28 @@ import { RequestContextService } from './requestContextService.js';
 import { UserContextService } from './userContextService.js';
 import type { TargetConnection } from '../types/targetConnection.js';
 
+let groupMutations: Promise<unknown> = Promise.resolve();
+
+/** Serialize group saves and server-reference cleanup in this Hub process. */
+export function withCallGroupMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = groupMutations.catch(() => undefined).then(operation);
+  groupMutations = result;
+  return result;
+}
+
+export async function removeCallGroupServerReferences(name: string): Promise<void> {
+  const dao = getSystemConfigDao();
+  const config = await dao.get();
+  const groups = config?.userGroups ?? [];
+  if (!groups.some((group) => group.servers.some((server) => server.name === name))) return;
+  await dao.update({
+    userGroups: groups.map((group) => ({
+      ...group,
+      servers: group.servers.filter((server) => server.name !== name),
+    })),
+  });
+}
+
 export interface UserGroupPolicy {
   restricted: boolean;
   groups: UserGroup[];

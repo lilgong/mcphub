@@ -1,19 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { Plus, Check, ChevronRight, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import type { WorkspaceCredentialSchema, WorkspaceSummary } from '../../../src/types/workspace';
 import { apiDelete, apiGet, apiPut, type ApiResponse } from '../utils/fetchInterceptor';
 import SecretInput from './SecretInput';
+import WorkspaceRunStatus from './WorkspaceRunStatus';
 import { splitServerKey } from '../../../src/utils/catalog';
 import AccountDocumentEditor from './AccountDocumentEditor';
+import AccountConnectionEditor from './AccountConnectionEditor';
+import type { TargetConnectionConfig } from '../../../src/types/targetConnection';
 import { initialDocument, validateDocument } from '../../../src/utils/workspaceDocuments';
+
+export interface ServerAccountEditorHandle {
+  hasPendingChanges: boolean;
+  savePending: () => Promise<boolean>;
+}
 
 export default function ServerAccountEditor({
   server,
   schema,
+  fixedAccount,
+  onSaved,
+  onDirtyChange,
+  saveRef,
 }: {
   server: string;
   schema: WorkspaceCredentialSchema;
+  fixedAccount?: string;
+  onSaved?: () => Promise<unknown>;
+  onDirtyChange?: (dirty: boolean) => void;
+  saveRef?: Ref<ServerAccountEditorHandle>;
 }) {
   const { t } = useTranslation();
   const [accounts, setAccounts] = useState<WorkspaceSummary[]>([]);
@@ -24,6 +41,8 @@ export default function ServerAccountEditor({
   const [name, setName] = useState('');
   const [values, setValues] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<Record<string, string>>({});
+  const [connection, setConnection] = useState<TargetConnectionConfig>({ type: 'stdio' });
+  const [connectionEdited, setConnectionEdited] = useState(false);
   const [savedFiles, setSavedFiles] = useState<string[]>([]);
   const [grants, setGrants] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -34,6 +53,9 @@ export default function ServerAccountEditor({
   const [message, setMessage] = useState('');
   const [failed, setFailed] = useState(false);
   useEffect(() => {
+    onDirtyChange?.(edited);
+  }, [edited, onDirtyChange]);
+  useEffect(() => {
     if (!message || failed) return;
     const timer = window.setTimeout(() => setMessage(''), 3000);
     return () => window.clearTimeout(timer);
@@ -41,9 +63,13 @@ export default function ServerAccountEditor({
   const loaded = useRef(false);
   const selectedAccount = accounts.find((account) => account.name === selected);
   const endpoint = `/servers/${encodeURIComponent(server)}/accounts`;
+  const accountUrl = (account?: string) =>
+    `${endpoint}${account ? '/' + encodeURIComponent(account) : ''}${schema.connection ? '?connection=1' : ''}`;
   const reload = useCallback(async () => {
     const [profiles, permissions] = await Promise.all([
-      apiGet<ApiResponse<{ accounts: WorkspaceSummary[] }>>(endpoint),
+      apiGet<ApiResponse<{ accounts: WorkspaceSummary[] }>>(
+        `${endpoint}${schema.connection ? '?connection=1' : ''}`,
+      ),
       apiGet<ApiResponse<{ id: string; name: string }[]>>('/user-groups'),
     ]);
     if (!profiles.success) throw new Error(profiles.message || t('startupAccounts.failed'));
@@ -52,13 +78,19 @@ export default function ServerAccountEditor({
     setGroups(permissions.data || []);
     if (!loaded.current) {
       loaded.current = true;
-      if (next.length) {
+      if (fixedAccount) {
+        const account = next.find((entry) => entry.name === fixedAccount);
+        setSelected(fixedAccount);
+        setCreating(!account);
+        setName(fixedAccount);
+        setGrants(account?.allowedGroupIds || []);
+      } else if (next.length) {
         setSelected(next[0].name);
         setGrants(next[0].allowedGroupIds);
       } else setCreating(true);
     }
     return next;
-  }, [endpoint, t]);
+  }, [endpoint, fixedAccount, schema.connection, t]);
   useEffect(() => {
     void reload().catch(() => {
       setFailed(true);
@@ -76,6 +108,8 @@ export default function ServerAccountEditor({
       setFiles({});
       setRevision(undefined);
       setSavedFiles([]);
+      setConnection({ type: 'stdio' });
+      setConnectionEdited(false);
       try {
         const defaults = Object.fromEntries(
           (schema.files || [])
@@ -88,6 +122,14 @@ export default function ServerAccountEditor({
         if (!account) {
           setValues(defaultValues);
           setFiles(defaults);
+          if (schema.connection) {
+            const result = await apiGet<ApiResponse<{ connection: TargetConnectionConfig }>>(
+              `${endpoint}?defaults=1${schema.connection ? '&connection=1' : ''}`,
+            );
+            if (version !== loadVersion.current) return;
+            if (!result.success || !result.data) throw new Error(t('startupAccounts.failed'));
+            setConnection(result.data.connection);
+          }
         } else {
           const result = await apiGet<
             ApiResponse<{
@@ -95,8 +137,11 @@ export default function ServerAccountEditor({
               files: Record<string, string>;
               revision: string;
               allowedGroupIds: string[];
+              connection?: TargetConnectionConfig;
             }>
-          >(`${endpoint}/${encodeURIComponent(account)}`);
+          >(
+            `${endpoint}/${encodeURIComponent(account)}${schema.connection ? '?connection=1' : ''}`,
+          );
           if (version !== loadVersion.current) return;
           if (!result.success || !result.data) throw new Error(t('startupAccounts.failed'));
           setValues({ ...defaultValues, ...result.data.values });
@@ -104,6 +149,7 @@ export default function ServerAccountEditor({
           setRevision(result.data.revision);
           setGrants(result.data.allowedGroupIds);
           setSavedFiles(Object.keys(result.data.files));
+          if (result.data.connection) setConnection(result.data.connection);
         }
         setEdited(false);
       } catch {
@@ -114,7 +160,7 @@ export default function ServerAccountEditor({
         if (version === loadVersion.current) setReading(false);
       }
     },
-    [endpoint, schema.files, schema.values, t],
+    [endpoint, schema.files, schema.values, schema.connection, t],
   );
   useEffect(() => {
     if (selected || creating) void loadAccount(creating ? '' : selected);
@@ -153,10 +199,11 @@ export default function ServerAccountEditor({
         )
       )
         throw new Error(t('startupAccounts.invalidJson'));
-      const result = await apiPut<ApiResponse>(`${endpoint}/${encodeURIComponent(account)}`, {
+      const result = await apiPut<ApiResponse>(accountUrl(account), {
         revision: creating ? undefined : revision,
         allowedGroupIds: grants,
         values,
+        ...(schema.connection && (connectionEdited || creating) ? { connection } : {}),
         files: Object.fromEntries(
           Object.entries(files).filter(([path, content]) => {
             const entry = schema.files?.find((file) => file.path === path);
@@ -170,14 +217,25 @@ export default function ServerAccountEditor({
       setSelected(account);
       setEdited(false);
       await loadAccount(account);
+      await onSaved?.();
       setMessage(t('startupAccounts.saved'));
+      return true;
     } catch (error) {
       setFailed(true);
       setMessage(error instanceof Error ? error.message : t('startupAccounts.failed'));
+      return false;
     } finally {
       setBusy(false);
     }
   };
+  useImperativeHandle(saveRef, () => ({
+    hasPendingChanges: edited,
+    savePending: async () => {
+      if (!edited) return true;
+      if (disabled) return false;
+      return save();
+    },
+  }));
   const remove = async () => {
     if (creating || disabled || !selected) return;
     const catalog = splitServerKey(server).catalog;
@@ -217,61 +275,81 @@ export default function ServerAccountEditor({
   };
   return (
     <div className="space-y-5">
-      <div>
-        <h3 className="hub-editor-heading">{t('startupAccounts.title')}</h3>
-        <p className="hub-config-note">{t('startupAccounts.help')}</p>
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <p className="hub-label">{t('startupAccounts.choose')}</p>
-        <button
-          type="button"
-          className="hub-btn"
-          disabled={busy || creating}
-          onClick={() => change()}
-        >
-          <Plus size={15} aria-hidden />
-          {t('startupAccounts.new')}
-        </button>
-      </div>
-      {accounts.length > 0 && (
-        <div
-          className="hub-account-list hub-account-picker"
-          role="group"
-          aria-label={t('startupAccounts.choose')}
-        >
-          {accounts.map((account) => (
-            <button
-              key={account.name}
-              type="button"
-              className={`hub-account-row ${expanded && !creating && selected === account.name ? 'is-active' : ''}`}
-              aria-expanded={expanded && !creating && selected === account.name}
-              aria-label={t('startupAccounts.editAccount', { name: account.name })}
-              disabled={busy}
-              onClick={() => change(account)}
+      {!fixedAccount && (
+        <>
+          <div>
+            <h3 className="hub-editor-heading">{t('startupAccounts.title')}</h3>
+            <p className="hub-config-note">{t('startupAccounts.help')}</p>
+            <Link
+              className="hub-config-note inline-block mt-2 underline underline-offset-4"
+              to={`/credentials?${new URLSearchParams({
+                catalog: splitServerKey(server).catalog,
+                ...(selected && !creating ? { account: selected } : {}),
+              })}`}
+              onClick={(event) => {
+                if (dirty && !window.confirm(t('startupAccounts.discard'))) event.preventDefault();
+              }}
             >
-              <span className="hub-account-name">{account.name}</span>
-              <span className="hub-account-meta">
-                {account.busy
-                  ? t('workspaceCredentials.inUse')
-                  : expanded && !creating && selected === account.name
-                    ? t('startupAccounts.editing')
-                    : ''}
-              </span>
-              <ChevronRight
-                size={16}
-                aria-hidden
-                className={expanded && !creating && selected === account.name ? 'rotate-90' : ''}
-              />
+              {t('accountManager.byAccount')}
+            </Link>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="hub-label">{t('startupAccounts.choose')}</p>
+            <button
+              type="button"
+              className="hub-btn"
+              disabled={busy || creating}
+              onClick={() => change()}
+            >
+              <Plus size={15} aria-hidden />
+              {t('startupAccounts.new')}
             </button>
-          ))}
-        </div>
+          </div>
+          {accounts.length > 0 && (
+            <div
+              className="hub-account-list hub-account-picker"
+              role="group"
+              aria-label={t('startupAccounts.choose')}
+            >
+              {accounts.map((account) => (
+                <button
+                  key={account.name}
+                  type="button"
+                  className={`hub-account-row ${expanded && !creating && selected === account.name ? 'is-active' : ''}`}
+                  aria-expanded={expanded && !creating && selected === account.name}
+                  aria-label={t('startupAccounts.editAccount', { name: account.name })}
+                  disabled={busy}
+                  onClick={() => change(account)}
+                >
+                  <span className="hub-account-name">{account.name}</span>
+                  <span className="hub-account-meta">
+                    {account.busy
+                      ? t('workspaceCredentials.inUse')
+                      : expanded && !creating && selected === account.name
+                        ? t('startupAccounts.editing')
+                        : ''}
+                  </span>
+                  <ChevronRight
+                    size={16}
+                    aria-hidden
+                    className={
+                      expanded && !creating && selected === account.name ? 'rotate-90' : ''
+                    }
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
       {(creating || selected) && (
         <div className="hub-account-profile space-y-5" hidden={!expanded}>
-          <p className="hub-account-profile-title">
-            {creating ? t('startupAccounts.new') : selected}
-          </p>
-          {creating && (
+          {!fixedAccount && (
+            <p className="hub-account-profile-title">
+              {creating ? t('startupAccounts.new') : selected}
+            </p>
+          )}
+          {creating && !fixedAccount && (
             <label className="hub-field">
               <span className="hub-label">{t('startupAccounts.name')}</span>
               <input
@@ -284,8 +362,8 @@ export default function ServerAccountEditor({
               />
             </label>
           )}
-          {selectedAccount?.busy && !creating && (
-            <p className="hub-config-note">{t('startupAccounts.locked')}</p>
+          {selectedAccount && !creating && !fixedAccount && (
+            <WorkspaceRunStatus workspace={selectedAccount} onRecovered={reload} />
           )}
           <div className="space-y-4">
             {schema.values?.map((field) => (
@@ -321,6 +399,18 @@ export default function ServerAccountEditor({
               </label>
             ))}
           </div>
+          {schema.connection && (
+            <AccountConnectionEditor
+              value={connection}
+              disabled={disabled}
+              managedEnv={schema.values?.flatMap((field) => (field.env ? [field.env] : []))}
+              onChange={(value) => {
+                setConnection(value);
+                setConnectionEdited(true);
+                setEdited(true);
+              }}
+            />
+          )}
           {schema.files
             ?.filter((entry) => !entry.directory)
             .map((entry) => (
@@ -361,30 +451,32 @@ export default function ServerAccountEditor({
                   ))}
               </div>
             ))}
-          <div className="space-y-2">
-            <p className="hub-label">{t('workspaceCredentials.groups')}</p>
-            <p className="hub-config-note">{t('startupAccounts.grants')}</p>
-            <div className="flex flex-wrap gap-4">
-              {groups.map((group) => (
-                <label className="hub-checkbox-label" key={group.id}>
-                  <input
-                    type="checkbox"
-                    checked={grants.includes(group.id)}
-                    disabled={disabled}
-                    onChange={(event) => {
-                      setEdited(true);
-                      setGrants((current) =>
-                        event.target.checked
-                          ? [...current, group.id]
-                          : current.filter((id) => id !== group.id),
-                      );
-                    }}
-                  />
-                  {group.name}
-                </label>
-              ))}
+          {!fixedAccount && (
+            <div className="space-y-2">
+              <p className="hub-label">{t('workspaceCredentials.groups')}</p>
+              <p className="hub-config-note">{t('startupAccounts.grants')}</p>
+              <div className="flex flex-wrap gap-4">
+                {groups.map((group) => (
+                  <label className="hub-checkbox-label" key={group.id}>
+                    <input
+                      type="checkbox"
+                      checked={grants.includes(group.id)}
+                      disabled={disabled}
+                      onChange={(event) => {
+                        setEdited(true);
+                        setGrants((current) =>
+                          event.target.checked
+                            ? [...current, group.id]
+                            : current.filter((id) => id !== group.id),
+                        );
+                      }}
+                    />
+                    {group.name}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -395,7 +487,7 @@ export default function ServerAccountEditor({
               <Check size={15} />
               {t('startupAccounts.save')}
             </button>
-            {!creating && (
+            {!creating && !fixedAccount && (
               <button
                 type="button"
                 className="hub-btn danger ml-auto"
@@ -407,7 +499,7 @@ export default function ServerAccountEditor({
               </button>
             )}
           </div>
-          <p className="hub-config-note">{t('startupAccounts.scope')}</p>
+          {!fixedAccount && <p className="hub-config-note">{t('startupAccounts.scope')}</p>}
         </div>
       )}
       {message && (

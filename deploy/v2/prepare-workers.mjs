@@ -1,40 +1,50 @@
 #!/usr/bin/env node
+// Initialize private worker routing in the single root .env without rotating tokens.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-const root = path.resolve(process.argv[2] || 'data/v2-container');
-fs.mkdirSync(root, { recursive: true, mode: 0o700 });
-const workers = {};
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'node:url';
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const filename = path.resolve(process.argv[2] || path.join(repo, '.env'));
+const current = fs.existsSync(filename) ? fs.readFileSync(filename, 'utf8') : '';
+const env = dotenv.parse(current);
+const workers = env.MCPHUB_WORKERS ? JSON.parse(env.MCPHUB_WORKERS) : {};
+const additions = {};
 for (const catalog of ['atlas', 'toolathlon']) {
-  const filename = path.join(root, `${catalog}-worker.env`);
-  let token;
-  if (fs.existsSync(filename)) {
-    token = fs
-      .readFileSync(filename, 'utf8')
-      .split('\n')
-      .find((line) => line.startsWith('MCPHUB_WORKER_TOKEN='))
-      ?.split('=')[1];
-    if (!token || token.length < 32) throw new Error('Invalid existing worker token file');
-  } else {
-    token = crypto.randomBytes(32).toString('hex');
-    fs.writeFileSync(
-      filename,
-      `MCPHUB_WORKER_CATALOG=${catalog}\nMCPHUB_WORKER_TOKEN=${token}\nHOME=/app/data/home\nXDG_CACHE_HOME=/app/data/.cache\nPORT=3100\n`,
-      { mode: 0o600 },
-    );
-  }
-  workers[catalog] = { catalog, url: `ws://${catalog}-worker:3100/stdio`, token };
-  fs.mkdirSync(path.join(root, 'workers', catalog), { recursive: true, mode: 0o700 });
-  fs.mkdirSync(path.join(root, 'runtime/uploads/mcpb/catalogs', catalog), {
-    recursive: true,
-    mode: 0o700,
-  });
+  const key = `MCPHUB_${catalog.toUpperCase()}_WORKER_TOKEN`;
+  const saved = workers[catalog];
+  if (env[key] && saved?.token && env[key] !== saved.token)
+    throw new Error(`Worker token mismatch for ${catalog}; refusing to rotate credentials`);
+  const token = env[key] || saved?.token || crypto.randomBytes(32).toString('hex');
+  if (typeof token !== 'string' || token.length < 32 || /[\s']/.test(token))
+    throw new Error(`Invalid worker token for ${catalog}`);
+  if (!env[key]) additions[key] = token;
+  workers[catalog] = { catalog, url: `ws://${catalog}-worker:3100/stdio`, token, ...saved };
+  if (!env.MCPHUB_WORKERS)
+    for (const directory of [
+      `workers/${catalog}`,
+      `runtime/uploads/mcpb/catalogs/${catalog}`,
+      `runtime/usage/catalogs/${catalog}`,
+    ])
+      fs.mkdirSync(path.join(repo, 'data/v2-container', directory), {
+        recursive: true,
+        mode: 0o700,
+      });
 }
-const routeFile = path.join(root, 'workers.env');
-if (!fs.existsSync(routeFile))
-  fs.writeFileSync(
-    routeFile,
-    `MCPHUB_WORKERS=${JSON.stringify(workers)}\nMCPHUB_REQUIRE_WORKERS=true\nMCPHUB_INTERNAL_URL=http://hub:3000\n`,
+if (!env.MCPHUB_WORKERS) additions.MCPHUB_WORKERS = JSON.stringify(workers);
+if (!env.MCPHUB_REQUIRE_WORKERS) additions.MCPHUB_REQUIRE_WORKERS = 'true';
+if (!env.MCPHUB_INTERNAL_URL) additions.MCPHUB_INTERNAL_URL = 'http://hub:3000';
+if (Object.keys(additions).length) {
+  fs.appendFileSync(
+    filename,
+    '\n# Execution workers\n' +
+      Object.entries(additions)
+        .map(([key, value]) => `${key}='${value}'`)
+        .join('\n') +
+      '\n',
     { mode: 0o600 },
   );
-console.log('Prepared two private MCP execution workers; existing control tokens preserved.');
+}
+fs.chmodSync(filename, 0o600);
+console.log('Worker routing prepared in root .env; existing tokens preserved.');

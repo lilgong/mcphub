@@ -60,7 +60,11 @@ const validateBearerAuth = async (
   // Scoped group keys may register their own task callbacks, but never manage the Hub.
   const apiPath = req.originalUrl.split('?')[0];
   const workspaceApi =
-    (req.method === 'POST' && /\/api\/workspace-runs$/.test(apiPath)) ||
+    (['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(req.method) &&
+      /\/api\/workspace-runs\/[a-zA-Z0-9-]+\/http\/[A-Za-z0-9_.-]+\/[a-z][a-z0-9_-]*(?:\/.*)?$/.test(
+        apiPath,
+      )) ||
+    (['GET', 'POST'].includes(req.method) && /\/api\/workspace-runs$/.test(apiPath)) ||
     (['GET', 'PUT', 'DELETE'].includes(req.method) &&
       /\/api\/workspace-runs\/[a-zA-Z0-9-]+(?:\/files)?$/.test(apiPath));
   const taskApi =

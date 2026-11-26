@@ -223,7 +223,7 @@ describe('smartRoutingService search_tools results', () => {
         name: 'chat::list_messages',
         title: 'List messages',
         description: 'List messages',
-        inputSchema: schema('chatId'),
+        inputSchema: richTool.inputSchema,
         annotations: { readOnlyHint: true },
         serverName: 'chat',
       };
@@ -266,7 +266,7 @@ describe('smartRoutingService search_tools results', () => {
         {
           name: 'chat::list_messages',
           description: 'List messages',
-          inputSchema: schema('chatId'),
+          inputSchema: richTool.inputSchema,
           serverName: 'chat',
           score: 0.64,
         },

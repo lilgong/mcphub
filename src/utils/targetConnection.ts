@@ -6,7 +6,8 @@ export function validateTargetPath(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.length <= 160 &&
-    /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(value)
+    /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(value) &&
+    value.split('/').every((part) => part !== '.' && part !== '..')
   );
 }
 export function normalizeTargetConnections(value: unknown): TargetConnection[] | undefined {

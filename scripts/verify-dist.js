@@ -13,6 +13,13 @@ assert.ok(
   'Relay implementation must ship with the package',
 );
 
+for (const helper of ['overpass_cache.py', 'arxiv_cache.py']) {
+  assert.ok(
+    fs.existsSync(path.join(projectRoot, 'relay', helper)),
+    `${helper} must ship with Relay`,
+  );
+}
+
 // Check if frontend dist exists
 const frontendDistPath = path.join(projectRoot, 'frontend', 'dist');
 const frontendIndexPath = path.join(frontendDistPath, 'index.html');

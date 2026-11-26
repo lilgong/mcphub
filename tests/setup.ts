@@ -1,5 +1,27 @@
 // Global test setup
 import 'reflect-metadata';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// Unit/integration tests must never load deployment credentials or write into
+// the production audit directory just because a checkout has a local .env.
+jest.mock('dotenv', () => ({
+  ...jest.requireActual('dotenv'),
+  config: jest.fn(() => ({ parsed: {} })),
+}));
+const testRuntime = mkdtempSync(join(tmpdir(), 'mcphub-jest-'));
+const testSettings = join(testRuntime, 'mcp_settings.json');
+writeFileSync(
+  testSettings,
+  JSON.stringify({ mcpServers: {}, users: [], groups: {}, systemConfig: {} }),
+);
+process.env.MCPHUB_SETTING_PATH = testSettings;
+process.env.MCPHUB_AUDIT_LOG_DIR = join(testRuntime, 'audit');
+process.env.MCPHUB_KEY_POOL_LOG_DIR = join(testRuntime, 'key-pool');
+process.env.MCP_USAGE_LOG_DIR = join(testRuntime, 'usage');
+process.env.MCPHUB_RELAY_LOG_FILE = join(testRuntime, 'relay.jsonl');
+afterAll(() => rmSync(testRuntime, { recursive: true, force: true }));
 
 // Mock environment variables for testing
 Object.assign(process.env, {

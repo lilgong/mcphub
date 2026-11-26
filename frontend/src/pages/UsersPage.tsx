@@ -28,6 +28,7 @@ import type { UserGroup, UserGroupResourceOption } from '../../../src/types/user
 import AddUserForm from '../components/AddUserForm';
 import EditUserForm from '../components/EditUserForm';
 import SecretInput from '../components/SecretInput';
+import BearerKeySecret from '../components/BearerKeySecret';
 import DeleteDialog from '../components/ui/DeleteDialog';
 
 export default function UsersPage() {
@@ -512,7 +513,7 @@ export default function UsersPage() {
                   <div className="hub-group-key-row" key={key.id}>
                     <div>
                       <span>{key.name}</span>
-                      <small className="hub-mono">{key.token}</small>
+                      <BearerKeySecret id={key.id} />
                     </div>
                     <label className="hub-checkbox-label">
                       <input
@@ -843,7 +844,7 @@ export default function UsersPage() {
           >
             <div className="hub-directory-dialog-header">
               <h2 id="group-key-title" className="hub-card-title">
-                {t('userGroups.tokenOnce')}
+                {t('userGroups.tokenAvailable')}
               </h2>
             </div>
             <div className="p-5 flex items-center gap-2">

@@ -195,6 +195,7 @@ jest.mock('../../src/controllers/oauthDynamicRegistrationController.js', () => (
 
 jest.mock('../../src/controllers/bearerKeyController.js', () => ({
   getBearerKeys: routeHandler,
+  getBearerKeyToken: routeHandler,
   createBearerKey: routeHandler,
   updateBearerKey: routeHandler,
   deleteBearerKey: routeHandler,

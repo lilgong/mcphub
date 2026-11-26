@@ -1,3 +1,4 @@
+import { browserTimeZone, localCalendarDate, localDateRange } from '../utils/localCalendar';
 import LogCatalogFilter from './LogCatalogFilter';
 import LogServerIdentity from './LogServerIdentity';
 import { useEffect, useState } from 'react';
@@ -14,12 +15,19 @@ interface Row {
   outcome: string;
   httpStatus?: number;
   category?: string;
+  errorMessage?: string;
+  errorCode?: string;
+  cacheStatus?: string;
   durationMs?: number;
   waitMs?: number;
   keyLabel?: string;
   retryAt?: string;
   target?: string;
   taskId?: string;
+  upstream?: string;
+  githubAccountId?: string;
+  phase?: string;
+  attempts?: number;
 }
 interface Result {
   rows: Row[];
@@ -43,7 +51,7 @@ function statusBadgeClass(row: Row): string {
 
 export default function CallLogViewer() {
   const { t } = useTranslation();
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localCalendarDate());
   const [status, setStatus] = useState('all');
   const [source, setSource] = useState('tool');
   const [server, setServer] = useState('');
@@ -59,11 +67,15 @@ export default function CallLogViewer() {
   }, [catalog, date, status, source, server, errorsOnly]);
   useEffect(() => {
     let active = true;
+    let inFlight = false;
     const load = async () => {
+      if (inFlight) return;
+      inFlight = true;
       setLoading(true);
       try {
         const query = new URLSearchParams({
           date,
+          ...localDateRange(date),
           status,
           source,
           server,
@@ -81,6 +93,7 @@ export default function CallLogViewer() {
       } catch {
         if (active) setError(true);
       } finally {
+        inFlight = false;
         if (active) setLoading(false);
       }
     };
@@ -100,9 +113,9 @@ export default function CallLogViewer() {
       <div className="flex flex-wrap items-end gap-3">
         <LogCatalogFilter value={catalog} onChange={setCatalog} refresh={refresh} />
         <label className="hub-field">
-          <span className="hub-label">{t('callLogs.date')}</span>
+          <span className="hub-label">{t('callLogs.date', { timeZone: browserTimeZone() })}</span>
           <input
-            aria-label={t('callLogs.date')}
+            aria-label={t('callLogs.date', { timeZone: browserTimeZone() })}
             type="date"
             className={`${inputClass} block`}
             value={date}
@@ -278,14 +291,50 @@ export default function CallLogViewer() {
                   <td className="p-3">
                     <details className="min-w-40">
                       <summary className="cursor-pointer hub-sub">{t('callLogs.details')}</summary>
+                      {row.outcome === 'error' && (
+                        <div className="mt-3 max-w-xl rounded-lg border border-red-200 bg-red-50/60 p-3 dark:border-red-900 dark:bg-red-950/20">
+                          <p className="text-xs font-medium text-red-700 dark:text-red-300">
+                            {t('callLogs.errorMessage')}
+                          </p>
+                          <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 [overflow-wrap:anywhere]">
+                            {row.errorMessage || t('callLogs.errorMessageUnavailable')}
+                          </p>
+                          {row.httpStatus === undefined && (
+                            <p className="mt-2 text-xs leading-5 hub-sub">
+                              {t('callLogs.noHttpExplanation')}
+                            </p>
+                          )}
+                        </div>
+                      )}
                       <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                         {(
                           [
                             ['source', t(`callLogs.${row.source}`)],
                             ['category', row.category],
+                            ['errorCode', row.errorCode],
+                            [
+                              'cacheStatus',
+                              row.cacheStatus
+                                ? t(`callLogs.cache_${row.cacheStatus}`, {
+                                    defaultValue: row.cacheStatus,
+                                  })
+                                : undefined,
+                            ],
                             ['keyLabel', row.keyLabel],
                             ['target', row.target],
                             ['taskId', row.taskId],
+                            ['upstream', row.upstream],
+                            ['githubAccountId', row.githubAccountId],
+                            [
+                              'phase',
+                              row.phase
+                                ? t(`callLogs.phase_${row.phase}`, { defaultValue: row.phase })
+                                : undefined,
+                            ],
+                            [
+                              'attempts',
+                              row.attempts === undefined ? undefined : String(row.attempts),
+                            ],
                             [
                               'wait',
                               row.waitMs === undefined ? undefined : `${Math.round(row.waitMs)} ms`,

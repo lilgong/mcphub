@@ -1,3 +1,5 @@
+import { normalizeWorkspaceSchema } from '../../../src/utils/workspaceSchema';
+
 export const convertMcpbToMcpConfig = (manifest: any, extractPath: string, _serverName: string) => {
   const mcpConfig = manifest.server?.mcp_config || {};
 
@@ -34,5 +36,7 @@ export const convertMcpbToMcpConfig = (manifest: any, extractPath: string, _serv
     });
   }
 
+  if (mcpConfig.workspaceSchema)
+    config.workspaceSchema = normalizeWorkspaceSchema(mcpConfig.workspaceSchema);
   return config;
 };

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const source = path.join(repo, 'data/v2-dev');
 const destination = path.join(repo, 'data/v2-container');
-if (fs.existsSync(path.join(destination, 'app.env')))
+if (fs.existsSync(path.join(repo, '.env')))
   throw new Error('Destination already prepared; refusing to overwrite');
 fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
 const runtime = path.join(destination, 'runtime');
@@ -89,18 +89,23 @@ const app = {
 };
 // The existing encrypted binding/key is retained. Never rotate JWT or admin password.
 delete app.MCPHUB_SETTINGS_SYNC;
-for (const [filename, values] of [
-  ['db.env', db],
-  ['app.env', app],
-]) {
-  fs.writeFileSync(
-    path.join(destination, filename),
-    Object.entries(values)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n') + '\n',
-    { mode: 0o600 },
-  );
-}
+const values = {
+  ...db,
+  ...app,
+  MCPHUB_V2_BIND: '127.0.0.1',
+  MCPHUB_V2_PORT: '3003',
+  MCPHUB_V2_IMAGE: 'mcphub-v2:local',
+};
+fs.writeFileSync(
+  path.join(repo, '.env'),
+  Object.entries(values)
+    .map(([key, value]) => {
+      if (/[\n']/.test(value)) throw new Error(`Unsupported dotenv value for ${key}`);
+      return `${key}='${value}'`;
+    })
+    .join('\n') + '\n',
+  { mode: 0o600 },
+);
 const manifest = {
   created: new Date().toISOString(),
   sourceSha256: crypto.createHash('sha256').update(original).digest('hex'),

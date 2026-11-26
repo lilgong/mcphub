@@ -1,8 +1,10 @@
+import { readCallLogRecords } from './callLogIndexService.js';
 import { usageLogDirectories } from './usageLogDirectories.js';
 import { splitServerKey } from '../utils/catalog.js';
 import { open, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { keyPoolLogDirectory } from './keyPoolService.js';
+import { callErrorMessage } from '../utils/callErrorMessage.js';
 
 export interface CallLog {
   id: string;
@@ -18,13 +20,21 @@ export interface CallLog {
   outcome: 'success' | 'error';
   httpStatus?: number;
   category?: string;
+  errorMessage?: string;
+  errorCode?: string;
+  cacheStatus?: string;
   durationMs?: number;
   waitMs?: number;
   attempts?: number;
+  upstream?: string;
+  githubAccountId?: string;
+  phase?: string;
 }
 export interface CallLogQuery {
   catalog?: string;
   date: string;
+  start?: string;
+  end?: string;
   status: string;
   errorsOnly: boolean;
   source: string;
@@ -76,7 +86,15 @@ const safeNumber = (value: unknown): number | undefined =>
 
 export function matchesCallLog(row: CallLog, query: CallLogQuery): boolean {
   if (query.catalog !== undefined && query.catalog !== row.catalog) return false;
-  if (!row.timestamp.startsWith(query.date)) return false;
+  if (query.start && query.end) {
+    const timestamp = Date.parse(row.timestamp);
+    if (
+      !Number.isFinite(timestamp) ||
+      timestamp < Date.parse(query.start) ||
+      timestamp > Date.parse(query.end)
+    )
+      return false;
+  } else if (!row.timestamp.startsWith(query.date)) return false;
   if (query.errorsOnly && row.outcome !== 'error') return false;
   if (query.source !== 'all' && row.source !== query.source) return false;
   if (query.server && !row.server.toLowerCase().includes(query.server.toLowerCase())) return false;
@@ -91,13 +109,22 @@ export function matchesCallLog(row: CallLog, query: CallLogQuery): boolean {
 export async function getCallLogs(
   query: CallLogQuery,
 ): Promise<{ rows: CallLog[]; total: number; truncated: boolean; unavailableSources: string[] }> {
+  const first = query.start || `${query.date}T00:00:00.000Z`;
+  const last = query.end || `${query.date}T23:59:59.999Z`;
+  const days: string[] = [];
+  for (
+    let time = Date.parse(first.slice(0, 10));
+    time <= Date.parse(last.slice(0, 10));
+    time += 86400000
+  )
+    days.push(new Date(time).toISOString().slice(0, 10));
+  // Include the preceding file for calls completing after a UTC day boundary.
+  const auditDays = [new Date(Date.parse(days[0]) - 86400000).toISOString().slice(0, 10), ...days];
   const rows: CallLog[] = [];
-  let truncated = false;
+  const truncated = false;
   const unavailableSources: string[] = [];
   const load = async (path: string, options?: { allowMissing?: boolean }) => {
-    const result = await readAuditTail(path, 4 * 1024 * 1024, options);
-    truncated ||= result.truncated;
-    return result.records;
+    return readCallLogRecords(path, options);
   };
   if (query.source === 'all' || query.source === 'tool') {
     try {
@@ -106,17 +133,25 @@ export async function getCallLogs(
       else {
         // A call's lifecycle stays in its start-day file; filter by completion
         // timestamp after also reading the prior UTC day, as statistics do.
-        const previousDay = new Date(Date.parse(`${query.date}T00:00:00Z`) - 86400000)
-          .toISOString()
-          .slice(0, 10);
-        const records = [
-          ...(await load(join(root, `${previousDay}.jsonl`))),
-          ...(await load(join(root, `${query.date}.jsonl`))),
-        ];
+        const records = (
+          await Promise.all(auditDays.map((day) => load(join(root, `${day}.jsonl`))))
+        ).flat();
         const calls = new Map<string, Record<string, unknown>>();
         for (const record of records) {
           const id = safeString(record.request_id);
-          if (['queued', 'dispatched', 'queue_rejected'].includes(safeString(record.event)))
+          if (
+            [
+              'queued',
+              'dispatched',
+              'queue_rejected',
+              'github_queued',
+              'github_dispatched',
+              'github_waiting',
+              'github_observed',
+              'github_cancelled',
+              'github_identity_failed',
+            ].includes(safeString(record.event))
+          )
             calls.set(id, { ...calls.get(id), ...record });
           if (record.event === 'upstream_finished') calls.set(id, { ...calls.get(id), ...record });
           if (record.event === 'completed') calls.set(id, { ...calls.get(id), ...record });
@@ -136,9 +171,16 @@ export async function getCallLogs(
               outcome: record.status === 'error' || item.status === 'error' ? 'error' : 'success',
               ...(status ? { httpStatus: status } : {}),
               category: safeString(item.category) || undefined,
+              errorMessage: callErrorMessage(item.error_message),
+              errorCode: safeString(item.error_code) || undefined,
               durationMs: safeNumber(item.duration_ms),
               waitMs: safeNumber(item.wait_ms),
               keyLabel: safeString(item.credential_suffix) || undefined,
+              upstream:
+                safeString(item.upstream_host) + safeString(item.upstream_path) || undefined,
+              githubAccountId: safeString(item.github_account_id) || undefined,
+              phase: safeString(record.phase) || undefined,
+              attempts: safeNumber(item.attempt),
             });
           }
         }
@@ -153,41 +195,43 @@ export async function getCallLogs(
       if (!root) unavailableSources.push('yibu');
       else {
         for (const identity of await usageLogDirectories(root)) {
-          const directory = join(identity.directory, query.date.slice(0, 7));
-          let files: string[] = [];
-          try {
-            files = await readdir(directory);
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-          }
-          const selected = files.filter((name) =>
-            name.endsWith(`_${query.date.replace(/-/g, '')}.jsonl`),
-          );
-          for (const name of selected.slice(0, 32)) {
-            for (const record of await load(join(directory, name))) {
-              if (record.event !== 'finished') continue;
-              const status = safeNumber(record.status);
-              rows.push({
-                id: safeString(record.request_id),
-                timestamp: safeString(record.ts),
-                source: 'yibu',
-                server: identity.server || safeString(record.service),
-                catalog: identity.catalog,
-                operation: 'HTTP',
-                outcome: record.error || !status || status >= 400 ? 'error' : 'success',
-                ...(status && status >= 100 ? { httpStatus: status } : {}),
-                category: record.error
-                  ? 'network_error'
-                  : status === 429
-                    ? 'rate_limit'
-                    : status && status >= 400
-                      ? 'upstream_error'
-                      : undefined,
-                durationMs: safeNumber(record.duration_ms),
-              });
+          for (const day of days) {
+            const directory = join(identity.directory, day.slice(0, 7));
+            let files: string[] = [];
+            try {
+              files = await readdir(directory);
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            }
+            const selected = files.filter((name) =>
+              name.endsWith(`_${day.replace(/-/g, '')}.jsonl`),
+            );
+            for (const name of selected.sort()) {
+              for (const record of await load(join(directory, name))) {
+                if (record.event !== 'finished') continue;
+                const status = safeNumber(record.status);
+                rows.push({
+                  id: safeString(record.request_id),
+                  timestamp: safeString(record.ts),
+                  source: 'yibu',
+                  server: identity.server || safeString(record.service),
+                  catalog: identity.catalog,
+                  operation: 'HTTP',
+                  outcome: record.error || !status || status >= 400 ? 'error' : 'success',
+                  ...(status && status >= 100 ? { httpStatus: status } : {}),
+                  category: record.error
+                    ? 'network_error'
+                    : status === 429
+                      ? 'rate_limit'
+                      : status && status >= 400
+                        ? 'upstream_error'
+                        : undefined,
+                  durationMs: safeNumber(record.duration_ms),
+                  errorMessage: callErrorMessage(record.error),
+                });
+              }
             }
           }
-          truncated ||= selected.length > 32;
         }
       }
     } catch {
@@ -220,7 +264,9 @@ export async function getCallLogs(
           if (raw.event === 'http_finished') starts.delete(id);
           // Per-attempt records count actual HTTP requests; workflow summaries are omitted.
           if (
-            !['http_finished', 'request_rejected'].includes(safeString(record.event)) &&
+            !['http_finished', 'request_rejected', 'cache_hit', 'http_coalesced'].includes(
+              safeString(record.event),
+            ) &&
             !(
               raw.event === 'http_completed' &&
               ['queue_timeout', 'upstream_timeout', 'client_cancelled'].includes(
@@ -250,9 +296,13 @@ export async function getCallLogs(
             ...(status && status >= 100 ? { httpStatus: status } : {}),
             category:
               safeString(record.category) || (record.error_type ? 'network_error' : undefined),
+            errorMessage: callErrorMessage(
+              record.error_message ?? record.error ?? record.error_type,
+            ),
             durationMs: safeNumber(record.duration_ms),
             waitMs: safeNumber(record.queued_ms),
             attempts: safeNumber(record.attempt),
+            cacheStatus: safeString(record.cache_status) || undefined,
           });
         }
       }
@@ -262,7 +312,9 @@ export async function getCallLogs(
   }
   if (query.source === 'all' || query.source === 'key_pool') {
     try {
-      for (const record of await load(join(keyPoolLogDirectory(), `${query.date}.jsonl`))) {
+      for (const record of (
+        await Promise.all(auditDays.map((day) => load(join(keyPoolLogDirectory(), `${day}.jsonl`))))
+      ).flat()) {
         if (!['finished', 'pool_unavailable'].includes(safeString(record.event))) continue;
         rows.push({
           id: safeString(record.request_id),
@@ -274,6 +326,8 @@ export async function getCallLogs(
           outcome: record.outcome === 'error' ? 'error' : 'success',
           httpStatus: safeNumber(record.http_status),
           category: safeString(record.category),
+          errorMessage: callErrorMessage(record.error_message ?? record.error),
+          errorCode: safeString(record.error_code) || undefined,
           keyLabel: safeString(record.key_label) || safeString(record.key_id),
           retryAt: safeString(record.retry_at) || undefined,
           durationMs: safeNumber(record.duration_ms),
@@ -300,7 +354,7 @@ export async function getCallLogs(
       seen.add(key);
       return true;
     })
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp) || a.id.localeCompare(b.id));
   return {
     rows: filtered.slice((query.page - 1) * query.limit, query.page * query.limit),
     total: filtered.length,

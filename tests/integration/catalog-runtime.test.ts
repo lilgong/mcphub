@@ -27,6 +27,36 @@ describe('catalog runtime isolation', () => {
     return { status: response.status, body: await response.json() };
   };
 
+  const accountKey = async (server: string, catalog: string, names: string[]) => {
+    const group = (
+      await request('/api/user-groups', {
+        name: `Accounts for ${server}`,
+        enabled: true,
+        servers: [{ name: server, targets: names }],
+      })
+    ).body.data;
+    for (const name of names) {
+      const accounts = (await request('/api/workspace-credentials')).body.data;
+      const current = accounts.find(
+        (item: { catalog: string; name: string }) => item.catalog === catalog && item.name === name,
+      );
+      const saved = await request(
+        `/api/workspace-credentials/${catalog}/${name}`,
+        {
+          revision: current?.revision,
+          allowedGroupIds: [...(current?.allowedGroupIds ?? []), group.id],
+          values: {},
+          files: {},
+        },
+        dashboard,
+        'PUT',
+      );
+      expect(saved.status).toBe(200);
+    }
+    return (await request('/api/auth/keys', { name: server, userGroupId: group.id })).body.data
+      .token as string;
+  };
+
   const rpc = async (
     path: string,
     method: string,
@@ -136,6 +166,9 @@ describe('catalog runtime isolation', () => {
         PATH: process.env.PATH,
         HOME: directory,
         NODE_ENV: 'test',
+        MCPHUB_WORKERS: '{}',
+        MCPHUB_REQUIRE_WORKERS: 'false',
+        XDG_CACHE_HOME: join(directory, 'cache'),
         USE_DB: 'false',
         PORT: String(port),
         MCPHUB_SETTING_PATH: join(directory, 'settings.json'),
@@ -314,10 +347,12 @@ describe('catalog runtime isolation', () => {
   });
 
   it('keeps fixture target selection inside the chosen catalog', async () => {
+    const token = await accountKey('atlas::fixtures', 'atlas', ['fixture-a', 'fixture-b']);
     for (const target of ['fixture-a', 'fixture-b']) {
       const path = '/mcp/atlas/fixtures';
-      const init = await initialize(path, bearer, target);
-      const tools = await rpc(path, 'tools/list', {}, init.session, bearer, target);
+      const init = await initialize(path, token, target);
+      const tools = await rpc(path, 'tools/list', {}, init.session, token, target);
+      if (!tools.body.result) throw new Error(JSON.stringify(tools.body));
       const call = await rpc(
         path,
         'tools/call',
@@ -326,7 +361,7 @@ describe('catalog runtime isolation', () => {
           arguments: {},
         },
         init.session,
-        bearer,
+        token,
         target,
       );
       expect(JSON.parse(call.body.result.content[0].text).credential).toBe(target);
@@ -444,18 +479,20 @@ describe('catalog runtime isolation', () => {
         created.push(`${catalog}::cacheprobe`);
       }
       for (const catalog of ['atlas', 'toolathlon']) {
+        const token = await accountKey(`${catalog}::cacheprobe`, catalog, ['official', 'fixture3']);
         for (const target of ['official', 'fixture3']) {
           const path = `/mcp/${catalog}/cacheprobe`;
-          const init = await initialize(path, bearer, target);
+          const init = await initialize(path, token, target);
           expect(init.status).toBe(200);
           const result = await rpc(
             path,
             'tools/call',
             { name: 'cacheprobe-identity', arguments: {} },
             init.session,
-            bearer,
+            token,
             target,
           );
+          if (result.body.result.isError) throw new Error(JSON.stringify(result.body.result));
           expect(result.body.result.isError).not.toBe(true);
           const identity = JSON.parse(result.body.result.content[0].text);
           expect(identity.cachedCredentials).toEqual([

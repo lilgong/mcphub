@@ -1,4 +1,5 @@
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { appendFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { historicalLogCatalogs } from '../../src/services/logCatalogService.js';
@@ -63,6 +64,36 @@ describe('historical log namespace discovery', () => {
     expect(await historicalLogCatalogs()).toEqual(['atlas']);
     now.mockReturnValue(32000);
     expect(await historicalLogCatalogs()).toEqual(['atlas', 'toolathlon']);
+  });
+
+  it('reads only appended complete lines and preserves historical names after log archival', async () => {
+    const file = join(root, 'audit/2026-10-26.jsonl');
+    await mkdir(join(root, 'audit'));
+    const first =
+      JSON.stringify({ event: 'finished', server: 'atlas::fetch', note: '中文' }) + '\n';
+    await writeFile(file, first);
+    expect(await historicalLogCatalogs('one')).toEqual(['atlas']);
+    const spy = jest.spyOn(fs, 'createReadStream');
+    expect(await historicalLogCatalogs('two')).toEqual(['atlas']);
+    expect(spy).not.toHaveBeenCalled();
+    const next = JSON.stringify({ event: 'finished', server: 'toolathlon::fetch' });
+    await appendFile(file, next.slice(0, 20));
+    expect(await historicalLogCatalogs('three')).toEqual(['atlas']);
+    expect(spy.mock.calls[0][1]).toMatchObject({ start: Buffer.byteLength(first) });
+    await appendFile(file, next.slice(20) + '\n');
+    expect(await historicalLogCatalogs('four')).toEqual(['atlas', 'toolathlon']);
+    await rm(file);
+    expect(await historicalLogCatalogs('five')).toEqual(['atlas', 'toolathlon']);
+  });
+
+  it('rescans replacement or truncated sources without dropping older namespace labels', async () => {
+    await write('audit/2026-10-26.jsonl', [{ event: 'finished', server: 'toolathlon::fetch' }]);
+    expect(await historicalLogCatalogs('before')).toEqual(['toolathlon']);
+    await writeFile(
+      join(root, 'audit/2026-10-26.jsonl'),
+      JSON.stringify({ event: 'finished', server: 'new::x' }) + '\n',
+    );
+    expect(await historicalLogCatalogs('after')).toEqual(['new', 'toolathlon']);
   });
 
   it('treats absent log roots as empty history', async () => {

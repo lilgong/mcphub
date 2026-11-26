@@ -74,3 +74,95 @@ The dashboard surfaces basic server connection statistics from `getServerConnect
 
 - [Database Configuration](/configuration/database-configuration) — enable PostgreSQL to unlock activity logging.
 - [Authentication & Security](/features/authentication) — how the management API and bearer-key authentication work.
+
+## Yibu API usage
+
+Failed tool calls retain a sanitized error message of up to 4,096 characters in the
+durable audit and dashboard call details. Successful response bodies and request
+arguments are not added to these records. HTTP status is extracted only when explicitly
+available; transport and MCP protocol failures can have no HTTP status. Historical
+records without saved messages cannot recover their original error text.
+
+Concurrent audit appends share bounded durable writes. Every invocation still waits
+for its admission record to reach disk before dispatch, and for completion records
+before returning. This reduces filesystem sync overhead without making audit writes
+fire-and-forget; slow or unavailable storage can still delay or reject calls.
+
+The dashboard's call statistics default to **Yibu API usage**. Select a month or browser-local
+calendar date range to see requests by MCP and actual upstream credential. Keys appear
+as their last four characters plus a SHA-256 fingerprint, distinct from the Hub key
+used by the caller. Entering an upstream key calculates its fingerprint in the browser;
+the statistics endpoint never accepts the raw key. MCP search is case-insensitive and
+matches part of a registration name, including names such as `serper-a`.
+
+The five instrumented Brave Search, Exa, Oxylabs, Lara Translate and WeatherAPI wrappers
+supply their existing upstream request records. HTTP forwarding, including Serper and
+Jina Reader, is identified by the recorded `yibuapi.com` upstream host, regardless of
+the registration name. Official-provider requests do not enter Yibu usage. One completed
+upstream attempt counts once, including failures and retries; queue events and Hub
+authentication failures do not count. This measures attempts, not the provider's bill.
+If a request carries multiple distinct credentials it counts once per credential but
+only once in the total. Missing historical key metadata appears as an unknown key.
+
+Daily aggregates and request fingerprints are persisted in
+`MCPHUB_USAGE_STATS_DIR`, defaulting to `usage-statistics/yibu` beside the audit directory.
+The directory must be on persistent storage and have a single Hub writer. First use
+imports existing logs; subsequent queries read only appended bytes. Source offsets and
+request fingerprints prevent replay, copied files or rotation from doubling counts.
+Summaries are written before offsets so interrupted imports can safely resume. The
+metadata index stores no request bodies or full keys. Current configuration can match
+historical credential fingerprints to key suffixes, which are then retained across key
+changes. Removed keys with no previously known suffix remain queryable by fingerprint.
+
+Original logs are preserved for every MCP. Imported usage totals survive later archival
+of the source logs, but records must be imported before those logs are removed. There
+is no automatic log deletion. Keep the usage index when retaining long-term counts;
+the index includes a small per-request deduplication ledger as well as daily totals,
+so its size also grows with usage. A cold import can take longer; the UI indicates
+loading instead of displaying stale totals. Generic tool and upstream statistics remain
+available as separate metrics.
+
+Administrators can query `GET /api/logs/statistics?metric=yibu` with optional `server`,
+`catalog` and `credentialId` (16 lowercase hexadecimal characters). `start` and `end`,
+when supplied, must span whole calendar days in the optional IANA `timeZone`
+(default `UTC`). Send the corresponding UTC instants. For example, November 22
+in `Asia/Shanghai` spans `2026-11-21T16:00:00.000Z` through
+`2026-11-22T15:59:59.999Z`. This preserves DST and fractional offsets, with the
+same maximum 366-day range as other statistics. Responses include MCP totals in `rows`
+and the MCP/key breakdown in `keyRows`, with `credentialId` and an optional
+`credentialSuffix`. Other metrics retain their existing time precision.
+
+Call details and statistics in the dashboard use the browser time zone, shown beside
+the date fields. The call-details API accepts optional UTC `start` and `end`
+instants for one local day (including DST); without them, `date` retains its UTC
+meaning. Files and timestamps remain UTC. Detail readers include overlapping UTC
+files and filter by timestamp. Yibu rollups are persisted independently per requested
+time zone; the first query builds that zone's historical index and later queries
+update it incrementally. Existing UTC indexes are retained. When archiving raw logs,
+retain the indexes for the time zones you need; an old UTC daily total alone cannot
+reconstruct an exact local day after its source logs are removed.
+
+### Incremental tool-call statistics
+
+The tool-call metric imports audit records into persistent per-source snapshots and
+small UTC daily summaries. Only `finished` events count; HTTP attempts, retries and
+diagnostic records do not add tool calls. The first query imports existing history.
+Later queries stat the source files and read only appended bytes; concurrent queries
+share serialized import work instead of rescanning the same raw files. Processing
+yields periodically so indexing does not monopolize the Hub event loop.
+
+The default index location is `usage-statistics/tool/<source-hash>` beside the audit
+directory, or beneath `MCPHUB_TOOL_STATS_DIR` when configured. Source identity keeps
+different audit roots separate. Cursors and source snapshots commit atomically;
+partial trailing lines are retried on append, repeated completion IDs in one source
+file count once, and source replacement/truncation rebuilds that file's contribution.
+Indexes survive Hub restarts and may retain imported totals after raw log archival.
+Keep the index when keeping historical counts; deleting it requires the original
+logs to reconstruct those counts. The index does not contain tool arguments,
+results or credentials. It grows with completed calls because exact deduplication
+and arbitrary timestamp ranges retain compact metadata per call.
+
+Whole UTC days query the small summaries. Only partial boundary days read compact
+event metadata, preserving exact browser-local dates, DST and arbitrary API ranges.
+Filtering by space or MCP does not rescan unchanged raw audit history. Indexing is
+on demand and adds no new synchronous work to the MCP invocation/audit write path.

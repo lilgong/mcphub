@@ -1,3 +1,4 @@
+import { copyInputSchema } from '../utils/inputSchema.js';
 /**
  * Smart Routing Service
  *
@@ -61,22 +62,8 @@ const getServerInfos = (): ServerInfo[] => {
 };
 
 /**
- * Helper function to clean $schema field from inputSchema
- */
-const cleanInputSchema = (schema: any): any => {
-  if (!schema || typeof schema !== 'object') {
-    return schema;
-  }
-
-  const cleanedSchema = { ...schema };
-  delete cleanedSchema.$schema;
-
-  return cleanedSchema;
-};
-
-/**
  * The tool as a model sees it in search_tools and describe_tool results: name,
- * description, the cleaned inputSchema and serverName, plus the optional fields
+ * description, the upstream inputSchema and serverName, plus the optional fields
  * the smartRouting.toolDefinitionFields setting selects. Not a spread of the
  * cached tool, which also carries client-facing data such as base64 icons.
  */
@@ -88,7 +75,7 @@ const buildModelFacingTool = (
 ) => ({
   name: tool.name,
   description,
-  inputSchema: cleanInputSchema(tool.inputSchema),
+  inputSchema: copyInputSchema(tool.inputSchema),
   ...Object.fromEntries(
     fields.filter((field) => tool[field] !== undefined).map((field) => [field, tool[field]]),
   ),
@@ -576,7 +563,7 @@ export const handleSearchToolsRequest = async (
         return {
           name: result.toolName,
           description: result.description || '',
-          inputSchema: cleanInputSchema(result.inputSchema || {}),
+          inputSchema: copyInputSchema(result.inputSchema || {}),
           serverName: result.serverName,
         };
       }

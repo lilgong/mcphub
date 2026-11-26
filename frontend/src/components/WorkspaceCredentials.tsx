@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { apiDelete, apiGet, apiPut, apiPost, type ApiResponse } from '../utils/fetchInterceptor';
+import WorkspaceRunStatus from './WorkspaceRunStatus';
+import WorkspaceEnabledSwitch from './WorkspaceEnabledSwitch';
+import type { WorkspaceSummary } from '../../../src/types/workspace';
+import { apiDelete, apiGet, apiPut, type ApiResponse } from '../utils/fetchInterceptor';
 
-interface Workspace {
-  catalog: string;
-  name: string;
-  revision: string;
-  allowedGroupIds: string[];
-  fields: string[];
-  files: string[];
-  connections: Record<string, Record<string, string>>;
-  busy: boolean;
-  expired?: boolean;
-}
+type Workspace = WorkspaceSummary;
 /** Write-only account material: discovery exposes field/file names, never values. */
 export default function WorkspaceCredentials() {
   const { t } = useTranslation();
@@ -35,6 +28,13 @@ export default function WorkspaceCredentials() {
     ]);
     if (!profiles.success) throw new Error(profiles.message || t('workspaceCredentials.failed'));
     setWorkspaces(profiles.data || []);
+    setSelected((current) =>
+      current
+        ? ((profiles.data || []).find(
+            (entry) => entry.catalog === current.catalog && entry.name === current.name,
+          ) ?? null)
+        : null,
+    );
     setGroups(callingGroups.data || []);
   }, [t]);
   useEffect(() => {
@@ -116,6 +116,7 @@ export default function WorkspaceCredentials() {
             onClick={() => edit(workspace)}
           >
             {workspace.catalog} · {workspace.name}
+            {workspace.enabled === false ? ` · ${t('workspaceCredentials.disabled')}` : ''}
             {workspace.busy ? ` · ${t('workspaceCredentials.inUse')}` : ''}
           </button>
         ))}
@@ -297,24 +298,10 @@ export default function WorkspaceCredentials() {
             </button>
           )}
         </div>
-        {selected?.expired && (
-          <button
-            type="button"
-            className="hub-btn danger"
-            onClick={async () => {
-              if (!window.confirm(t('workspaceCredentials.recoveryConfirm'))) return;
-              const result = await apiPost<ApiResponse>(
-                `/workspace-credentials/${encodeURIComponent(catalog)}/${encodeURIComponent(name)}/release`,
-              );
-              if (result.success) {
-                edit(null);
-                await reload();
-              } else setMessage(result.message || t('workspaceCredentials.failed'));
-            }}
-          >
-            {t('workspaceCredentials.recover')}
-          </button>
+        {selected && (
+          <WorkspaceEnabledSwitch workspace={selected} disabled={busy} onChanged={reload} />
         )}
+        {selected && <WorkspaceRunStatus workspace={selected} onRecovered={reload} />}
         {message && (
           <p role="status" className="text-sm text-[var(--hub-ink-2)]">
             {message}

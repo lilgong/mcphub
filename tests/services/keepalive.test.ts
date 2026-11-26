@@ -245,7 +245,7 @@ describe('Keepalive Functionality', () => {
     });
 
     it('should not send pings after connection is closed', async () => {
-      jest.useFakeTimers();
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
 
       await handleSseConnection(mockReq as Request, mockRes as Response);
 

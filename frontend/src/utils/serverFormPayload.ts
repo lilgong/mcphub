@@ -279,6 +279,28 @@ export const buildServerPayload = ({
       Object.entries(env).filter(([name]) => delegated.has(name)),
     );
     if (Object.keys(startupEnv).length) config.env = startupEnv;
+    // A single resident connection converted in this form can be switched back.
+    // Its task target still controls execution; keep the dormant launch fields.
+    const task = formData.targets.length === 1 ? formData.targets[0] : undefined;
+    if (task?.kind === 'task' && task.config) {
+      if (
+        serverType === 'stdio' &&
+        formData.command.trim() &&
+        task.config.command === formData.command.trim()
+      ) {
+        config.command = formData.command.trim();
+        config.args = formData.args;
+        config.env = env;
+      } else if (
+        (serverType === 'sse' || serverType === 'streamable-http') &&
+        formData.url.trim() &&
+        task.config.url === formData.url.trim()
+      ) {
+        config.url = formData.url.trim();
+        config.env = env;
+        config.headers = headers;
+      }
+    }
     return { name: formData.name.trim(), config };
   }
 

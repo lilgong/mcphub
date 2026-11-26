@@ -179,7 +179,7 @@ describe('mcpService reconnect config integration', () => {
   it.each([true, false])(
     'preserves keepalive opt-in (%s) after shared tool reconnect',
     async (enabled) => {
-      jest.useFakeTimers();
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
       const config = {
         name: 'clock-server',
         type: 'streamable-http',
@@ -274,7 +274,7 @@ describe('mcpService reconnect config integration', () => {
   );
 
   it('does not replace the shared keepalive timer on isolated session reconnect', async () => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
     const config = {
       name: 'clock-server',
       type: 'streamable-http',

@@ -1,5 +1,6 @@
 import { catalogRouteMiddleware } from './middlewares/catalog.js';
 import { migrateOwnedCallGroups } from './services/userGroupService.js';
+import { migrateAccountConfigurations } from './services/accountConfigurationMigration.js';
 import express from 'express';
 import { relayRuntimeService } from './services/relayRuntimeService.js';
 import cors, { type CorsOptions } from 'cors';
@@ -94,6 +95,7 @@ export class AppServer {
       // Initialize default admin user if no users exist
       await initializeDefaultUser();
       await migrateOwnedCallGroups();
+      await migrateAccountConfigurations();
 
       // Initialize OAuth provider if configured (for proxying upstream MCP OAuth)
       await initOAuthProvider();

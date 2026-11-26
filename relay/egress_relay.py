@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Authenticated, allow-listed MCP residential egress relay."""
+"""Authenticated public HTTPS MCP residential egress relay."""
 
 from __future__ import annotations
 
 import base64
 import contextlib
 import hmac
+import hashlib
+import importlib.util
+import ipaddress
 import http.client
 import json
 import math
@@ -27,25 +30,21 @@ from pathlib import Path
 from typing import Any
 
 
-ALLOWED_TARGETS = {
-    "eutils.ncbi.nlm.nih.gov": ("ncbi", "/entrez/eutils/"),
-    "www.ncbi.nlm.nih.gov": ("ncbi", "/pmc/articles/"),
-    "en.wikipedia.org": ("wikipedia", "/w/api.php"),
-    "export.arxiv.org": ("arxiv", "/api/query", "/pdf/"),
-    "arxiv.org": (
-        "arxiv", "/abs/", "/pdf/", "/html/", "/e-print/", "/src/",
-    ),
-    "www.arxiv.org": (
-        "arxiv", "/abs/", "/pdf/", "/html/", "/e-print/", "/src/",
-    ),
-    "nominatim.openstreetmap.org": ("osm-nominatim", "/search", "/reverse"),
-    "overpass-api.de": ("osm-overpass", "/api/interpreter"),
-    "maps.mail.ru": ("osm-overpass", "/osm/tools/overpass/api/interpreter"),
-    "router.project-osrm.org": ("osm-routing", "/route/v1/"),
-    "routing.openstreetmap.de": (
-        "osm-routing", "/routed-car/route/v1/", "/routed-bike/route/v1/",
-        "/routed-foot/route/v1/",
-    ),
+# Known upstream hosts share category-wide quotas; paths are transparent to MCPs.
+UPSTREAM_GROUPS = {
+    "eutils.ncbi.nlm.nih.gov": "ncbi",
+    "www.ncbi.nlm.nih.gov": "ncbi",
+    "pmc.ncbi.nlm.nih.gov": "ncbi",
+    "en.wikipedia.org": "wikipedia",
+    "export.arxiv.org": "arxiv",
+    "arxiv.org": "arxiv",
+    "www.arxiv.org": "arxiv",
+    "nominatim.openstreetmap.org": "osm-nominatim",
+    "overpass-api.de": "osm-overpass",
+    "overpass.private.coffee": "osm-overpass",
+    "maps.mail.ru": "osm-overpass",
+    "router.project-osrm.org": "osm-routing",
+    "routing.openstreetmap.de": "osm-routing",
 }
 TOKEN = (os.getenv("MCP_RELAY_TOKEN") or "").strip()
 CONTROL_TOKEN = (os.getenv("MCPHUB_RELAY_CONTROL_TOKEN") or "").strip()
@@ -59,8 +58,28 @@ PORT = int(os.getenv("MCP_RELAY_PORT") or "3985")
 MIN_INTERVAL = float(os.getenv("MCP_RELAY_MIN_INTERVAL_SECONDS") or "1.0")
 REQUEST_TIMEOUT = float(os.getenv("MCP_RELAY_REQUEST_TIMEOUT_SECONDS") or "85")
 UPSTREAM_TIMEOUT = float(os.getenv("MCP_RELAY_UPSTREAM_TIMEOUT_SECONDS") or "45")
+ARXIV_IMMEDIATE_TIMEOUT_RETRY = os.getenv("MCP_RELAY_ARXIV_IMMEDIATE_TIMEOUT_RETRY", "false").lower() in {"true", "1", "yes"}
 MAX_RESPONSE_BYTES = int(os.getenv("MCP_RELAY_MAX_RESPONSE_BYTES") or str(64 * 1024 * 1024))
 LOG_PATH = Path(os.getenv("MCP_RELAY_USAGE_LOG") or "./data/relay/usage.jsonl")
+_cache_spec = importlib.util.spec_from_file_location("mcphub_overpass_cache", Path(__file__).with_name("overpass_cache.py"))
+_cache_module = importlib.util.module_from_spec(_cache_spec)
+_cache_spec.loader.exec_module(_cache_module)
+OVERPASS_CACHE = (
+    _cache_module.OverpassCache(
+        os.getenv("MCP_RELAY_OVERPASS_CACHE_PATH") or LOG_PATH.parent / "overpass-cache.sqlite3",
+        ttl=float(os.getenv("MCP_RELAY_OVERPASS_CACHE_DAYS") or "30") * 86400,
+        refresh=float(os.getenv("MCP_RELAY_OVERPASS_REFRESH_DAYS") or "7") * 86400,
+    ) if os.getenv("MCP_RELAY_OVERPASS_CACHE_ENABLED", "true").lower() not in {"false", "0", "off"} else None
+)
+_arxiv_spec = importlib.util.spec_from_file_location("mcphub_arxiv_cache", Path(__file__).with_name("arxiv_cache.py"))
+_arxiv_module = importlib.util.module_from_spec(_arxiv_spec)
+_arxiv_spec.loader.exec_module(_arxiv_module)
+ARXIV_QUERY_CACHE = (
+    _arxiv_module.ArxivQueryCache(
+        os.getenv("MCP_RELAY_ARXIV_CACHE_PATH") or LOG_PATH.parent / "arxiv-query-cache.sqlite3",
+        ttl=float(os.getenv("MCP_RELAY_ARXIV_CACHE_HOURS") or "24") * 3600,
+    ) if os.getenv("MCP_RELAY_ARXIV_CACHE_ENABLED", "true").lower() not in {"false", "0", "off"} else None
+)
 WIKIPEDIA_LANES = 1
 LIMITS_PATH = LOG_PATH.parent / "limits.json"
 RELAY_USER_AGENT = os.getenv("MCP_RELAY_USER_AGENT") or "MCPHubRelay/1.0 (https://github.com/lilgong/mcphub)"
@@ -73,6 +92,22 @@ class RelayAccountError(RuntimeError):
 
 class RelayUpstreamError(RuntimeError):
     """A proxy or target connection failed without an HTTP response."""
+
+
+class RelayTargetError(ValueError):
+    """The URL or its resolved address is not a public HTTPS destination."""
+
+
+class RelayEndpointCooling(RelayUpstreamError):
+    """An Overpass node is cooling; the MCP can try its next configured node."""
+
+
+class RelayUpstreamTimeout(RelayUpstreamError):
+    """One network attempt timed out while its total request budget remains."""
+
+    def __init__(self, message, phase="network_wait"):
+        self.phase = phase
+        super().__init__(message)
 
 
 class RelayRequestExpired(RuntimeError):
@@ -88,14 +123,19 @@ class RelayRequestCancelled(RuntimeError):
 
 
 class RequestBudget:
-    def __init__(self, seconds: float, disconnected=None):
+    def __init__(self, seconds: float, disconnected=None, *, network_seconds=None):
         if not math.isfinite(seconds) or seconds <= 0:
             raise ValueError("timeout_seconds must be positive and finite")
         self.deadline = time.monotonic() + seconds
+        self.total_seconds = seconds
+        self.network_seconds = UPSTREAM_TIMEOUT if network_seconds is None else network_seconds
         self.disconnected = disconnected
         self.queued_ms = 0.0
         self.attempts = 0
+        self.public_targets: dict[tuple[str, int], tuple[str, ...]] = {}
         self.request_id = uuid.uuid4().hex
+        self.cooldown_origin: tuple[str, int] | None = None
+        self.attempt_deadline: float | None = None
 
     def remaining(self, phase="queue") -> float:
         if self.disconnected and self.disconnected():
@@ -103,6 +143,11 @@ class RequestBudget:
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             raise RelayRequestExpired(phase)
+        if self.attempt_deadline is not None:
+            attempt_remaining = self.attempt_deadline - time.monotonic()
+            if attempt_remaining <= 0:
+                raise RelayUpstreamTimeout("Relay attempt deadline exceeded", phase="upstream")
+            remaining = min(remaining, attempt_remaining)
         return remaining
 
 
@@ -137,19 +182,15 @@ def _ipwo_username_for_request(session_id: str | None = None) -> str:
             username,
             count=1,
         )
-    session_id = session_id or _new_ipwo_session_id()
+    # Honor the operator's IPWO mode. A rotating username has no sid/time;
+    # never silently turn it into a sticky session.
     if re.search(r"_sid_[^_]+", username):
         username = re.sub(
             r"_sid_[^_]+",
-            f"_sid_{session_id}",
+            f"_sid_{session_id or _new_ipwo_session_id()}",
             username,
             count=1,
         )
-    else:
-        # A dashboard-generated rotating username has no sid/time suffix.
-        # Pin it for ten minutes so one API workflow keeps a stable identity;
-        # Controller rotates the sid immediately when this exit actually fails.
-        username = f"{username}_sid_{session_id}_time_10"
     return username
 
 
@@ -159,8 +200,12 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
+    def __init__(self, budget: RequestBudget | None = None):
+        super().__init__()
+        self.budget = budget
+
     def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
-        _validate_url(newurl)
+        _validate_url(newurl, self.budget)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -169,6 +214,7 @@ class Controller:
         self.lock = threading.Lock()
         self.last_started = 0.0
         self.blocked_until = 0.0
+        self.node_blocked_until: dict[tuple[str, int], float] = {}
         self.account_error: str | None = None
         self.session_id = _new_ipwo_session_id()
         self.rotation_count = 0
@@ -188,12 +234,20 @@ class Controller:
         started = time.monotonic()
         with self.slots:
             self.pending.append(ticket)
+            reported = False
             try:
                 while True:
                     remaining = budget.remaining("queue")
                     if self.account_error:
                         raise RelayAccountError(self.account_error)
                     now = time.monotonic()
+                    # A cooling Overpass node must not occupy the shared FIFO head.
+                    node_until = self.node_blocked_until.get(budget.cooldown_origin, 0.0)
+                    if node_until > now:
+                        _append_log({"event": "endpoint_cooldown", "parent_request_id": budget.request_id,
+                                     "host": budget.cooldown_origin[0],
+                                     "retry_after_seconds": round(node_until - now, 3)})
+                        raise RelayEndpointCooling("Overpass endpoint cooling down")
                     delay = max(self.last_started + self.min_interval - now,
                                 self.blocked_until - now, 0.0)
                     capacity = self.max_concurrency is None or self.active < self.max_concurrency
@@ -203,6 +257,17 @@ class Controller:
                         self.active += 1
                         self.slots.notify_all()
                         return
+                    if not reported:
+                        _append_log({
+                            "event": "queue_wait", "parent_request_id": budget.request_id,
+                            "active": self.active, "queued_ahead": self.pending.index(ticket),
+                            "max_concurrency": self.max_concurrency,
+                            "min_interval_ms": round(self.min_interval * 1000),
+                            "interval_wait_ms": round(max(self.last_started + self.min_interval - now, 0) * 1000),
+                            "cooldown_wait_ms": round(max(self.blocked_until - now, 0) * 1000),
+                            "remaining_ms": round(remaining * 1000),
+                        })
+                        reported = True
                     self.slots.wait(timeout=min(remaining, delay or 0.2, 0.2))
             finally:
                 budget.queued_ms += (time.monotonic() - started) * 1000
@@ -210,10 +275,14 @@ class Controller:
                     self.pending.remove(ticket)
                     self.slots.notify_all()
 
-    def _set_cooldown(self, seconds: float) -> None:
+    def _set_cooldown(self, seconds: float, origin: tuple[str, int] | None = None) -> None:
         with self.lock:
             until = time.monotonic() + max(seconds, 0.0)
-            self.blocked_until = max(self.blocked_until, until)
+            if origin is None:
+                self.blocked_until = max(self.blocked_until, until)
+            else:
+                self.node_blocked_until[origin] = max(self.node_blocked_until.get(origin, 0.0), until)
+            self.slots.notify_all()
 
     def _latch_account_error(self, message: str) -> None:
         with self.lock:
@@ -250,15 +319,36 @@ class Controller:
         parsed_target = urllib.parse.urlsplit(url)
         metadata = {"parent_request_id": budget.request_id,
                     "host": parsed_target.hostname, "path": parsed_target.path}
+        group = UPSTREAM_GROUPS.get(parsed_target.hostname)
+        overpass = group == "osm-overpass"
+        rotating_arxiv = group == "arxiv" and not re.search(r"_sid_[^_]+", IPWO_PROXY_USERNAME)
+        # A rotating proxy uses a new exit for each request. A single failed exit
+        # must not make an Overpass node unavailable to every other caller.
+        cool_node = overpass and bool(re.search(r"_sid_[^_]+", IPWO_PROXY_USERNAME))
+        origin = ((parsed_target.hostname or "").lower(), parsed_target.port or 443) if cool_node else None
+        budget.cooldown_origin = origin
+        # Overpass MCP already walks its configured fallback nodes. Do not spend
+        # the entire per-node budget repeating a failing endpoint inside Relay.
+        attempt_limit = 1 if overpass else 3
+        immediate_timeouts = ARXIV_IMMEDIATE_TIMEOUT_RETRY and UPSTREAM_GROUPS.get(parsed_target.hostname) == "arxiv"
         def cooldown(seconds):
-            self._set_cooldown(seconds)
-            _append_log({**metadata, "event": "cooldown", "seconds": seconds})
+            if rotating_arxiv or (overpass and not cool_node):
+                return
+            if origin is None:
+                self._set_cooldown(seconds)
+            else:
+                self._set_cooldown(seconds, origin)
+            _append_log({**metadata, "event": "cooldown", "seconds": seconds,
+                         "scope": "endpoint" if origin else "upstream_group"})
 
-        for attempt in range(3):
+        for attempt in range(attempt_limit):
             queued = time.monotonic()
             _append_log({**metadata, "event": "request_queued", "attempt": attempt + 1})
             self._wait_for_slot(budget)
             budget.attempts = attempt + 1
+            if group == "ncbi":
+                # One deadline spans CONNECT, headers and all body reads.
+                budget.attempt_deadline = time.monotonic() + budget.network_seconds
             try:
                 budget.remaining("upstream")
                 request_options = {"session_id": self._current_session_id(), "budget": budget}
@@ -277,33 +367,54 @@ class Controller:
                                 else "network_error")
                     _append_log({**metadata, "event": "http_finished", "request_id": request_id,
                                  "category": category, "error_type": type(exc).__name__,
+                                 "timeout_phase": getattr(exc, "phase", None),
+                                 "request_budget_seconds": budget.total_seconds,
+                                 "network_timeout_seconds": budget.network_seconds,
                                  "duration_ms": round((time.monotonic() - attempt_started) * 1000, 1)})
                     raise
-                status, response_headers, _, _ = final
+                status, response_headers, response_body, _ = final
                 _append_log({**metadata, "event": "http_finished", "request_id": request_id,
                              "status": status, "attempt": attempt + 1,
                              "category": "rate_limit" if status == 429 else "upstream_error" if status >= 400 else "success",
                              "duration_ms": round((time.monotonic() - attempt_started) * 1000, 1),
-                             "retry_after_seconds": _retry_after(response_headers)})
+                             "retry_after_seconds": _retry_after(response_headers),
+                             **_failure_response_metadata(status, response_headers, response_body)})
                 if status == 407:
                     self._latch_account_error("IPWO_PROXY_AUTH_FAILED: IPWO rejected the proxy credential")
                 abuse = _is_abuse_response(final)
                 if not abuse and status != 429 and status < 500:
                     return (*final, attempt + 1, budget.queued_ms)
-                if attempt == 2:
+                if attempt == attempt_limit - 1:
                     if status == 429:
                         cooldown(max(_retry_after(response_headers), 60.0))
+                    elif overpass:
+                        cooldown(max(_retry_after(response_headers), 5.0))
                     return (*final, attempt + 1, budget.queued_ms)
                 self._rotate_session()
-                cooldown(max(_retry_after(response_headers), 5.0 * (2**attempt)))
+                if rotating_arxiv or (immediate_timeouts and status == 504 and _retry_after(response_headers) == 0):
+                    reason = "rotating_exit" if rotating_arxiv else "upstream_timeout"
+                    _append_log({**metadata, "event": "retry_scheduled", "reason": reason, "delay_seconds": 0, "next_attempt": attempt + 2})
+                else:
+                    cooldown(max(_retry_after(response_headers), 5.0 * (2**attempt)))
             except RelayAccountError as exc:
                 self._latch_account_error(str(exc))
-            except RelayUpstreamError:
-                if attempt == 2:
+            except RelayRequestExpired as exc:
+                if overpass and exc.phase == "upstream":
+                    cooldown(5.0)
+                raise
+            except RelayUpstreamError as exc:
+                if attempt == attempt_limit - 1:
+                    if overpass:
+                        cooldown(5.0)
                     raise
                 self._rotate_session()
-                cooldown(5.0 * (2**attempt))
+                if rotating_arxiv or (immediate_timeouts and isinstance(exc, RelayUpstreamTimeout)):
+                    reason = "rotating_exit" if rotating_arxiv else "upstream_timeout"
+                    _append_log({**metadata, "event": "retry_scheduled", "reason": reason, "delay_seconds": 0, "next_attempt": attempt + 2})
+                else:
+                    cooldown(5.0 * (2**attempt))
             finally:
+                budget.attempt_deadline = None
                 # Publish any cooldown before releasing capacity. A retry joins
                 # behind already queued requests rather than holding the slot.
                 with self.slots:
@@ -374,7 +485,18 @@ DEFAULT_LIMITS = {
     "osm-overpass": {"minIntervalMs": 0},
     "osm-routing": {"minIntervalMs": 1000},
 }
+DEFAULT_TIMEOUTS = {
+    "ncbi": {"networkTimeoutSeconds": 60, "requestTimeoutSeconds": 210},
+    "ncbi-key": {"networkTimeoutSeconds": 60, "requestTimeoutSeconds": 210},
+    "ncbi-pmc": {"networkTimeoutSeconds": 60, "requestTimeoutSeconds": 210},
+    "osm-overpass": {"networkTimeoutSeconds": 120, "requestTimeoutSeconds": 140},
+    "osm-nominatim": {"networkTimeoutSeconds": 45, "requestTimeoutSeconds": 140},
+    "wikipedia": {"networkTimeoutSeconds": 45, "requestTimeoutSeconds": 140},
+    "arxiv": {"networkTimeoutSeconds": 60, "requestTimeoutSeconds": 140},
+}
+TIMEOUTS = {}
 CONTROLLERS = {name: Controller(0) for name in DEFAULT_LIMITS}
+HTTPS_CONTROLLERS: dict[tuple[str, int], Controller] = {}
 
 
 def apply_limits(values: dict, *, persist: bool = True) -> None:
@@ -382,7 +504,7 @@ def apply_limits(values: dict, *, persist: bool = True) -> None:
         raise ValueError("Supply limits for every supported upstream category")
     normalized = {}
     for name, item in values.items():
-        if not isinstance(item, dict) or set(item) - {"minIntervalMs", "concurrency"}:
+        if not isinstance(item, dict) or set(item) - {"minIntervalMs", "concurrency", "networkTimeoutSeconds", "requestTimeoutSeconds"}:
             raise ValueError("Invalid upstream limit")
         interval = item.get("minIntervalMs", 0)
         concurrency = item.get("concurrency")
@@ -393,6 +515,15 @@ def apply_limits(values: dict, *, persist: bool = True) -> None:
         normalized[name] = {"minIntervalMs": interval}
         if concurrency is not None:
             normalized[name]["concurrency"] = concurrency
+        fallback = TIMEOUTS.get(name) or DEFAULT_TIMEOUTS.get(name) or {
+            "networkTimeoutSeconds": UPSTREAM_TIMEOUT, "requestTimeoutSeconds": REQUEST_TIMEOUT}
+        for field in ["networkTimeoutSeconds", "requestTimeoutSeconds"]:
+            value = item.get(field, fallback[field])
+            if type(value) not in {int, float} or not math.isfinite(value) or not 1 <= value <= 600:
+                raise ValueError("Invalid upstream timeout")
+            normalized[name][field] = value
+        if normalized[name]["networkTimeoutSeconds"] > normalized[name]["requestTimeoutSeconds"]:
+            raise ValueError("Network timeout must not exceed total request timeout")
     with CONFIG_LOCK:
         if persist:
             LIMITS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -408,6 +539,7 @@ def apply_limits(values: dict, *, persist: bool = True) -> None:
             finally:
                 os.close(directory_fd)
         for name, item in normalized.items():
+            TIMEOUTS[name] = {field: item[field] for field in ["networkTimeoutSeconds", "requestTimeoutSeconds"]}
             controller = CONTROLLERS[name]
             with controller.slots:
                 controller.min_interval = item["minIntervalMs"] / 1000
@@ -417,10 +549,25 @@ def apply_limits(values: dict, *, persist: bool = True) -> None:
 
 def current_limits() -> dict:
     with CONFIG_LOCK:
-        return {name: {"minIntervalMs": round(controller.min_interval * 1000), **({"concurrency": controller.max_concurrency} if controller.max_concurrency is not None else {})} for name, controller in CONTROLLERS.items()}
+        return {name: {"minIntervalMs": round(controller.min_interval * 1000), **TIMEOUTS[name], **({"concurrency": controller.max_concurrency} if controller.max_concurrency is not None else {})} for name, controller in CONTROLLERS.items()}
+
+
+def timeout_policy(url, group):
+    if group == "ncbi":
+        parsed = urllib.parse.urlsplit(url)
+        group = "ncbi-pmc" if parsed.hostname != "eutils.ncbi.nlm.nih.gov" else "ncbi-key" if urllib.parse.parse_qs(parsed.query).get("api_key") else "ncbi"
+    with CONFIG_LOCK:
+        return dict(TIMEOUTS.get(group) or {"networkTimeoutSeconds": UPSTREAM_TIMEOUT, "requestTimeoutSeconds": REQUEST_TIMEOUT})
 
 
 def controller_for_url(url: str, group: str) -> Controller:
+    if group == "https":
+        parsed = urllib.parse.urlsplit(url)
+        origin = ((parsed.hostname or "").lower().rstrip("."), parsed.port or 443)
+        with CONFIG_LOCK:
+            if origin not in HTTPS_CONTROLLERS:
+                HTTPS_CONTROLLERS[origin] = Controller(0)
+            return HTTPS_CONTROLLERS[origin]
     if group != "ncbi":
         return CONTROLLERS[group]
     parsed = urllib.parse.urlsplit(url)
@@ -451,19 +598,64 @@ def _is_abuse_response(response: tuple[int, dict[str, str], bytes, str]) -> bool
     )
 
 
-def _validate_url(url: str) -> str:
-    parsed = urllib.parse.urlsplit(url)
-    target = ALLOWED_TARGETS.get((parsed.hostname or "").lower())
-    if (
-        parsed.scheme != "https"
-        or parsed.port not in (None, 443)
-        or not target
-        or not any(parsed.path.startswith(prefix) for prefix in target[1:])
-    ):
-        raise ValueError("target is not an allowed MCP egress endpoint")
-    if parsed.username or parsed.password or parsed.fragment:
-        raise ValueError("target URL contains forbidden components")
-    return target[0]
+def _public_addresses(host: str, port: int, budget: RequestBudget) -> tuple[str, ...]:
+    key = (host, port)
+    if key in budget.public_targets:
+        return budget.public_targets[key]
+    try:
+        addresses = (ipaddress.ip_address(host),)
+    except ValueError:
+        if (not host or "%" in host or host == "localhost"
+                or host.endswith((".localhost", ".local", ".internal", ".home.arpa"))):
+            raise RelayTargetError("Target must be a public HTTPS address") from None
+        # Bound DNS work by the same request deadline, without blocking the
+        # handler on an unresponsive OS resolver. Never log resolver exceptions.
+        ready = threading.Event()
+        result: list[Any] = []
+        def lookup():
+            try:
+                result.append(socket.getaddrinfo(host, port, type=socket.SOCK_STREAM))
+            except OSError:
+                result.append(None)
+            finally:
+                ready.set()
+        threading.Thread(target=lookup, daemon=True).start()
+        deadline = time.monotonic() + min(5.0, budget.remaining("upstream"))
+        while not ready.wait(min(0.05, budget.remaining("upstream"))):
+            if time.monotonic() >= deadline:
+                budget.remaining("upstream")
+                raise RelayUpstreamTimeout("Target DNS lookup timed out")
+        budget.remaining("upstream")
+        if not result[0]:
+            raise RelayUpstreamError("Target DNS lookup failed")
+        addresses = tuple(ipaddress.ip_address(item[4][0]) for item in result[0])
+    if not addresses or any(not address.is_global or address.is_multicast
+                            or (getattr(address, "ipv4_mapped", None) is not None
+                                and not address.ipv4_mapped.is_global)
+                            for address in addresses):
+        raise RelayTargetError("Target must be a public HTTPS address")
+    # CONNECT is pinned to one validated address, while TLS SNI and the actual
+    # HTTPS Host header keep the original hostname. DNS cannot rebind the proxy
+    # tunnel to an internal address after validation.
+    values = tuple(dict.fromkeys(str(address) for address in addresses))
+    budget.public_targets[key] = values
+    return values
+
+
+def _validate_url(url: str, budget: RequestBudget | None = None) -> str:
+    if not isinstance(url, str) or any(char.isspace() or ord(char) < 32 for char in url):
+        raise RelayTargetError("Invalid target URL")
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        port = parsed.port or 443
+    except ValueError:
+        raise RelayTargetError("Invalid target URL") from None
+    if (parsed.scheme != "https" or not host or parsed.port == 0
+            or parsed.username is not None or parsed.password is not None or "#" in url):
+        raise RelayTargetError("Target must be HTTPS without user information or fragments")
+    _public_addresses(host, port, budget or RequestBudget(REQUEST_TIMEOUT))
+    return UPSTREAM_GROUPS.get(host, "https")
 
 
 def _proxy_tunnel_status(exc: Exception) -> int | None:
@@ -484,7 +676,7 @@ def _watch_socket(upstream_socket, budget: RequestBudget):
         while not finished.wait(0.1):
             try:
                 budget.remaining("upstream")
-            except (RelayRequestExpired, RelayRequestCancelled):
+            except (RelayRequestExpired, RelayRequestCancelled, RelayUpstreamTimeout):
                 try:
                     current = upstream_socket() if callable(upstream_socket) else upstream_socket
                     if current is not None:
@@ -506,6 +698,22 @@ class BudgetHTTPSConnection(http.client.HTTPSConnection):
     def __init__(self, host, *, budget: RequestBudget, **kwargs):
         self.budget = budget
         super().__init__(host, **kwargs)
+
+    def _tunnel(self):
+        hostname, port = self._tunnel_host, self._tunnel_port
+        original_headers = self._tunnel_headers
+        addresses = _public_addresses(hostname.lower().rstrip("."), port, self.budget)
+        address = next((value for value in addresses if ":" not in value), addresses[0])
+        self._tunnel_host = f"[{address}]" if ":" in address else address
+        self._tunnel_headers = {
+            key: value for key, value in original_headers.items() if key.lower() != "host"
+        }
+        self._tunnel_headers["Host"] = f"{self._tunnel_host}:{port}"
+        try:
+            return super()._tunnel()
+        finally:
+            self._tunnel_host = hostname
+            self._tunnel_headers = original_headers
 
     def connect(self):
         try:
@@ -568,7 +776,7 @@ def _fetch_once(
         urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}),
         BudgetHTTPSHandler(budget)
     ]
-    handlers.append(SafeRedirect() if allow_redirects else NoRedirect())
+    handlers.append(SafeRedirect(budget) if allow_redirects else NoRedirect())
     opener = urllib.request.build_opener(*handlers)
     forwarded = {
         key: value for key, value in (headers or {}).items()
@@ -579,9 +787,11 @@ def _fetch_once(
         url, data=body or None, headers=forwarded, method=method,
     )
     try:
-        response = opener.open(request, timeout=min(UPSTREAM_TIMEOUT, budget.remaining("upstream")))
+        response = opener.open(request, timeout=min(budget.network_seconds, budget.remaining("upstream")))
     except urllib.error.HTTPError as exc:
         response = exc
+    except RelayTargetError:
+        raise
     except Exception as exc:
         budget.remaining("upstream")
         tunnel_status = _proxy_tunnel_status(exc)
@@ -601,7 +811,8 @@ def _fetch_once(
             ) from None
         # Proxy exceptions can embed the authenticated proxy URL. Preserve only
         # the exception type for retry/diagnostics so credentials never leak.
-        raise RelayUpstreamError(type(exc).__name__) from None
+        failure = RelayUpstreamTimeout if isinstance(getattr(exc, "reason", exc), TimeoutError) else RelayUpstreamError
+        raise failure(type(exc).__name__) from None
     try:
         raw = getattr(getattr(response, "fp", None), "raw", None)
         with response, _watch_socket(getattr(raw, "_sock", None), budget):
@@ -613,7 +824,7 @@ def _fetch_once(
                 raw = getattr(getattr(response, "fp", None), "raw", None)
                 upstream_socket = getattr(raw, "_sock", None)
                 if upstream_socket is not None:
-                    upstream_socket.settimeout(min(UPSTREAM_TIMEOUT, remaining))
+                    upstream_socket.settimeout(min(budget.network_seconds, remaining))
                 chunk = response.read1(min(65536, MAX_RESPONSE_BYTES + 1 - size))
                 if not chunk:
                     break
@@ -628,7 +839,54 @@ def _fetch_once(
         raise
     except (OSError, urllib.error.URLError) as exc:
         budget.remaining("upstream")
-        raise RelayUpstreamError(type(exc).__name__) from None
+        failure = RelayUpstreamTimeout if isinstance(getattr(exc, "reason", exc), TimeoutError) else RelayUpstreamError
+        if failure is RelayUpstreamTimeout:
+            raise failure(type(exc).__name__, phase="response_read") from None
+        raise failure(type(exc).__name__) from None
+
+
+def _failure_response_metadata(status: int, headers: dict[str, str], body: bytes) -> dict[str, Any]:
+    """Fixed-vocabulary diagnostics only: never persist response text or arbitrary headers."""
+    if status < 400:
+        return {}
+    normalized = {name.lower(): str(value) for name, value in headers.items()}
+    mime = normalized.get("content-type", "").split(";", 1)[0].strip().lower()
+    known_mimes = {"text/xml", "application/xml", "application/json", "text/html", "text/plain", "application/octet-stream"}
+    sample = body[:8192].decode("utf-8", errors="replace").lower()
+    server = normalized.get("server", "").lower()
+    product = next((name for name in ("nginx", "envoy", "squid", "cloudflare", "apache", "ncbi")
+                    if re.search(r"(?:^|[ /])" + name + r"(?:$|[ /])", server)), "unknown")
+    ncbi_xml = bool(re.search(r"<(?:esearchresult|efetchresult|einforesult)\b", sample))
+    proxy_document = any(marker in sample for marker in (
+        "err_tunnel_connection_failed", "proxy authentication required", "err_connect_fail", "err_cache_access_denied", "the proxy server received an invalid response"))
+    kind = ("xml" if ncbi_xml or sample.lstrip().startswith("<?xml")
+            else "html" if "<html" in sample or "<!doctype html" in sample
+            else "json" if sample.lstrip().startswith(("{", "["))
+            else "empty" if not body else "other")
+    if status == 429 or any(marker in sample for marker in ("api rate limit exceeded", "too many requests", "rate limit exceeded")):
+        reason = "rate_limit"
+    elif any(marker in sample for marker in ("invalid api key", "api key invalid", "api key is invalid")):
+        reason = "invalid_api_key"
+    elif proxy_document:
+        reason = "proxy_error"
+    elif any(marker in sample for marker in ("blocked for possible abuse", "access denied")):
+        reason = "access_denied"
+    elif any(marker in sample for marker in ("invalid query", "query syntax", "error in query", "query translation error", "search term too long")):
+        reason = "query_error"
+    elif ncbi_xml and re.search(r"<(?:error|errorlist)\b", sample):
+        reason = "ncbi_application_error"
+    else:
+        reason = "unclassified_http_error"
+    return {
+        "response_content_type": mime if mime in known_mimes else "other",
+        "response_server_product": product,
+        "response_via_present": bool(normalized.get("via")),
+        "response_body_kind": kind,
+        "response_source_hint": "proxy_document" if proxy_document else "ncbi_xml" if ncbi_xml else "unknown",
+        "response_error_reason": reason,
+        "response_body_sha256": hashlib.sha256(body).hexdigest(),
+        "response_bytes": len(body),
+    }
 
 
 def _append_log(event: dict[str, Any]) -> None:
@@ -707,7 +965,9 @@ class Handler(BaseHTTPRequestHandler):
                     "instance_id": os.getenv("MCPHUB_RELAY_INSTANCE_ID", ""),
                     "egress_backend": "ipwo",
                     "min_interval_seconds": MIN_INTERVAL,
-                    "ip_policy": "sticky_pool_until_failure",
+                    "target_policy": "public_https",
+                    "ip_policy": "sticky_until_failure" if re.search(r"_sid_[^_]+", IPWO_PROXY_USERNAME) else "rotating_per_request",
+                    "arxiv_timeout_retry": "immediate" if ARXIV_IMMEDIATE_TIMEOUT_RETRY else "backoff",
                     "lane_counts": {
                         "ncbi": 1,
                         "wikipedia": WIKIPEDIA_LANES,
@@ -781,11 +1041,18 @@ class Handler(BaseHTTPRequestHandler):
             if length <= 0 or length > 65536:
                 raise ValueError("invalid request size")
             payload = json.loads(self.rfile.read(length))
-            seconds = payload.get("timeout_seconds", REQUEST_TIMEOUT)
+            seconds = payload.get("timeout_seconds", 600)
             if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
                     or not math.isfinite(seconds) or seconds <= 0):
                 raise ValueError("Invalid request deadline")
-            budget = RequestBudget(min(float(seconds), REQUEST_TIMEOUT), self._client_disconnected)
+            caller_network = payload.get("network_timeout_seconds")
+            if caller_network is not None and (
+                    isinstance(caller_network, bool) or not isinstance(caller_network, (int, float))
+                    or not math.isfinite(caller_network) or caller_network <= 0):
+                raise ValueError("Invalid upstream network timeout")
+            # Validate/DNS within a bounded initial budget, then apply the
+            # selected category's maximum without resetting elapsed time.
+            budget = RequestBudget(min(float(seconds), 600), self._client_disconnected)
             request_id = budget.request_id
             url = str(payload["url"])
             method = str(payload.get("method") or "GET").upper()
@@ -804,19 +1071,39 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("body_base64 is invalid") from exc
             if len(request_body) > 65536:
                 raise ValueError("upstream request body exceeds relay size limit")
-            target_group = _validate_url(url)
+            target_group = "https"
+            target_group = _validate_url(url, budget)
             query = urllib.parse.urlencode(params, doseq=True)
             if query:
                 separator = "&" if urllib.parse.urlsplit(url).query else "?"
                 url = f"{url}{separator}{query}"
-            status, headers, body, final_url, attempts, queued_ms = controller_for_url(url, target_group).fetch(
-                url, bool(payload.get("allow_redirects", False)),
-                budget=budget,
-                method=method,
-                body=request_body,
-                headers={str(key): str(value) for key, value in request_headers.items()},
-            )
-            _validate_url(final_url)
+            policy = timeout_policy(url, target_group)
+            # The caller's shorter deadline remains authoritative. URL/DNS
+            # validation has already consumed time and cannot be reset here.
+            budget.total_seconds = min(float(seconds), policy["requestTimeoutSeconds"])
+            budget.deadline = min(budget.deadline, started + budget.total_seconds)
+            budget.network_seconds = min(policy["networkTimeoutSeconds"], float(caller_network)) if caller_network is not None else policy["networkTimeoutSeconds"]
+            def send():
+                return controller_for_url(url, target_group).fetch(
+                    url, bool(payload.get("allow_redirects", False)),
+                    budget=budget, method=method, body=request_body,
+                    headers={str(key): str(value) for key, value in request_headers.items()},
+                )
+            cache_status = "bypass"
+            if target_group == "osm-overpass" and OVERPASS_CACHE is not None:
+                result, cache_status = OVERPASS_CACHE.fetch(
+                    url, method, request_body, request_headers,
+                    bool(payload.get("allow_redirects", False)), send, budget.remaining,
+                )
+            elif target_group == "arxiv" and ARXIV_QUERY_CACHE is not None:
+                result, cache_status = ARXIV_QUERY_CACHE.fetch(
+                    url, method, request_body, request_headers,
+                    bool(payload.get("allow_redirects", False)), send, budget.remaining,
+                )
+            else:
+                result = send()
+            status, headers, body, final_url, attempts, queued_ms = result
+            _validate_url(final_url, budget)
             delivered = self._json(200, {
                 "status_code": status,
                 "headers": headers,
@@ -828,7 +1115,7 @@ class Handler(BaseHTTPRequestHandler):
                 "client": self.client_address[0],
                 "host": parsed.hostname,
                 "path": parsed.path,
-                "event": "http_completed",
+                "event": "cache_hit" if cache_status == "hit" else "http_coalesced" if cache_status == "coalesced" else "http_completed",
                 "request_id": request_id,
                 "category": "rate_limit" if status == 429 else "upstream_error" if status >= 400 else "success",
                 "upstream_group": target_group,
@@ -837,9 +1124,13 @@ class Handler(BaseHTTPRequestHandler):
                 "response_bytes": len(body),
                 "egress_backend": "ipwo",
                 "attempts": attempts,
+                "request_budget_seconds": budget.total_seconds,
+                "network_timeout_seconds": budget.network_seconds,
+                "cache_status": cache_status,
                 "queued_ms": round(queued_ms, 1),
                 "duration_ms": round((time.monotonic() - started) * 1000, 1),
                 "client_disconnected": not delivered,
+                **_failure_response_metadata(status, headers, body),
             })
         except (RelayRequestExpired, RelayRequestCancelled) as exc:
             cancelled = isinstance(exc, RelayRequestCancelled)
@@ -851,11 +1142,22 @@ class Handler(BaseHTTPRequestHandler):
                 "host": parsed.hostname, "path": parsed.path,
                 "upstream_group": target_group, "status": status, "category": category,
                 "attempts": budget.attempts, "queued_ms": round(budget.queued_ms, 1),
+                "timeout_phase": exc.phase if isinstance(exc, RelayRequestExpired) else "cancelled",
+                "request_budget_seconds": budget.total_seconds,
+                "network_timeout_seconds": budget.network_seconds,
                 "duration_ms": round((time.monotonic() - started) * 1000, 1),
                 "client_disconnected": cancelled,
             })
             if not cancelled:
                 self._json(status, {"code": category, "error": str(exc)})
+        except RelayUpstreamTimeout as exc:
+            _append_log({"event": "http_completed", "request_id": budget.request_id,
+                         "host": urllib.parse.urlsplit(url).hostname, "upstream_group": target_group,
+                         "status": 504, "category": "network_wait_timeout", "timeout_phase": exc.phase,
+                         "request_budget_seconds": budget.total_seconds, "network_timeout_seconds": budget.network_seconds,
+                         "attempts": budget.attempts, "queued_ms": round(budget.queued_ms, 1),
+                         "duration_ms": round((time.monotonic()-started)*1000, 1)})
+            self._json(504, {"code": "network_wait_timeout", "error": f"Relay {exc.phase} wait exceeded ({budget.network_seconds:g}s maximum; remaining total budget also applies)"})
         except RelayAccountError as exc:
             parsed = urllib.parse.urlsplit(url)
             _append_log({
@@ -896,6 +1198,26 @@ def main() -> None:
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     server = ThreadingHTTPServer((BIND, PORT), Handler)
+    maintenance_stop = threading.Event()
+    if OVERPASS_CACHE is not None:
+        def refresh_request(request):
+            url = request["url"]
+            group = UPSTREAM_GROUPS.get(urllib.parse.urlsplit(url).hostname, "https")
+            policy = timeout_policy(url, group)
+            budget = RequestBudget(policy["requestTimeoutSeconds"], network_seconds=policy["networkTimeoutSeconds"])
+            group = _validate_url(url, budget)
+            return controller_for_url(url, group).fetch(
+                url, request["redirects"], method=request["method"],
+                body=base64.b64decode(request["body"]), headers=request["headers"], budget=budget,
+            )
+        def maintain_cache():
+            # No eager startup network burst. Refresh in one low-priority lane.
+            while not maintenance_stop.wait(3600):
+                try:
+                    OVERPASS_CACHE.refresh_due(refresh_request, stop=maintenance_stop)
+                except Exception:
+                    _append_log({"event": "cache_maintenance_failed", "category": "cache_storage_error"})
+        threading.Thread(target=maintain_cache, daemon=True, name="overpass-cache-refresh").start()
     print(
         f"MCP egress relay (ipwo) listening on http://{BIND}:{PORT}",
         flush=True,
@@ -905,6 +1227,7 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        maintenance_stop.set()
         server.server_close()
 
 

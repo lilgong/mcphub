@@ -1,3 +1,4 @@
+import SettingHint from './SettingHint';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet } from '../utils/fetchInterceptor';
@@ -79,41 +80,42 @@ export default function ServiceControls({
   return (
     <>
       {!hideRateLimit && (
-        <section className="hub-editor-section">
-          <div className="flex items-center justify-between gap-4 mb-3">
-            <h4 className="hub-editor-heading mb-0">{t('uiLayout.mcpLimits')}</h4>
+        <section className="hub-setting-section">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="hub-setting-heading mb-0">
+              <h4>{t('uiLayout.frequency')}</h4>
+              <SettingHint label={t('editorHints.details', { name: t('uiLayout.frequency') })}>
+                {t('uiLayout.mcpScope')} {t('uiLayout.frequencyHint')}
+              </SettingHint>
+            </div>
             <label className="hub-checkbox-label">
               <input
                 type="checkbox"
                 checked={policy.enabled}
                 onChange={(e) => onChange({ rateLimit: { ...policy, enabled: e.target.checked } })}
               />
-              {t('serviceControls.enabled')}
+              {t('callSettings.enableLimits')}
             </label>
           </div>
-          <p className="hub-config-note mb-4">{t('uiLayout.mcpScope')}</p>
           {policy.enabled && (
             <>
-              <div className="hub-control-group">
-                <h5>{t('uiLayout.frequency')}</h5>
-                <p>{t('uiLayout.frequencyHint')}</p>
-                {renderFields(['maxCalls', 'windowMs', 'minIntervalMs', 'concurrency'])}
-              </div>
-              <div className="hub-control-group">
-                <h5>{t('uiLayout.queue')}</h5>
-                <p>{t('uiLayout.queueHint')}</p>
-                {renderFields(['maxQueued', 'queueTimeoutMs'])}
-              </div>
-              <details className="hub-config-advanced">
-                <summary>{t('uiLayout.cooldown')}</summary>
-                {renderFields(['rateLimitBackoffMs', 'maxBackoffMs'])}
+              {renderFields(['maxCalls', 'windowMs', 'minIntervalMs', 'concurrency'])}
+              <details className="hub-setting-advanced">
+                <summary>{t('callSettings.queueAdvanced')}</summary>
+                <p className="hub-config-note mb-4">{t('uiLayout.queueHint')}</p>
+                {renderFields([
+                  'maxQueued',
+                  'queueTimeoutMs',
+                  'rateLimitBackoffMs',
+                  'maxBackoffMs',
+                ])}
               </details>
             </>
           )}
         </section>
       )}
       {stdio && (
-        <div className="hub-relay-inline">
+        <div className="hub-relay-inline flex flex-wrap items-center gap-x-3 gap-y-2">
           {relaySupported ? (
             <>
               <label className="hub-checkbox-label">
@@ -125,18 +127,26 @@ export default function ServiceControls({
                 />
                 {t('uiLayout.useRelay')}
               </label>
-              <p className="hub-config-note">
-                {t('uiLayout.relayScope')}{' '}
-                <Link className="text-[var(--hub-accent)] hover:underline" to="/relay">
-                  {t('atlas.title')}
-                </Link>
-              </p>
-              {relayDefault === false && (
-                <p className="hub-config-note">{t('serviceControls.relayNotConfigured')}</p>
-              )}
+              <SettingHint label={t('editorHints.details', { name: 'Relay' })}>
+                {t('callSettings.relayHelp')}
+                {relayDefault === false && (
+                  <p className="mt-2">{t('serviceControls.relayNotConfigured')}</p>
+                )}
+              </SettingHint>
+              <Link className="text-xs text-[var(--hub-accent)] hover:underline" to="/relay">
+                {t('callSettings.relaySettings')}
+              </Link>
             </>
           ) : (
-            <p className="hub-config-note">{t('serviceControls.relayUnsupported')}</p>
+            <>
+              <span className="text-sm text-[var(--hub-ink-2)]">Relay</span>
+              <span className="text-xs text-[var(--hub-ink-3)]">
+                {t('callSettings.unsupported')}
+              </span>
+              <SettingHint label={t('editorHints.details', { name: 'Relay' })} unavailable>
+                {t('serviceControls.relayUnsupported')}
+              </SettingHint>
+            </>
           )}
         </div>
       )}

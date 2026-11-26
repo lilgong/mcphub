@@ -185,7 +185,9 @@ export async function dispatchTaskConnection(req: Request, res: Response): Promi
       throw new Error('Task target unavailable');
     // A zero budget disables only the extra Hub deadline. Lease expiration,
     // explicit revocation and client disconnection still cancel the call.
-    stopWatch = watchTaskRequest(entry, abort, target.config?.options?.timeout ?? 150000);
+    // PubMed searches may perform two sequential, internally retried HTTP calls.
+    const defaultTimeout = splitServerKey(entry.server).name === 'pubmed' ? 500000 : 150000;
+    stopWatch = watchTaskRequest(entry, abort, target.config?.options?.timeout ?? defaultTimeout);
     if (
       operation === 'call-tool' &&
       (typeof req.body?.tool_name !== 'string' ||
