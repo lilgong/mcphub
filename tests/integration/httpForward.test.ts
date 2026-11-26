@@ -7,6 +7,12 @@ import { createServer, type Server } from 'node:http';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { appendDurableAudit } from '../../src/services/durableAuditService.js';
+
+jest.mock('../../src/services/durableAuditService.js', () => {
+  const actual = jest.requireActual('../../src/services/durableAuditService.js');
+  return { ...actual, appendDurableAudit: jest.fn(actual.appendDurableAudit) };
+});
 
 const mockActivity = jest.fn(async () => undefined);
 jest.mock('../../src/services/activityLoggingService.js', () => ({
@@ -184,6 +190,21 @@ it('preserves request bytes, path, query and response JSON; replaces client cred
     end: `${date}T23:59:59.999Z`,
   });
   expect(stats.total).toBe(1);
+});
+
+it('does not send upstream credentials when durable upstream admission fails', async () => {
+  const actual = jest.requireActual('../../src/services/durableAuditService.js');
+  jest.mocked(appendDurableAudit).mockImplementation((file, record) => {
+    if ((record as { event?: string }).event === 'upstream_started')
+      return Promise.reject(new Error('audit storage unavailable'));
+    return actual.appendDurableAudit(file, record);
+  });
+  try {
+    await search().expect(503);
+    expect(seen).toEqual({});
+  } finally {
+    jest.mocked(appendDurableAudit).mockImplementation(actual.appendDurableAudit);
+  }
 });
 it('preserves upstream errors and Retry-After without a second upstream attempt', async () => {
   upstreamStatus = 429;
