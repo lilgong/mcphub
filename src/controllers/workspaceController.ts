@@ -139,8 +139,12 @@ export async function createWorkspaceRun(req: Caller, res: Response): Promise<vo
       throw new WorkspaceError('Select a space and workspace');
     res.json({
       success: true,
-      data: await startWorkspaceRun(catalog, workspace, owner(req), (config) =>
-        canUseWorkspace(req, config),
+      data: await startWorkspaceRun(
+        catalog,
+        workspace,
+        owner(req),
+        (config) => canUseWorkspace(req, config),
+        req.body?.githubTaskLeases === true,
       ),
     });
   } catch (error) {
@@ -206,6 +210,7 @@ export async function workspaceRun(req: Caller, res: Response): Promise<void> {
           workspace: run.workspace,
           values: material.values,
           files: material.files,
+          githubPool: !!run.githubPool?.accounts.length,
           revision: workspace.revision,
           http,
         },

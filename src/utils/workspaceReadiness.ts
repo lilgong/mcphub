@@ -7,12 +7,14 @@ import type { WorkspaceCredentials } from '../types/workspace.js';
 export function workspaceReadiness(
   account: WorkspaceCredentials,
   servers: (ServerConfig & { name: string })[],
+  githubPool = false,
 ) {
   const missing = new Set<string>();
   const present = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
   for (const server of servers) {
     const schema = server.workspaceSchema;
     if (
+      (githubPool && splitServerKey(server.name).name === 'github') ||
       server.enabled === false ||
       splitServerKey(server.name).catalog !== account.catalog ||
       !schema?.enabled

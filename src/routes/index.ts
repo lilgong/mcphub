@@ -1,4 +1,6 @@
+import { githubPreparationSlot } from '../controllers/githubPreparationController.js';
 import { serverWorkspaceAccounts } from '../controllers/workspaceController.js';
+import { githubPoolManagement, githubTaskLease } from '../controllers/githubPoolController.js';
 import { workspaceHttp } from '../controllers/workspaceHttpController.js';
 import {
   workspaceManagement,
@@ -336,6 +338,12 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
     /^\/workspace-runs\/([^/]+)\/http\/([^/]+)\/([^/]+)(\/.*)?$/,
     workspaceHttp,
   );
+  authenticatedRouter.get('/github-pools/:catalog', githubPoolManagement);
+  authenticatedRouter.put('/github-pools/:catalog', githubPoolManagement);
+  authenticatedRouter.post('/workspace-runs/:id/github-lease', githubTaskLease);
+  authenticatedRouter.delete('/workspace-runs/:id/github-lease', githubTaskLease);
+  authenticatedRouter.post('/workspace-runs/:id/preparations/github', githubPreparationSlot);
+  authenticatedRouter.delete('/workspace-runs/:id/preparations/github', githubPreparationSlot);
   authenticatedRouter.get('/workspace-runs/:id', workspaceRun);
   authenticatedRouter.put('/workspace-runs/:id', workspaceRun);
   authenticatedRouter.put(

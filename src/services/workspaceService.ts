@@ -1,3 +1,5 @@
+import { githubPoolSnapshot, releaseGithubTasks } from './githubPoolService.js';
+import { releaseGithubPreparations } from './githubPreparationService.js';
 import { workspaceReadiness } from '../utils/workspaceReadiness.js';
 import { getServerDao } from '../dao/DaoFactory.js';
 import { validCredentialFile } from '../utils/workspaceSchema.js';
@@ -127,7 +129,11 @@ export async function listWorkspaces() {
     const workspace = await read<WorkspaceCredentials>(WORKSPACES, id);
     if (workspace)
       result.push({
-        ...workspaceReadiness(workspace, definitions),
+        ...workspaceReadiness(
+          workspace,
+          definitions,
+          !!(await githubPoolSnapshot(workspace.catalog))?.accounts.length,
+        ),
         catalog: workspace.catalog,
         name: workspace.name,
         enabled: workspace.enabled !== false,
@@ -260,8 +266,17 @@ export function startWorkspaceRun(
   workspace: string | undefined,
   owner: string,
   authorize: (workspace: WorkspaceCredentials) => Promise<boolean>,
+  githubTaskLeases = false,
 ) {
   return serial(async () => {
+    const githubPool = await githubPoolSnapshot(catalog);
+    if (githubPool?.accounts.length && !githubTaskLeases)
+      throw new WorkspaceError('This catalog requires a runner supporting GitHub task leases', 422);
+    const activeRuns = (await runs()).filter((run) => run.catalog === catalog);
+    if (
+      activeRuns.some((run) => !!run.githubPool?.accounts.length !== !!githubPool?.accounts.length)
+    )
+      throw new WorkspaceError('Drain this catalog before switching GitHub pool mode', 409);
     const definitions = await getServerDao().findAll();
     if (workspace === undefined) {
       if (!/^[a-z][a-z0-9_-]{0,47}$/.test(catalog)) throw new WorkspaceError('Invalid space');
@@ -275,7 +290,8 @@ export function startWorkspaceRun(
         if (!account || !(await authorize(account))) continue;
         authorized = true;
         if (account.enabled === false) continue;
-        if (!workspaceReadiness(account, definitions).ready) continue;
+        if (!workspaceReadiness(account, definitions, !!githubPool?.accounts.length).ready)
+          continue;
         if (active.some((run) => run.catalog === catalog && run.workspace === candidate.name))
           continue;
         workspace = candidate.name;
@@ -293,7 +309,7 @@ export function startWorkspaceRun(
         'Workspace already belongs to another run; exit the previous workspace terminal or review its run status in the dashboard',
         409,
       );
-    const readiness = workspaceReadiness(config, definitions);
+    const readiness = workspaceReadiness(config, definitions, !!githubPool?.accounts.length);
     if (!readiness.ready)
       throw new WorkspaceError(
         `Workspace credentials are incomplete: ${readiness.missing.join('; ')}`,
@@ -301,6 +317,7 @@ export function startWorkspaceRun(
       );
     const token = randomBytes(32).toString('hex');
     const run: WorkspaceRun = {
+      githubPool,
       id: randomUUID(),
       catalog,
       workspace,
@@ -351,7 +368,11 @@ export async function finishWorkspaceRun(
     endedAt: Date.now(),
     exitReason,
   });
-  await getCredentialBindingDao().delete({ serverName: RUNS, username: run.id });
+  await releaseGithubPreparations(run.id, () =>
+    releaseGithubTasks(run.id, () =>
+      getCredentialBindingDao().delete({ serverName: RUNS, username: run.id }),
+    ),
+  );
 }
 export async function reportWorkspaceRun(run: WorkspaceRun, input: unknown) {
   if (!input || typeof input !== 'object' || Array.isArray(input))

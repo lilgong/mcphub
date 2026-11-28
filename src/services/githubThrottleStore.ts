@@ -4,6 +4,7 @@ export interface GithubThrottleState {
   cooldownUntil: number;
   nextWriteAt: number;
   failures: number;
+  writeTimes?: number[];
 }
 export interface GithubThrottleStore {
   identity(key: string): Promise<string | undefined>;
@@ -40,6 +41,18 @@ export const githubThrottleStore: GithubThrottleStore = {
       )
     )
       throw new Error('Invalid GitHub throttle state');
+    if (
+      value.writeTimes !== undefined &&
+      (!Array.isArray(value.writeTimes) ||
+        value.writeTimes.length > 500 ||
+        value.writeTimes.some(
+          (time, index) =>
+            !Number.isSafeInteger(time) ||
+            time < 0 ||
+            (index > 0 && time < value.writeTimes![index - 1]),
+        ))
+    )
+      throw new Error('Invalid GitHub write history');
     return value;
   },
   save: (account, state) => write('account/' + account, state),

@@ -384,18 +384,51 @@ these values. Ordinary secrets containing literal escapes are left unchanged.
 GitHub HTTP bindings use a shared request queue keyed by the upstream GitHub user
 ID, so different tokens for the same user share admission across spaces and runs.
 Tasks retain their existing parallelism and account selection. REST writes and Git
-pushes wait at least one second after the preceding mutation; GraphQL queries and
-Git fetches are classified separately from writes. Requests remain cancellable by
-the original client deadline.
+pushes wait five seconds after the preceding mutation by default, with at most 300
+write attempts in a rolling hour per account. GraphQL queries and Git fetches are
+not writes. Reads have no fixed interval or write-window charge, but still follow
+the account FIFO and upstream cooldown. Requests remain cancellable by the original
+client deadline.
 
-The queue observes `Retry-After` and `X-RateLimit-*`, pauses all subsequent requests
-for the affected account, and retries an explicitly rejected non-streaming rate-limit
-response at most twice. Streaming Git transfers, ambiguous network failures, and
-ordinary permission/validation failures are never replayed automatically. Revoked
-tokens and suspended accounts stop further dispatch rather than becoming a retry
-loop. Credential-to-user mappings and cooldown deadlines are encrypted in the
-existing credential store and survive Hub restart. Queue admission is coordinated
+Operators can set `MCPHUB_GITHUB_WRITE_INTERVAL_MS` (default `5000`, range
+`1000`–`600000`) and `MCPHUB_GITHUB_WRITES_PER_HOUR` (default `300`, range `1`–`500`).
+These are conservative local limits, not a promise that GitHub will accept the
+requests; endpoint-specific restrictions and activity outside this Hub still apply.
+Started write attempts, including rejected or ambiguously failed writes, consume
+budget. Saved write history survives Hub restart; older records without history
+remain readable, and only attempts recorded after upgrading are counted. A single
+in-flight write can be missing from history if Hub exits before saving its result.
+
+The queue observes `Retry-After` and `X-RateLimit-*` and pauses subsequent
+requests for the affected account. Each request is forwarded at most once; upstream
+rate-limit responses are returned unchanged so the caller owns retry policy.
+Admission, including identity lookup, loading saved throttle state, FIFO, write-budget
+and cooldown waits, has a 10-minute budget separate from the upstream request timeout.
+A known write-window or cooldown wait beyond that budget returns HTTP 429 immediately; otherwise an expired queue wait returns HTTP 429 without dispatching.
+These Hub-generated responses identify the admission failure and include `Retry-After`.
+They do not reset the account cooldown or consume an upstream attempt.
+
+Revoked tokens and suspended accounts stop further dispatch rather than becoming
+a retry loop. Credential-to-user mappings and cooldown deadlines are encrypted in
+the existing credential store and survive Hub restart. Queue admission is coordinated
 within one Hub process; direct requests and other Hub deployments do not share it.
+
+Trusted initializers can `POST /api/workspace-runs/:id/preparations/github`
+with the run capability, `X-MCPHub-Stage: prepare`, `X-MCPHub-Task-Id`, and a fresh
+32-character lowercase hex `X-MCPHub-Preparation-Id`. The same headers with `DELETE`
+release the slot. Workspace and GitHub account grants are checked on every request.
+The slot is keyed by the actual GitHub user, so separate workspaces using the same
+user cannot initialize concurrently. Acquisition is idempotent for the same holder;
+another holder receives 409 with `Retry-After`. An account cooldown returns 429.
+Slots are persisted and never expire while the owning run might still execute.
+Finishing a workspace run after cleanup releases its remaining slots. Lost runs
+require the existing explicit administrator recovery procedure.
+
+Toolathlon holds this slot during each GitHub task's preprocessing only. It waits
+up to ten minutes for a busy slot and defers preprocessing on an account cooldown.
+The trusted runner's preparation capability can access this endpoint; model and
+tool capabilities cannot. Model execution does not hold the slot. Existing clients
+without this lifecycle integration remain subject to request limits only.
 
 Toolathlon's Hub adapter routes the original GitHub MCP through a loopback-only
 HTTP proxy using the binary's existing `GITHUB_HOST` option. The proxy holds only
@@ -416,3 +449,39 @@ explicitly starting one returns HTTP 422 with missing field names before creatin
 lease. Readiness checks cover enabled account declarations in the selected space and
 never send credentials upstream. Optional/generated OAuth state is not implicitly
 required. Existing runs keep their leases; this check applies to new claims only.
+
+### Optional GitHub task account pool
+
+Administrators may `PUT /api/github-pools/:catalog` with
+`{"tokens":["<PAT for dedicated GitHub user one>","<PAT for dedicated GitHub user two>"]}`.
+Use dashboard administrator authentication, never a calling-group key. `GET` returns
+only the verified GitHub user IDs, login names and configuration revision. Supplying
+an empty token list disables pool mode for subsequent runs. Multiple PATs belonging
+to one GitHub user are rejected. Secrets and run snapshots use the encrypted credential DAO.
+
+The pool is shared across catalog workspaces. Runs advertise `githubTaskLeases: true`
+when creating their workspace lease. Older runners are rejected explicitly when the
+pool is enabled. Drain existing runs before changing between pooled and legacy mode.
+Configuration changes apply to new runs only; never revoke a PAT still pinned by an
+active run. Pool members must be dedicated evaluation users with equivalent permissions.
+
+Trusted runners acquire/release `POST/DELETE /api/workspace-runs/:id/github-lease`
+using the owning run capability, `X-MCPHub-Stage: prepare`, a task ID and a fresh
+32-hex `X-MCPHub-Github-Lease` generation. Admission uses round-robin selection,
+skips occupied/cooling users, and is exclusive by GitHub user ID across workspace runs.
+Preparation locks and every GitHub HTTP binding require that exact task generation.
+The same account remains pinned through preparation, tool execution, grading and
+confirmed container cleanup. Release fences late admission requests; an uncertain
+cleanup retains occupancy until authorized run recovery. There is no automatic
+credential substitution during task execution and no lease timeout that silently
+hands a possibly active account to another task. Persistence supports both DAO modes;
+admission serialization, like workspace leases, assumes a single Hub process.
+
+Confirmed task release also removes that task's stranded preparation claim before
+making its GitHub account available again. Cleanup errors retain the account lease;
+late preparation requests revalidate their task generation inside the preparation
+queue and cannot recreate a released claim. Task and run cleanup use the same lock order.
+The Toolathlon runner bounds account admission to 3600 seconds by default, configurable
+through `TOOLATHLON_GITHUB_POOL_WAIT_SECONDS` or its `github_pool acquire --wait-seconds`
+argument. Admission timeout stops the waiting task and cleans up its receipt; it never
+revokes the account held by another running task.
