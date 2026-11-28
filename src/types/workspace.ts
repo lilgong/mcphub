@@ -1,3 +1,4 @@
+import type { GithubPoolSnapshot } from './githubPool.js';
 import type { TargetConnection } from './targetConnection.js';
 
 export type WorkspaceServerConnection = Omit<TargetConnection, 'path' | 'kind'>;
@@ -14,6 +15,7 @@ export interface WorkspaceCredentials {
   revision: string;
 }
 export interface WorkspaceRun {
+  githubPool?: GithubPoolSnapshot;
   id: string;
   catalog: string;
   workspace: string;

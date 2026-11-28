@@ -1,3 +1,4 @@
+import { githubTaskAccount } from '../services/githubPoolService.js';
 import { workspaceUpstreamTimeout } from '../utils/workspaceTimeout.js';
 import { followGithubRestRedirects } from '../services/githubRedirectService.js';
 import { GITHUB_HOSTS, githubRequestScheduler } from '../services/githubRequestSchedulerService.js';
@@ -40,6 +41,7 @@ async function opaqueBody(req: Request): Promise<Buffer> {
 
 /** Raw HTTP, including Git smart HTTP, bound to a live run and an operator-declared origin. */
 export async function workspaceHttp(req: Caller, res: Response): Promise<void> {
+  const queuedAt = Date.now();
   res.setHeader('Cache-Control', 'no-store');
   const abort = new AbortController();
   const disconnect = () => {
@@ -91,7 +93,20 @@ export async function workspaceHttp(req: Caller, res: Response): Promise<void> {
         throw new WorkspaceError('MCP account access denied', 403);
       const binding = definition.workspaceSchema.http?.find((entry) => entry.id === bindingId);
       if (!binding) throw new WorkspaceError('HTTP binding unavailable', 404);
-      const secret = workspaceHttpSecret(binding, workspace);
+      let secret = workspaceHttpSecret(binding, workspace);
+      if (name === 'github' && run.githubPool?.accounts.length) {
+        try {
+          secret = (
+            await githubTaskAccount(
+              run.id,
+              req.get('X-MCPHub-Task-Id') || '',
+              req.get('X-MCPHub-Github-Lease') || '',
+            )
+          ).token;
+        } catch {
+          throw new WorkspaceError('GitHub task lease unavailable', 409);
+        }
+      }
       if (!secret || (!binding.credential.forward && /[\r\n]/.test(secret)))
         throw new WorkspaceError('Required upstream credential unavailable', 409);
       const auth = binding.credential;
@@ -237,9 +252,9 @@ export async function workspaceHttp(req: Caller, res: Response): Promise<void> {
                     url,
                     body,
                     signal: abort.signal,
-                    streaming: prepared.streaming && !githubRest,
+                    queuedAt,
                     dispatch,
-                    identify: async () => {
+                    identify: async (identitySignal) => {
                       const current = await load();
                       if (current.secret !== prepared.secret)
                         throw new WorkspaceError('Account credentials changed while queued', 409);
@@ -256,7 +271,7 @@ export async function workspaceHttp(req: Caller, res: Response): Promise<void> {
                         'GET',
                         undefined,
                         {},
-                        abort.signal,
+                        identitySignal,
                         false,
                         1024 * 1024,
                         current.credentials,

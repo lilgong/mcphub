@@ -1,3 +1,16 @@
+import {
+  githubPoolManagement,
+  githubTaskLease,
+} from '../../src/controllers/githubPoolController.js';
+import {
+  githubTaskAccount,
+  releaseGithubTask,
+  saveGithubPool,
+} from '../../src/services/githubPoolService.js';
+import { createHash } from 'node:crypto';
+import { githubPreparationSlot } from '../../src/controllers/githubPreparationController.js';
+import { githubThrottleStore } from '../../src/services/githubThrottleStore.js';
+import { githubPreparation } from '../../src/services/githubPreparationService.js';
 import express from 'express';
 import { generateKeyPairSync } from 'node:crypto';
 import request from 'supertest';
@@ -153,6 +166,12 @@ app.delete('/api/workspace-credentials/:catalog/:workspace', workspaceManagement
 app.get('/api/workspace-runs', workspaceAvailability);
 app.post('/api/workspace-runs', createWorkspaceRun);
 app.all(/^\/api\/workspace-runs\/([^/]+)\/http\/([^/]+)\/([^/]+)(\/.*)?$/, workspaceHttp);
+app.get('/api/github-pools/:catalog', githubPoolManagement);
+app.put('/api/github-pools/:catalog', githubPoolManagement);
+app.post('/api/workspace-runs/:id/github-lease', githubTaskLease);
+app.delete('/api/workspace-runs/:id/github-lease', githubTaskLease);
+app.post('/api/workspace-runs/:id/preparations/github', githubPreparationSlot);
+app.delete('/api/workspace-runs/:id/preparations/github', githubPreparationSlot);
 app.get('/api/workspace-runs/:id', workspaceRun);
 app.put('/api/workspace-runs/:id', workspaceRun);
 app.put('/api/workspace-runs/:id/files', workspaceRun);
@@ -794,6 +813,7 @@ test.each(['DELETE', 'PATCH'] as const)(
       rmSync(directory, { recursive: true, force: true });
     }
   },
+  20000,
 );
 
 test('draft accounts save successfully but are skipped automatically and rejected explicitly before a run is created', async () => {
@@ -913,4 +933,406 @@ test('account status requires an administrator, a boolean and the current revisi
   await accountStatus('account-a', false, 'stale').expect(409);
   await accountStatus('unknown', false, 'missing').expect(404);
   expect((await accountSummary()).enabled).toBe(true);
+});
+
+test('GitHub preparation claims span runs of the same upstream account and cannot be released by another attempt', async () => {
+  await create('account-a').expect(200);
+  await create('account-b').expect(200);
+  const a = (await start('account-a').expect(200)).body.data;
+  const b = (await start('account-b').expect(200)).body.data;
+  await githubThrottleStore.saveIdentity(
+    createHash('sha256').update('secret-upstream').digest('hex'),
+    '123',
+  );
+  const call = (
+    method: 'post' | 'delete',
+    run: { id: string; token: string },
+    holder: string,
+    stage = 'prepare',
+  ) => {
+    const client = request(app);
+    return client[method](`/api/workspace-runs/${run.id}/preparations/github`)
+      .set('x-key', 'key-a')
+      .set('X-MCPHub-Run-Token', run.token)
+      .set('X-MCPHub-Task-Id', 'finalpool/task')
+      .set('X-MCPHub-Stage', stage)
+      .set('X-MCPHub-Preparation-Id', holder.repeat(32));
+  };
+  await call('post', a, 'a', 'tool').expect(403);
+  await call('post', a, 'a').expect(200);
+  const contenders = await Promise.all([call('post', a, 'a'), call('post', b, 'b')]);
+  expect(contenders.map((r) => r.status)).toEqual([200, 409]);
+  expect(
+    await githubPreparation('456', { run: b.id, task: 'finalpool/other', holder: 'd'.repeat(32) }),
+  ).toBe(true);
+  await call('post', b, 'b').expect(409);
+  await call('delete', a, 'c').expect(409);
+  await call('post', b, 'b').expect(409);
+  await call('delete', a, 'a').expect(200);
+  await call('post', b, 'b').expect(200);
+  await access('delete', b).expect(200);
+  await call('post', a, 'a').expect(200);
+  await call('delete', b, 'b').expect(403);
+  await access('delete', a).expect(200);
+});
+
+test('GitHub cooldown prevents new initialization and a release remains available during cooldown', async () => {
+  await create('account-a').expect(200);
+  const a = (await start('account-a').expect(200)).body.data;
+  await githubThrottleStore.saveIdentity(
+    createHash('sha256').update('secret-upstream').digest('hex'),
+    '123',
+  );
+  await githubThrottleStore.save('123', {
+    cooldownUntil: Date.now() + 60000,
+    nextWriteAt: 0,
+    failures: 1,
+  });
+  const call = (method: 'post' | 'delete', token = a.token) => {
+    const client = request(app);
+    return client[method](`/api/workspace-runs/${a.id}/preparations/github`)
+      .set('x-key', 'key-a')
+      .set('X-MCPHub-Run-Token', token)
+      .set('X-MCPHub-Task-Id', 'finalpool/task')
+      .set('X-MCPHub-Stage', 'prepare')
+      .set('X-MCPHub-Preparation-Id', 'a'.repeat(32));
+  };
+  const limited = await call('post').expect(429);
+  expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+  await call('post', 'invalid').expect(403);
+  await githubPreparation('123', { run: a.id, task: 'finalpool/task', holder: 'a'.repeat(32) });
+  await call('delete').expect(200);
+  mockGroupEnabled = false;
+  await call('post').expect(403);
+});
+
+const poolAccounts = [
+  { id: '711', login: 'pool-one', token: 'pool-one-secret' },
+  { id: '722', login: 'pool-two', token: 'pool-two-secret' },
+];
+const poolClaim = (
+  run: { id: string; token: string },
+  task: string,
+  holder: string,
+  method: 'post' | 'delete' = 'post',
+) => {
+  const client = request(app);
+  return client[method](`/api/workspace-runs/${run.id}/github-lease`)
+    .set('x-key', 'key-a')
+    .set('X-MCPHub-Run-Token', run.token)
+    .set('X-MCPHub-Task-Id', task)
+    .set('X-MCPHub-Github-Lease', holder)
+    .set('X-MCPHub-Stage', 'prepare');
+};
+
+test('shared GitHub pool is exclusive across workspaces and pins existing tasks through configuration changes', async () => {
+  await create();
+  await create('account-b');
+  await saveGithubPool('toolathlon', poolAccounts);
+  await start().expect(422); // Old runners must not silently use the account's original token.
+  const a = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+  const b = (await start('account-b').send({ githubTaskLeases: true }).expect(200)).body.data;
+  const claims = await Promise.all([
+    poolClaim(a, 'finalpool/a__run1', 'a'.repeat(32)),
+    poolClaim(b, 'finalpool/b__run1', 'b'.repeat(32)),
+  ]);
+  expect(claims.map((r) => r.status)).toEqual([200, 200]);
+  expect(new Set(claims.map((r) => r.body.data.id)).size).toBe(2);
+  expect(JSON.stringify(claims.map((r) => r.body))).not.toContain('secret');
+  await poolClaim(a, 'finalpool/c__run1', 'c'.repeat(32)).expect(409);
+  await poolClaim(a, 'finalpool/a__run1', 'd'.repeat(32)).expect(503);
+  await saveGithubPool('toolathlon', [
+    { id: '799', login: 'replacement', token: 'replacement-secret' },
+  ]);
+  const repeat = await poolClaim(a, 'finalpool/a__run1', 'a'.repeat(32)).expect(200);
+  expect(repeat.body.data).toEqual(claims[0].body.data);
+  // Releasing a different holder must not free someone else's account.
+  await poolClaim(a, 'finalpool/a__run1', 'd'.repeat(32), 'delete').expect(503);
+  await poolClaim(a, 'finalpool/c__run1', 'c'.repeat(32)).expect(409);
+  await poolClaim(a, 'finalpool/a__run1', 'a'.repeat(32), 'delete').expect(200);
+  await poolClaim(a, 'finalpool/c__run1', 'c'.repeat(32)).expect(200);
+  await access('delete', a).expect(200);
+  await poolClaim(a, 'finalpool/a__run1', 'a'.repeat(32)).expect(403);
+  await access('delete', b).expect(200);
+});
+
+test('GitHub pool skips cooled identities but never rotates an already leased task', async () => {
+  await create();
+  await saveGithubPool('toolathlon', poolAccounts);
+  await githubThrottleStore.save('711', {
+    cooldownUntil: Date.now() + 60000,
+    nextWriteAt: 0,
+    failures: 1,
+  });
+  const a = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+  const leased = await poolClaim(a, 'finalpool/task', 'a'.repeat(32)).expect(200);
+  expect(leased.body.data.id).toBe('722');
+  await githubThrottleStore.save('722', {
+    cooldownUntil: Date.now() + 60000,
+    nextWriteAt: 0,
+    failures: 1,
+  });
+  expect((await poolClaim(a, 'finalpool/task', 'a'.repeat(32)).expect(200)).body.data.id).toBe(
+    '722',
+  );
+  await poolClaim(a, 'finalpool/another', 'b'.repeat(32)).expect(409);
+  await access('delete', a).expect(200);
+});
+
+test('pool HTTP calls require the exact task generation and use the same account for preparation, tools and grading', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'github-pool-http-'));
+  const oldAudit = process.env.MCPHUB_AUDIT_LOG_DIR;
+  process.env.MCPHUB_AUDIT_LOG_DIR = directory;
+  const upstream = jest.spyOn(axios, 'request').mockImplementation(async (config: any) => ({
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    data: Buffer.from(
+      JSON.stringify(config.url === 'https://api.github.com/user' ? { id: 711 } : { ok: true }),
+    ),
+  }));
+  try {
+    await create();
+    await saveGithubPool('toolathlon', [poolAccounts[0]]);
+    const a = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+    await poolClaim(a, 'finalpool/task', 'a'.repeat(32)).expect(200);
+    const call = (phase: string, task = 'finalpool/task', holder = 'a'.repeat(32)) =>
+      access('get', a, '/http/github/api/repos/example/project')
+        .set('X-MCPHub-Task-Id', task)
+        .set('X-MCPHub-Github-Lease', holder)
+        .set('X-MCPHub-Stage', phase);
+    for (const phase of ['prepare', 'tool', 'evaluate']) await call(phase).expect(200);
+    expect(
+      upstream.mock.calls.every(([c]: any) => c.headers.authorization === 'Bearer pool-one-secret'),
+    ).toBe(true);
+    const dispatched = upstream.mock.calls.length;
+    await call('tool', 'finalpool/other').expect(409);
+    await call('tool', 'finalpool/task', 'b'.repeat(32)).expect(409);
+    await call('tool', 'finalpool/task', '').expect(409);
+    await poolClaim(a, 'finalpool/task', 'a'.repeat(32), 'delete').expect(200);
+    await call('tool').expect(409);
+    expect(upstream.mock.calls.length).toBe(dispatched);
+    await poolClaim(a, 'finalpool/task', 'b'.repeat(32)).expect(200);
+    await call('tool').expect(409); // Late old-generation requests cannot use the new lease.
+    await call('tool', 'finalpool/task', 'b'.repeat(32)).expect(200);
+    await access('delete', a).expect(200);
+    expect(readFileSync(join(directory, readdirSync(directory)[0]), 'utf8')).not.toContain(
+      'pool-one-secret',
+    );
+  } finally {
+    upstream.mockRestore();
+    if (oldAudit === undefined) delete process.env.MCPHUB_AUDIT_LOG_DIR;
+    else process.env.MCPHUB_AUDIT_LOG_DIR = oldAudit;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('pool administration hides credentials, rejects calling keys and duplicate real GitHub identities', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'github-pool-admin-'));
+  const oldAudit = process.env.MCPHUB_AUDIT_LOG_DIR;
+  process.env.MCPHUB_AUDIT_LOG_DIR = directory;
+  const upstream = jest.spyOn(axios, 'request').mockResolvedValue({
+    status: 200,
+    headers: {},
+    data: Buffer.from('{"id":711,"login":"pool-one"}'),
+  });
+  try {
+    await request(app)
+      .put('/api/github-pools/toolathlon')
+      .set('x-key', 'key-a')
+      .send({ tokens: ['test-secret'] })
+      .expect(403);
+    await request(app)
+      .put('/api/github-pools/toolathlon')
+      .set('x-admin', 'yes')
+      .send({ tokens: ['one', 'two'] })
+      .expect(422);
+    await request(app)
+      .put('/api/github-pools/toolathlon')
+      .set('x-admin', 'yes')
+      .send({ tokens: ['test-secret'] })
+      .expect(200);
+    const metadata = await request(app)
+      .get('/api/github-pools/toolathlon')
+      .set('x-admin', 'yes')
+      .expect(200);
+    expect(metadata.body.data.accounts).toEqual([{ id: '711', login: 'pool-one' }]);
+    expect(JSON.stringify(metadata.body)).not.toContain('test-secret');
+  } finally {
+    upstream.mockRestore();
+    if (oldAudit === undefined) delete process.env.MCPHUB_AUDIT_LOG_DIR;
+    else process.env.MCPHUB_AUDIT_LOG_DIR = oldAudit;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('release before admission fences a late POST, while a new generation may acquire', async () => {
+  await create();
+  await saveGithubPool('toolathlon', poolAccounts);
+  const a = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+  await poolClaim(a, 'finalpool/task', 'a'.repeat(32), 'delete').expect(200);
+  await poolClaim(a, 'finalpool/task', 'a'.repeat(32)).expect(503);
+  await poolClaim(a, 'finalpool/task', 'b'.repeat(32)).expect(200);
+  await access('delete', a).expect(200);
+});
+
+test('a pool replaces only the GitHub startup credential requirement', async () => {
+  mockRequiredAccounts = true;
+  await create().send({ values: {} }).expect(200);
+  await start().expect(422);
+  await saveGithubPool('toolathlon', poolAccounts);
+  const a = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+  expect((await access('get', a).expect(200)).body.data.githubPool).toBe(true);
+  await access('delete', a).expect(200);
+});
+
+test('pool round-robin advances after a fully released failed attempt', async () => {
+  await create();
+  await saveGithubPool('toolathlon', poolAccounts);
+  const a = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+  const first = (await poolClaim(a, 'finalpool/task', 'a'.repeat(32)).expect(200)).body.data;
+  await poolClaim(a, 'finalpool/task', 'a'.repeat(32), 'delete').expect(200);
+  const retry = (await poolClaim(a, 'finalpool/task', 'b'.repeat(32)).expect(200)).body.data;
+  expect(retry.id).not.toBe(first.id);
+  await access('delete', a).expect(200);
+});
+
+test('changing pool mode waits for older active runs to be cleaned up', async () => {
+  await create();
+  await create('account-b');
+  const legacy = (await start().expect(200)).body.data;
+  await saveGithubPool('toolathlon', poolAccounts);
+  await start('account-b').send({ githubTaskLeases: true }).expect(409);
+  await access('delete', legacy).expect(200);
+  const pooled = (await start('account-b').send({ githubTaskLeases: true }).expect(200)).body.data;
+  await saveGithubPool('toolathlon', []);
+  await start().expect(409);
+  await access('delete', pooled).expect(200);
+  const drained = (await start().expect(200)).body.data;
+  await access('delete', drained).expect(200);
+});
+
+test('confirmed task cleanup removes a stranded initializer before reassigning its pool account', async () => {
+  await create();
+  await saveGithubPool('toolathlon', [poolAccounts[0]]);
+  const run = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+  await poolClaim(run, 'finalpool/first', 'a'.repeat(32)).expect(200);
+  expect(
+    await githubPreparation('711', {
+      run: run.id,
+      task: 'finalpool/first',
+      holder: 'c'.repeat(32),
+    }),
+  ).toBe(true);
+  // Simulate a lost DELETE preparations/github after the containers were removed.
+  await poolClaim(run, 'finalpool/first', 'a'.repeat(32), 'delete').expect(200);
+  await poolClaim(run, 'finalpool/second', 'b'.repeat(32)).expect(200);
+  expect(
+    await githubPreparation('711', {
+      run: run.id,
+      task: 'finalpool/second',
+      holder: 'd'.repeat(32),
+    }),
+  ).toBe(true);
+  // A duplicate cleanup for the first task cannot remove the new task's lock.
+  await poolClaim(run, 'finalpool/first', 'a'.repeat(32), 'delete').expect(200);
+  expect(
+    await githubPreparation('711', {
+      run: run.id,
+      task: 'finalpool/other',
+      holder: 'e'.repeat(32),
+    }),
+  ).toBe(false);
+  await access('delete', run).expect(200);
+});
+
+test('initializer cleanup failure retains the pool account and the exact release can be retried', async () => {
+  await create();
+  await saveGithubPool('toolathlon', [poolAccounts[0]]);
+  const run = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+  await poolClaim(run, 'finalpool/task', 'a'.repeat(32)).expect(200);
+  await githubPreparation('711', {
+    run: run.id,
+    task: 'finalpool/task',
+    holder: 'c'.repeat(32),
+  });
+  const remove = Map.prototype.delete;
+  const deletion = jest.spyOn(mockStore, 'delete').mockImplementation(function (key) {
+    if (key.startsWith('@github-preparation/')) throw new Error('Storage unavailable');
+    return remove.call(mockStore, key);
+  });
+  try {
+    await poolClaim(run, 'finalpool/task', 'a'.repeat(32), 'delete').expect(503);
+    await poolClaim(run, 'finalpool/next', 'b'.repeat(32)).expect(409);
+  } finally {
+    deletion.mockRestore();
+  }
+  await poolClaim(run, 'finalpool/task', 'a'.repeat(32), 'delete').expect(200);
+  await poolClaim(run, 'finalpool/next', 'b'.repeat(32)).expect(200);
+  await access('delete', run).expect(200);
+});
+
+test('a wrong task generation cannot clear an initializer and a delayed initializer cannot resurrect a released lease', async () => {
+  await create();
+  await saveGithubPool('toolathlon', [poolAccounts[0]]);
+  const run = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+  await poolClaim(run, 'finalpool/task', 'a'.repeat(32)).expect(200);
+  const claim = { run: run.id, task: 'finalpool/task', holder: 'c'.repeat(32) };
+  await githubPreparation('711', claim);
+  await poolClaim(run, 'finalpool/task', 'b'.repeat(32), 'delete').expect(503);
+  expect(await githubPreparation('711', { ...claim, holder: 'd'.repeat(32) })).toBe(false);
+  const released = releaseGithubTask(run.id, claim.task, 'a'.repeat(32), async () => undefined);
+  const lateInitializer = githubPreparation('711', claim, false, () =>
+    githubTaskAccount(run.id, claim.task, 'a'.repeat(32)),
+  );
+  // Attach the rejection handler before the queued release completes.
+  const rejected = expect(lateInitializer).rejects.toThrow('GitHub task lease unavailable');
+  await released;
+  await rejected;
+  await poolClaim(run, claim.task, 'b'.repeat(32)).expect(200);
+  expect(await githubPreparation('711', { ...claim, holder: 'd'.repeat(32) })).toBe(true);
+  await access('delete', run).expect(200);
+});
+
+test('preparation HTTP admission rechecks the pool generation after account lookup', async () => {
+  await create();
+  await saveGithubPool('toolathlon', [poolAccounts[0]]);
+  const run = (await start().send({ githubTaskLeases: true }).expect(200)).body.data;
+  await poolClaim(run, 'finalpool/task', 'a'.repeat(32)).expect(200);
+  let entered!: () => void;
+  let resume!: () => void;
+  const lookupStarted = new Promise<void>((resolve) => (entered = resolve));
+  const lookupMayFinish = new Promise<void>((resolve) => (resume = resolve));
+  const identity = jest.spyOn(githubThrottleStore, 'identity').mockImplementationOnce(async () => {
+    entered();
+    await lookupMayFinish;
+    return '711';
+  });
+  const pending = request(app)
+    .post(`/api/workspace-runs/${run.id}/preparations/github`)
+    .set('x-key', 'key-a')
+    .set('X-MCPHub-Run-Token', run.token)
+    .set('X-MCPHub-Task-Id', 'finalpool/task')
+    .set('X-MCPHub-Stage', 'prepare')
+    .set('X-MCPHub-Github-Lease', 'a'.repeat(32))
+    .set('X-MCPHub-Preparation-Id', 'c'.repeat(32))
+    .then((response) => response);
+  try {
+    await lookupStarted;
+    await poolClaim(run, 'finalpool/task', 'a'.repeat(32), 'delete').expect(200);
+    resume();
+    expect((await pending).status).toBe(409);
+    await poolClaim(run, 'finalpool/task', 'b'.repeat(32)).expect(200);
+    expect(
+      await githubPreparation('711', {
+        run: run.id,
+        task: 'finalpool/task',
+        holder: 'd'.repeat(32),
+      }),
+    ).toBe(true);
+  } finally {
+    resume();
+    await pending;
+    identity.mockRestore();
+    await access('delete', run).expect(200);
+  }
 });

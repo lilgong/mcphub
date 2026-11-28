@@ -64,6 +64,10 @@ const validateBearerAuth = async (
       /\/api\/workspace-runs\/[a-zA-Z0-9-]+\/http\/[A-Za-z0-9_.-]+\/[a-z][a-z0-9_-]*(?:\/.*)?$/.test(
         apiPath,
       )) ||
+    (['POST', 'DELETE'].includes(req.method) &&
+      /\/api\/workspace-runs\/[a-zA-Z0-9-]+\/(?:preparations\/github|github-lease)$/.test(
+        apiPath,
+      )) ||
     (['GET', 'POST'].includes(req.method) && /\/api\/workspace-runs$/.test(apiPath)) ||
     (['GET', 'PUT', 'DELETE'].includes(req.method) &&
       /\/api\/workspace-runs\/[a-zA-Z0-9-]+(?:\/files)?$/.test(apiPath));

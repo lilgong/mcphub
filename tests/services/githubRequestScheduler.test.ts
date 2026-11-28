@@ -20,6 +20,7 @@ import {
   githubRateDelay,
 } from '../../src/services/githubRequestSchedulerService.js';
 import type { ForwardResponse } from '../../src/services/httpForwardService.js';
+import type { GithubThrottleState } from '../../src/services/githubThrottleStore.js';
 const reply = (
   status = 200,
   headers: Record<string, string> = {},
@@ -81,7 +82,7 @@ test('different tokens for the same user share FIFO; independent accounts contin
   await Promise.all([first, second, other]);
   expect(calls).toEqual(['a', 'other', 'b']);
 });
-test('writes pause one second after completion; intervening reads need no invented interval', async () => {
+test('writes pause five seconds after completion; intervening reads need no invented interval', async () => {
   const queue = new GithubRequestScheduler();
   const calls: number[] = [];
   await queue.run(options(async () => reply(), { method: 'POST' }));
@@ -101,42 +102,31 @@ test('writes pause one second after completion; intervening reads need no invent
       { method: 'DELETE' },
     ),
   );
-  await jest.advanceTimersByTimeAsync(999);
+  await jest.advanceTimersByTimeAsync(4999);
   expect(calls).toEqual([1000000]);
   await jest.advanceTimersByTimeAsync(1);
   await write;
-  expect(calls).toEqual([1000000, 1001000]);
+  expect(calls).toEqual([1000000, 1005000]);
 });
-test('secondary limits pause the shared queue and retry only the rejected request', async () => {
+test('secondary limits return unchanged; subsequent requests respect the shared cooldown', async () => {
   const queue = new GithubRequestScheduler();
-  let attempts = 0;
-  const order: string[] = [];
-  const first = queue.run(
-    options(async () => {
-      order.push('a');
-      return ++attempts === 1
-        ? {
-            ...reply(403, { 'retry-after': '2' }, '{"message":"secondary rate limit"}'),
-            rateLimited: true,
-          }
-        : reply();
-    }),
-  );
-  const second = queue.run(
-    options(
-      async () => {
-        order.push('b');
-        return reply();
-      },
-      { credential: 'token-b' },
-    ),
-  );
+  const limited = {
+    ...reply(403, { 'retry-after': '2' }, '{"message":"secondary rate limit"}'),
+    rateLimited: true,
+  };
+  const rejected = jest.fn(async () => limited);
+  expect(await queue.run(options(rejected))).toBe(limited);
+  expect(rejected).toHaveBeenCalledTimes(1);
+  const dispatch = jest.fn(async () => reply());
+  const next = queue.run(options(dispatch, { credential: 'token-b' }));
   await jest.advanceTimersByTimeAsync(1999);
-  expect(order).toEqual(['a']);
+  expect(dispatch).not.toHaveBeenCalled();
   await jest.advanceTimersByTimeAsync(1);
-  await Promise.all([first, second]);
-  expect(order).toEqual(['a', 'a', 'b']);
+  await next;
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(rejected).toHaveBeenCalledTimes(1);
 });
+
 test('remaining zero on success pauses the next request until reset', async () => {
   const queue = new GithubRequestScheduler();
   await queue.run(
@@ -216,17 +206,77 @@ test('suspended accounts stop queued work; rejected identity never spends anothe
   await other.run(options(dispatch, { identify }));
   expect(identify).toHaveBeenCalledTimes(1);
 });
-test('retry budget is bounded; streamed packs are not replayed', async () => {
+test('rate-limited requests are forwarded only once', async () => {
   const limited = { ...reply(429, { 'retry-after': '1' }), rateLimited: true };
   const dispatch = jest.fn(async () => limited);
-  const result = new GithubRequestScheduler().run(options(dispatch));
-  await jest.advanceTimersByTimeAsync(2000);
-  expect((await result).status).toBe(429);
-  expect(dispatch).toHaveBeenCalledTimes(3);
-  dispatch.mockClear();
-  await new GithubRequestScheduler().run(options(dispatch, { streaming: true }));
+  expect(await new GithubRequestScheduler().run(options(dispatch))).toBe(limited);
   expect(dispatch).toHaveBeenCalledTimes(1);
 });
+
+test('a persisted 32-minute cooldown returns promptly without dispatching or extending it', async () => {
+  const state = { cooldownUntil: Date.now() + 1920000, nextWriteAt: 0, failures: 6 };
+  const store = {
+    identity: async () => '123',
+    saveIdentity: jest.fn(),
+    load: async () => state,
+    save: jest.fn(),
+  };
+  const queue = new GithubRequestScheduler(store);
+  const dispatch = jest.fn(async () => reply());
+  const result = await queue.run(options(dispatch));
+  expect(result.status).toBe(429);
+  expect(result.headers['retry-after']).toBe('1920');
+  expect(JSON.parse(result.body.toString()).message).toContain('MCPHub');
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(store.save).not.toHaveBeenCalled();
+  expect((await queue.run(options(dispatch))).status).toBe(429);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+test('admission budget includes time already spent in the HTTP gateway', async () => {
+  const queue = new GithubRequestScheduler();
+  const dispatch = jest.fn(async () => reply());
+  const expired = await queue.run(options(dispatch, { queuedAt: Date.now() - 600001 }));
+  expect(expired.status).toBe(429);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect((await queue.run(options(dispatch))).status).toBe(200);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+});
+
+test('FIFO admission expires after 10 minutes without truncating an active upstream request', async () => {
+  const queue = new GithubRequestScheduler();
+  const calls: string[] = [];
+  let unlock!: () => void;
+  const active = queue.run(
+    options(async () => {
+      calls.push('active');
+      await new Promise<void>((resolve) => {
+        unlock = resolve;
+      });
+      return reply();
+    }),
+  );
+  await jest.advanceTimersByTimeAsync(0);
+  const dispatch = jest.fn(async () => reply());
+  const expired = queue.run(options(dispatch));
+  await jest.advanceTimersByTimeAsync(1000);
+  const last = queue.run(
+    options(async () => {
+      calls.push('last');
+      return reply();
+    }),
+  );
+  await jest.advanceTimersByTimeAsync(599000);
+  expect((await expired).status).toBe(429);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(calls).toEqual(['active']);
+  unlock();
+  expect((await active).status).toBe(200);
+  expect((await last).status).toBe(200);
+  expect(calls).toEqual(['active', 'last']);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
 test('GraphQL reads and Git fetch POSTs are not classified as mutations', () => {
   expect(
     githubMutation(
@@ -347,4 +397,245 @@ test('compressed GitHub identity responses retain wire bytes without breaking ac
   const result = await queue.run(options(dispatch, { identify: async () => compressed }));
   expect(result.status).toBe(200);
   expect(dispatch).toHaveBeenCalledTimes(1);
+});
+
+test('identity lookup uses the admission deadline without dispatching the original request', async () => {
+  const queue = new GithubRequestScheduler();
+  let identify!: (result: ForwardResponse) => void;
+  const dispatch = jest.fn(async () => reply());
+  const result = queue.run(
+    options(dispatch, {
+      identify: () =>
+        new Promise<ForwardResponse>((resolve) => {
+          identify = resolve;
+        }),
+    }),
+  );
+  await jest.advanceTimersByTimeAsync(600000);
+  expect((await result).status).toBe(429);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(jest.getTimerCount()).toBe(0);
+  identify(reply(200, {}, '{"id":123}'));
+  await jest.advanceTimersByTimeAsync(0);
+  expect((await queue.run(options(dispatch))).status).toBe(200);
+});
+
+test('loading saved state is covered by the admission deadline', async () => {
+  let load!: (state: undefined) => void;
+  const queue = new GithubRequestScheduler({
+    identity: async () => '123',
+    saveIdentity: jest.fn(),
+    load: () =>
+      new Promise((resolve) => {
+        load = resolve;
+      }),
+    save: jest.fn(),
+  });
+  const dispatch = jest.fn(async () => reply());
+  const result = queue.run(options(dispatch));
+  await jest.advanceTimersByTimeAsync(600000);
+  expect((await result).status).toBe(429);
+  expect(dispatch).not.toHaveBeenCalled();
+  load(undefined);
+  await jest.advanceTimersByTimeAsync(0);
+  expect((await queue.run(options(dispatch))).status).toBe(200);
+});
+
+test('failed state reads can recover on the next request', async () => {
+  const load = jest
+    .fn()
+    .mockRejectedValueOnce(new Error('database unavailable'))
+    .mockResolvedValue(undefined);
+  const queue = new GithubRequestScheduler({
+    identity: async () => '123',
+    saveIdentity: jest.fn(),
+    load,
+    save: jest.fn(),
+  });
+  const dispatch = jest.fn(async () => reply());
+  await expect(queue.run(options(dispatch))).rejects.toThrow('database unavailable');
+  expect((await queue.run(options(dispatch))).status).toBe(200);
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+});
+
+test('expired admission never starts an identity request', async () => {
+  const identify = jest.fn(identity);
+  const dispatch = jest.fn(async () => reply());
+  const result = await new GithubRequestScheduler().run(
+    options(dispatch, {
+      identify,
+      queuedAt: Date.now() - 600001,
+    }),
+  );
+  expect(result.status).toBe(429);
+  expect(identify).not.toHaveBeenCalled();
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+test('client cancellation while resolving identity remains cancellation', async () => {
+  const controller = new AbortController();
+  const queue = new GithubRequestScheduler();
+  const result = queue.run(
+    options(async () => reply(), {
+      signal: controller.signal,
+      identify: () => new Promise(() => {}),
+    }),
+  );
+  const rejected = expect(result).rejects.toThrow('caller cancelled');
+  await jest.advanceTimersByTimeAsync(0);
+  controller.abort(new Error('caller cancelled'));
+  await rejected;
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+test('admission expiry aborts the identity HTTP request and a later lookup can recover', async () => {
+  const queue = new GithubRequestScheduler();
+  let identitySignal!: AbortSignal;
+  const identify = jest.fn((signal: AbortSignal) => {
+    identitySignal = signal;
+    return new Promise<ForwardResponse>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  });
+  const dispatch = jest.fn(async () => reply());
+  const result = queue.run(options(dispatch, { identify }));
+  await jest.advanceTimersByTimeAsync(600000);
+  expect((await result).status).toBe(429);
+  expect(identitySignal.aborted).toBe(true);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect((await queue.run(options(dispatch))).status).toBe(200);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+test('the hourly write budget is shared across tokens while reads and other accounts remain usable', async () => {
+  const started = Date.now();
+  const store = {
+    identity: async () => undefined,
+    saveIdentity: jest.fn(),
+    load: async (id: string) =>
+      id === '123'
+        ? {
+            cooldownUntil: 0,
+            nextWriteAt: 0,
+            failures: 0,
+            writeTimes: [started - 3590000, started - 3580000],
+          }
+        : undefined,
+    save: jest.fn(),
+  };
+  const queue = new GithubRequestScheduler(store, { intervalMs: 1000, maxPerHour: 2 });
+  const write = jest.fn(async () => reply());
+  const waiting = queue.run(options(write, { method: 'POST' }));
+  await jest.advanceTimersByTimeAsync(9999);
+  expect(write).not.toHaveBeenCalled();
+  const other = await queue.run(
+    options(async () => reply(), {
+      credential: 'other-account',
+      method: 'POST',
+      identify: async () => reply(200, {}, '{"id":456}'),
+    }),
+  );
+  expect(other.status).toBe(200);
+  await jest.advanceTimersByTimeAsync(1);
+  await waiting;
+  expect(write).toHaveBeenCalledTimes(1);
+  const read = jest.fn(async () => reply());
+  await queue.run(options(read, { credential: 'token-b' }));
+  expect(read).toHaveBeenCalledTimes(1);
+  const next = queue.run(options(write, { method: 'DELETE', credential: 'token-b' }));
+  await jest.advanceTimersByTimeAsync(9999);
+  expect(write).toHaveBeenCalledTimes(1);
+  await jest.advanceTimersByTimeAsync(1);
+  await next;
+  expect(write).toHaveBeenCalledTimes(2);
+});
+
+test('full write budgets survive restart and fail promptly without changing upstream cooldown', async () => {
+  const state = { cooldownUntil: 0, nextWriteAt: 0, failures: 0, writeTimes: [] as number[] };
+  const store = {
+    identity: async () => '123',
+    saveIdentity: jest.fn(),
+    load: async () => structuredClone(state),
+    save: jest.fn(async (_id: string, value: GithubThrottleState) => {
+      Object.assign(state, structuredClone(value));
+    }),
+  };
+  const first = new GithubRequestScheduler(store, { intervalMs: 1000, maxPerHour: 1 });
+  expect((await first.run(options(async () => reply(422), { method: 'POST' }))).status).toBe(422);
+  const restarted = new GithubRequestScheduler(store, { intervalMs: 1000, maxPerHour: 1 });
+  const dispatch = jest.fn(async () => reply());
+  const limited = await restarted.run(options(dispatch, { method: 'POST', credential: 'token-b' }));
+  expect(limited.status).toBe(429);
+  expect(limited.headers['retry-after']).toBe('3600');
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(state.cooldownUntil).toBe(0);
+  expect(state.failures).toBe(0);
+  expect(state.writeTimes).toHaveLength(1);
+  expect((await restarted.run(options(dispatch))).status).toBe(200);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+test('a cancelled write waiting on the hourly budget is not dispatched or counted', async () => {
+  const start = Date.now();
+  const state = { cooldownUntil: 0, nextWriteAt: 0, failures: 0, writeTimes: [start - 3590000] };
+  const store = {
+    identity: async () => '123',
+    saveIdentity: jest.fn(),
+    load: async () => state,
+    save: jest.fn(),
+  };
+  const queue = new GithubRequestScheduler(store, { intervalMs: 1000, maxPerHour: 1 });
+  const controller = new AbortController();
+  const dispatch = jest.fn(async () => reply());
+  const waiting = queue.run(options(dispatch, { method: 'POST', signal: controller.signal }));
+  const cancelled = expect(waiting).rejects.toThrow('cancelled');
+  await jest.advanceTimersByTimeAsync(1000);
+  controller.abort(new Error('cancelled'));
+  await cancelled;
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(store.save).not.toHaveBeenCalled();
+  const next = queue.run(options(dispatch, { method: 'POST' }));
+  await jest.advanceTimersByTimeAsync(9000);
+  expect((await next).status).toBe(200);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+test('known exhausted write budget returns before waiting behind another request', async () => {
+  const state = {
+    cooldownUntil: 0,
+    nextWriteAt: 0,
+    failures: 0,
+    writeTimes: [Date.now()],
+  };
+  const queue = new GithubRequestScheduler(
+    {
+      identity: async () => '123',
+      saveIdentity: jest.fn(),
+      load: async () => state,
+      save: jest.fn(),
+    },
+    { intervalMs: 5000, maxPerHour: 1 },
+  );
+  let unlock!: () => void;
+  const active = queue.run(
+    options(
+      () =>
+        new Promise<ForwardResponse>((resolve) => {
+          unlock = () => resolve(reply());
+        }),
+    ),
+  );
+  await jest.advanceTimersByTimeAsync(0);
+  const dispatch = jest.fn(async () => reply());
+  const denied = await queue.run(options(dispatch, { method: 'POST' }));
+  expect(denied.status).toBe(429);
+  expect(denied.headers['retry-after']).toBe('3600');
+  expect(dispatch).not.toHaveBeenCalled();
+  unlock();
+  expect((await active).status).toBe(200);
+  expect((await queue.run(options(dispatch))).status).toBe(200);
+  expect(jest.getTimerCount()).toBe(0);
 });
